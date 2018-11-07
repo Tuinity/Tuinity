@@ -10,7 +10,7 @@ done
 
 workdir=$basedir/Paper/work
 minecraftversion=$(cat $basedir/Paper/work/BuildData/info.json | grep minecraftVersion | cut -d '"' -f 4)
-decompiledir=$workdir/Minecraft/$minecraftversion
+decompiledir=$workdir/Minecraft/$minecraftversion/forge
 
 nms="net/minecraft/server"
 export MODLOG=""
