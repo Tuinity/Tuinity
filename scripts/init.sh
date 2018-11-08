@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
+# BEGIN config
+FORK_NAME="EmpireCraft"
+API_REPO=""
+SERVER_REPO=""
+PAPER_API_REPO=""
+PAPER_SERVER_REPO=""
+MCDEV_REPO=""
+# END config
+
 sourceBase=$(dirname $SOURCE)/../
 cd ${basedir:-$sourceBase}
 
 basedir=$(pwd -P)
 cd -
 
-FORK_NAME="AlphheimCraft"
-API_REPO="https://electronicboy@atlas.valaria.pw/stash/scm/al/alphheimcraft-api.git"
-SERVER_REPO="https://electronicboy@atlas.valaria.pw/stash/scm/al/alphheimcraft-server.git"
-PAPER_API_REPO="https://electronicboy@atlas.valaria.pw/stash/scm/al/paper-api.git"
-PAPER_SERVER_REPO="https://electronicboy@atlas.valaria.pw/stash/scm/al/paper-server.git"
-MCDEV_REPO="https://electronicboy@atlas.valaria.pw/stash/scm/al/mc-dev.git"
 
 function bashColor {
 if [ $2 ]; then
