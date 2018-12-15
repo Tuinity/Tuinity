@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # BEGIN config
-FORK_NAME="EmpireCraft"
+FORK_NAME="Concrete"
 API_REPO=""
 SERVER_REPO=""
 PAPER_API_REPO=""
