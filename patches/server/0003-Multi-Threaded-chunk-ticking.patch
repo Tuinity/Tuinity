@@ -1,4 +1,4 @@
-From a1a30528d67e0e12c9a148a9dd11f8d80104d24d Mon Sep 17 00:00:00 2001
+From aaa8387847516f8b71726efc7716ab24f0d1eb8f Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
@@ -6,9 +6,9 @@ Subject: [PATCH] Multi-Threaded chunk ticking
 ---
  pom.xml                                       |   4 +-
  .../concrete/chunk/ChunkRegionManager.java    |   5 +
- .../concrete/util/ConcurrentLinkedList.java   | 656 ++++++++++++++++++
+ .../concrete/util/ConcurrentLinkedList.java   | 654 ++++++++++++++++++
  .../concrete/util/ConcurrentUtil.java         |  39 ++
- 4 files changed, 702 insertions(+), 2 deletions(-)
+ 4 files changed, 700 insertions(+), 2 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/ConcurrentUtil.java
@@ -41,10 +41,10 @@ index 000000000..ccc690a82
 +}
 diff --git a/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
 new file mode 100644
-index 000000000..37be0ae75
+index 000000000..f4d1c2f4d
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
-@@ -0,0 +1,656 @@
+@@ -0,0 +1,654 @@
 +package io.github.spottedleaf.concrete.util;
 +
 +
@@ -105,7 +105,7 @@ index 000000000..37be0ae75
 +        if (!elements.hasNext()) {
 +            final LinkedNode<E> value = new LinkedNode<>(null, null);
 +            HEAD_HANDLE.set(this, value);
-+            TAIL_HANDLE.setRelease(this, value); /* Release guarantees publishing */
++            TAIL_HANDLE.set(this, value);
 +            return;
 +        }
 +
@@ -292,7 +292,6 @@ index 000000000..37be0ae75
 +            if (element == null) {
 +                continue;
 +            }
-+            //noinspection unchecked
 +            ret |= collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
 +        }
 +        return ret;
@@ -309,7 +308,6 @@ index 000000000..37be0ae75
 +            if (element == null) {
 +                continue;
 +            }
-+            //noinspection unchecked
 +            ret |= !collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
 +        }
 +        return ret;
