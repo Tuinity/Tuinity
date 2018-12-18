@@ -1,20 +1,20 @@
-From 920990c148275532f517b4b86ad531bc0c92fecf Mon Sep 17 00:00:00 2001
+From a1a30528d67e0e12c9a148a9dd11f8d80104d24d Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
-Subject: [PATCH] Multi-thread the server
+Subject: [PATCH] Multi-Threaded chunk ticking
 
 ---
  pom.xml                                       |   4 +-
- .../concrete/chunk/ChunkRegionManager.java    |  53 ++
+ .../concrete/chunk/ChunkRegionManager.java    |   5 +
  .../concrete/util/ConcurrentLinkedList.java   | 656 ++++++++++++++++++
  .../concrete/util/ConcurrentUtil.java         |  39 ++
- 4 files changed, 750 insertions(+), 2 deletions(-)
- create mode 100644 src/main/java/com/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
- create mode 100644 src/main/java/com/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
- create mode 100644 src/main/java/com/github/spottedleaf/concrete/util/ConcurrentUtil.java
+ 4 files changed, 702 insertions(+), 2 deletions(-)
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/ConcurrentUtil.java
 
 diff --git a/pom.xml b/pom.xml
-index b025227e..0532e6c7 100644
+index b025227ea..0532e6c79 100644
 --- a/pom.xml
 +++ b/pom.xml
 @@ -16,8 +16,8 @@
@@ -28,72 +28,24 @@ index b025227e..0532e6c7 100644
      </properties>
  
      <parent>
-diff --git a/src/main/java/com/github/spottedleaf/concrete/chunk/ChunkRegionManager.java b/src/main/java/com/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
+diff --git a/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
 new file mode 100644
-index 00000000..9e3feac5
+index 000000000..ccc690a82
 --- /dev/null
-+++ b/src/main/java/com/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
-@@ -0,0 +1,53 @@
-+package com.github.spottedleaf.concrete.chunk;
-+
-+import com.github.spottedleaf.concrete.util.ConcurrentLinkedList;
-+import com.github.spottedleaf.concrete.util.ConcurrentUtil;
-+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-+
-+import java.lang.invoke.VarHandle;
-+import java.util.concurrent.CompletableFuture;
++++ b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
+@@ -0,0 +1,5 @@
++package io.github.spottedleaf.concrete.chunk;
 +
 +public class ChunkRegionManager {
 +
-+    private final Long2ObjectOpenHashMap<ChunkRegion> regions = new Long2ObjectOpenHashMap<>();
-+
-+    public CompletableFuture<ChunkRegion> createChunkAt(final long encoded) {
-+        final ChunkRegion newRegion = new ChunkRegion(encoded);
-+        final long temp = encoded | 0xFFFFFFFFL;
-+        synchronized (this.regions) {
-+            for (long z = -1L << 32; z <= (1L << 32); z += (1L << 32)) {
-+                for (int x = -1; x <= 1; ++x) {
-+                    long next = z + temp;
-+                    next &= (x + temp) & 0xFFFFFFFFL;
-+
-+
-+
-+                }
-+            }
-+        }
-+    }
-+
-+    public static class ChunkRegion {
-+
-+        private volatile ConcurrentLinkedList<CompletableFuture<ChunkRegion>> waiting;
-+        private static final VarHandle WAITING_HANDLE = ConcurrentUtil.getVarHandle(ChunkRegion.class, "waiting", ConcurrentLinkedList.class);
-+
-+        private volatile int status;
-+
-+        private static final int STATUS_TEMP = 0;
-+
-+        public ChunkRegion() {
-+            WAITING_HANDLE.set(this, new ConcurrentLinkedList<>());
-+        }
-+
-+        public ChunkRegion(final long key) {
-+            this();
-+        }
-+
-+        private void ready() {
-+
-+        }
-+
-+    }
-+
 +}
-diff --git a/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentLinkedList.java b/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
+diff --git a/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
 new file mode 100644
-index 00000000..60f03d14
+index 000000000..37be0ae75
 --- /dev/null
-+++ b/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
++++ b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
 @@ -0,0 +1,656 @@
-+package com.github.spottedleaf.concrete.util;
++package io.github.spottedleaf.concrete.util;
 +
 +
 +import javax.annotation.Nonnull;
@@ -750,13 +702,13 @@ index 00000000..60f03d14
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentUtil.java b/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentUtil.java
+diff --git a/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentUtil.java b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentUtil.java
 new file mode 100644
-index 00000000..19c424f6
+index 000000000..ed80c3094
 --- /dev/null
-+++ b/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentUtil.java
++++ b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentUtil.java
 @@ -0,0 +1,39 @@
-+package com.github.spottedleaf.concrete.util;
++package io.github.spottedleaf.concrete.util;
 +
 +
 +import java.lang.invoke.MethodHandles;
