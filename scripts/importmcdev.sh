@@ -83,5 +83,5 @@ done
 	cd Paper/Paper-Server/
 	rm -rf nms-patches
 	git add src -A
-	echo -e "EMC-Extra mc-dev Imports\n\n$MODLOG" | git commit src -F -
+	echo -e "Concrete-Extra mc-dev Imports\n\n$MODLOG" | git commit src -F -
 )

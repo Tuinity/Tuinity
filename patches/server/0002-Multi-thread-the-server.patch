@@ -1,0 +1,801 @@
+From 920990c148275532f517b4b86ad531bc0c92fecf Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Tue, 18 Dec 2018 04:24:08 -0800
+Subject: [PATCH] Multi-thread the server
+
+---
+ pom.xml                                       |   4 +-
+ .../concrete/chunk/ChunkRegionManager.java    |  53 ++
+ .../concrete/util/ConcurrentLinkedList.java   | 656 ++++++++++++++++++
+ .../concrete/util/ConcurrentUtil.java         |  39 ++
+ 4 files changed, 750 insertions(+), 2 deletions(-)
+ create mode 100644 src/main/java/com/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
+ create mode 100644 src/main/java/com/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
+ create mode 100644 src/main/java/com/github/spottedleaf/concrete/util/ConcurrentUtil.java
+
+diff --git a/pom.xml b/pom.xml
+index b025227e..0532e6c7 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -16,8 +16,8 @@
+         <buildtag.prefix>git-Bukkit-</buildtag.prefix>
+         <buildtag.suffix></buildtag.suffix>
+         <maven.build.timestamp.format>yyyyMMdd-HHmm</maven.build.timestamp.format>
+-        <maven.compiler.source>1.8</maven.compiler.source>
+-        <maven.compiler.target>1.8</maven.compiler.target>
++        <maven.compiler.source>11</maven.compiler.source>
++        <maven.compiler.target>11</maven.compiler.target>
+     </properties>
+ 
+     <parent>
+diff --git a/src/main/java/com/github/spottedleaf/concrete/chunk/ChunkRegionManager.java b/src/main/java/com/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
+new file mode 100644
+index 00000000..9e3feac5
+--- /dev/null
++++ b/src/main/java/com/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
+@@ -0,0 +1,53 @@
++package com.github.spottedleaf.concrete.chunk;
++
++import com.github.spottedleaf.concrete.util.ConcurrentLinkedList;
++import com.github.spottedleaf.concrete.util.ConcurrentUtil;
++import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
++
++import java.lang.invoke.VarHandle;
++import java.util.concurrent.CompletableFuture;
++
++public class ChunkRegionManager {
++
++    private final Long2ObjectOpenHashMap<ChunkRegion> regions = new Long2ObjectOpenHashMap<>();
++
++    public CompletableFuture<ChunkRegion> createChunkAt(final long encoded) {
++        final ChunkRegion newRegion = new ChunkRegion(encoded);
++        final long temp = encoded | 0xFFFFFFFFL;
++        synchronized (this.regions) {
++            for (long z = -1L << 32; z <= (1L << 32); z += (1L << 32)) {
++                for (int x = -1; x <= 1; ++x) {
++                    long next = z + temp;
++                    next &= (x + temp) & 0xFFFFFFFFL;
++
++
++
++                }
++            }
++        }
++    }
++
++    public static class ChunkRegion {
++
++        private volatile ConcurrentLinkedList<CompletableFuture<ChunkRegion>> waiting;
++        private static final VarHandle WAITING_HANDLE = ConcurrentUtil.getVarHandle(ChunkRegion.class, "waiting", ConcurrentLinkedList.class);
++
++        private volatile int status;
++
++        private static final int STATUS_TEMP = 0;
++
++        public ChunkRegion() {
++            WAITING_HANDLE.set(this, new ConcurrentLinkedList<>());
++        }
++
++        public ChunkRegion(final long key) {
++            this();
++        }
++
++        private void ready() {
++
++        }
++
++    }
++
++}
+diff --git a/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentLinkedList.java b/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
+new file mode 100644
+index 00000000..60f03d14
+--- /dev/null
++++ b/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
+@@ -0,0 +1,656 @@
++package com.github.spottedleaf.concrete.util;
++
++
++import javax.annotation.Nonnull;
++import java.lang.invoke.VarHandle;
++import java.util.*;
++import java.util.function.Consumer;
++import java.util.function.IntFunction;
++import java.util.function.Predicate;
++
++/**
++ * MT-Safe linked first in first out ordered queue.
++ *
++ * This queue should out-perform {@link java.util.concurrent.ConcurrentLinkedQueue} in high-contention reads/writes, and is
++ * not any slower in lower contention reads/writes.
++ * <p>
++ * Note that this queue breaks the specification laid out by {@link Collection}, see {@link #preventAdds()}.
++ * </p>
++ * @param <E> Type of element in this queue.
++ */
++public class ConcurrentLinkedList<E> implements Queue<E> {
++
++    //@jdk.internal.vm.annotation.Contended
++    private volatile LinkedNode<E> head; /* Always non-null, high chance of being the actual head */
++
++    //@jdk.internal.vm.annotation.Contended
++    private volatile LinkedNode<E> tail; /* Always non-null, high chance of being the actual tail */
++
++    /* Note that it is possible to reach head from tail. */
++
++    /* IMPL NOTE: Leave hashCode and equals to their defaults */
++
++    private static final VarHandle HEAD_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentLinkedList.class, "head", LinkedNode.class);
++    private static final VarHandle TAIL_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentLinkedList.class, "tail", LinkedNode.class);
++
++    /**
++     * Constructs a {@code ConcurrentLinkedList} initially empty.
++     * <p>
++     * The returned object may not be published without synchronization.
++     * </p>
++     */
++    public ConcurrentLinkedList() {
++        final LinkedNode<E> value = new LinkedNode<>(null, null);
++        HEAD_HANDLE.set(this, value);
++        TAIL_HANDLE.set(this, value);
++    }
++
++    /**
++     * Constructs a {@code ConcurrentLinkedList} initially containing all elements in the specified {@code collection}.
++     * <p>
++     * The returned object may not be published without synchronization.
++     * </p>
++     * @param collection The specified collection.
++     * @throws NullPointerException If {@code collection} is {@code null} or contains {@code null} elements.
++     */
++    public ConcurrentLinkedList(final Collection<? extends E> collection) {
++        final Iterator<? extends E> elements = collection.iterator();
++        if (!elements.hasNext()) {
++            final LinkedNode<E> value = new LinkedNode<>(null, null);
++            HEAD_HANDLE.set(this, value);
++            TAIL_HANDLE.setRelease(this, value); /* Release guarantees publishing */
++            return;
++        }
++
++        final LinkedNode<E> head = new LinkedNode<>(validateNotNull(elements.next()), null);
++        LinkedNode<E> tail = head;
++
++        while (elements.hasNext()) {
++            final LinkedNode<E> next = new LinkedNode<>(validateNotNull(elements.next()), null);
++            LinkedNode.NEXT_HANDLE.set(tail, next);
++            tail = next;
++        }
++
++        HEAD_HANDLE.set(this, head);
++        TAIL_HANDLE.set(this, tail);
++    }
++
++    private static <T> T validateNotNull(final T value) {
++        if (value == null) {
++            throw new NullPointerException();
++        }
++        return value;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public E remove() throws NoSuchElementException {
++        final E ret = this.poll();
++        if (ret == null) {
++            throw new NoSuchElementException();
++        }
++        return ret;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean add(final E element) {
++        return this.offer(element);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public E element() throws NoSuchElementException {
++        final E ret = this.peek();
++        if (ret == null) {
++            throw new NoSuchElementException();
++        }
++        return ret;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean offer(final E element) {
++        if (element == null) {
++            throw new NullPointerException();
++        }
++        final LinkedNode<E> node = new LinkedNode<>(element, null);
++        return this.appendList(node, node);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public E peek() {
++        return this.getHead(false);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public E poll() {
++        return this.getHead(true);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void clear() {
++        //noinspection StatementWithEmptyBody
++        while (this.poll() != null);
++    }
++
++    /**
++     * Constant time clear operation for this queue. Note that it is possible that some threads reading the queue will not
++     * be updated to this operation. For example, iterators and remove variants will not be notified, and sometimes
++     * peek/poll will not be notified. If there are no concurrent accesses to this queue, then this method will have the
++     * same effect as {@link #clear()}.
++     * @return {@code true} if the queue was cleared, {@code false} otherwise.
++     */
++    public boolean fastClear() {
++        final LinkedNode<E> newHead = new LinkedNode<>(null, null);
++        if (!this.appendList(newHead, newHead)) {
++            return false;
++        }
++        HEAD_HANDLE.setVolatile(this, newHead);
++        return true;
++    }
++
++    /**
++     * Prevents elements from being added to this queue. Once this is called, any attempt to add to this queue will fail.
++     * @return {@code true} if the queue was modified to prevent additions, {@code false} if it already prevented additions.
++     * <p>
++     * This function is MT-Safe.
++     * </p>
++     */
++    public boolean preventAdds() {
++        final LinkedNode<E> deadEnd = new LinkedNode<>(null, null);
++        LinkedNode.NEXT_HANDLE.set(deadEnd, deadEnd);
++        if (!this.appendList(deadEnd, deadEnd)) {
++            return false;
++        }
++        TAIL_HANDLE.setVolatile(this, deadEnd);
++        return true;
++    }
++
++    /**
++     * Allows elements to be added to this queue once again. Note that this function has undefined behaviour if
++     * {@link #preventAdds()} is not called beforehand.
++     * <p>
++     * This function is not MT-Safe.
++     * </p>
++     */
++    public void allowAdds() {
++        //noinspection unchecked
++        LinkedNode.NEXT_HANDLE.setVolatile(((LinkedNode<E>)TAIL_HANDLE.get(this)), null);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean remove(final Object object) {
++        if (object == null) {
++            throw new NullPointerException();
++        }
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == null) {
++                continue;
++            }
++            if ((element == object || element.equals(object))
++                    && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean removeIf(final Predicate<? super E> filter) {
++        boolean ret = false;
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == null) {
++                continue;
++            }
++            //noinspection unchecked
++            ret |= filter.test((E) element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
++        }
++        return ret;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean removeAll(@Nonnull final Collection<?> collection) {
++        boolean ret = false;
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == null) {
++                continue;
++            }
++            //noinspection unchecked
++            ret |= collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
++        }
++        return ret;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean retainAll(@Nonnull final Collection<?> collection) {
++        boolean ret = false;
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == null) {
++                continue;
++            }
++            //noinspection unchecked
++            ret |= !collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
++        }
++        return ret;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Nonnull
++    @Override
++    public Object[] toArray() {
++        final List<E> ret = new ArrayList<>();
++
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == null) {
++                continue;
++            }
++            //noinspection unchecked
++            ret.add((E) element);
++        }
++
++        return ret.toArray();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Nonnull
++    @Override
++    public <T> T[] toArray(@Nonnull final T[] array) {
++        final List<T> ret = new ArrayList<>();
++
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == null) {
++                continue;
++            }
++            //noinspection unchecked
++            ret.add((T) element);
++        }
++
++        return ret.toArray(array);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public <T> T[] toArray(final IntFunction<T[]> generator) {
++        final List<T> ret = new ArrayList<>();
++
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == null) {
++                continue;
++            }
++            //noinspection unchecked
++            ret.add((T) element);
++        }
++
++        return ret.toArray(generator);
++    }
++
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public String toString() {
++        final StringBuilder builder = new StringBuilder();
++
++        builder.append("ConcurrentLinkedList: {elements: {");
++
++        int deadEntries = 0;
++        int totalEntries = 0;
++        int aliveEntries = 0;
++
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next, ++totalEntries) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == null) {
++                ++deadEntries;
++            } else {
++                ++aliveEntries;
++            }
++
++            if (totalEntries != 0) {
++                builder.append(", ");
++            }
++
++            builder.append(totalEntries).append(": \"").append(element).append('"');
++        }
++
++        builder.append("}, total_entries: \"").append(totalEntries).append("\", alive_entries: \"").append(aliveEntries)
++                .append("\", dead_entries:").append(deadEntries).append("\"}");
++
++        return builder.toString();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean addAll(@Nonnull final Collection<? extends E> collection) {
++        final Iterator<? extends E> elements = collection.iterator();
++        if (!elements.hasNext()) {
++            return false;
++        }
++
++        /* Build a list of nodes to append */
++        /* This is an order of magnitudes faster due to the fact that zero synchronization is performed */
++
++        final LinkedNode<E> head = new LinkedNode<>(validateNotNull(elements.next()), null);
++        LinkedNode<E> tail = head;
++
++        while (elements.hasNext()) {
++            final LinkedNode<E> next = new LinkedNode<>(validateNotNull(elements.next()), null);
++            LinkedNode.NEXT_HANDLE.set(tail, next);
++            tail = next;
++        }
++
++        return this.appendList(head, tail);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean containsAll(@Nonnull final Collection<?> collection) {
++        for (final Object element : collection) {
++            if (!this.contains(element)) {
++                return false;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Nonnull
++    @Override
++    public Iterator<E> iterator() {
++        return new LinkedIterator<>(this.head);
++    }
++
++    /**
++     * {@inheritDoc}
++     * <p>
++     * Note that this function is computed non-atomically and in O(n) time. The value returned may not be representative of
++     * the queue in its current state.
++     * </p>
++     */
++    @Override
++    public int size() {
++        int size = 0;
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == null) {
++                continue;
++            }
++            ++size;
++        }
++        return size;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean isEmpty() {
++        return this.peek() != null;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean contains(final Object object) {
++        if (object == null) {
++            throw new NullPointerException();
++        }
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element == object || element.equals(object)) {
++                return true;
++            }
++        }
++        return false;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void forEach(final Consumer<? super E> action) {
++        if (action == null) {
++            throw new NullPointerException();
++        }
++        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++            if (element != null) {
++                //noinspection unchecked
++                action.accept((E) element);
++            }
++        }
++    }
++
++    private boolean appendList(final LinkedNode<E> head, final LinkedNode<E> tail) {
++        /* assume tail.next is null */
++        int failures = 0;
++        for (LinkedNode<E> currTail = null, curr = null;;) {
++            for (int i = 0; i < failures; ++i) {
++                ConcurrentUtil.pause();
++            }
++            /* This allows a backoff to not become immediately out-of-date by allowing tail retrieval to happen after backoff */
++            if (currTail != (currTail = this.tail)) {
++                /* New tail */
++                curr = currTail;
++            }
++
++            /* this.tail cannot be null */
++
++            //noinspection ConstantConditions
++            final LinkedNode<E> next = curr.next;
++
++            if (next == curr) {
++                /* Queue additions are stopped */
++                return false;
++            }
++
++            if (next == null) {
++                /* End of queue */
++                //noinspection unchecked
++                final LinkedNode<E> updatedNext = (LinkedNode<E>) LinkedNode.NEXT_HANDLE.compareAndExchange(curr, null, head);
++
++                if (updatedNext != null) {
++                    /* Failure */
++                    ++failures;
++
++                    if (updatedNext == curr) {
++                        /* Queue additions are stopped */
++                        return false;
++                    }
++
++                    curr = updatedNext;
++                    continue;
++                }
++
++                /* Try to update tail */
++
++                /* Note that on x86 a compare and exchange has the same cost as a volatile write */
++
++                /* Only write to tail if we have the updated version */
++                /* This ensures that we don't set the tail to an outdated value */
++                /* This matters for high contention */
++
++                TAIL_HANDLE.compareAndExchange(this, currTail, tail);
++                return true;
++            } else {
++                /* Try to update to the latest tail if possible */
++
++                curr = next;
++            }
++        }
++    }
++
++    private E getHead(final boolean remove) {
++        int failures = 0;
++        for (LinkedNode<E> currHead = null, curr = null;;) {
++            for (int i = 0; i < failures; ++i) {
++                ConcurrentUtil.pause();
++            }
++
++            /* This allows a backoff to not become immediately out-of-date by allowing head/next retrieval to happen after backoff */
++            if (currHead != (currHead = this.head)) {
++                /* New head */
++                curr = currHead;
++            } else {
++                /* Try to advance curr */
++
++                curr = curr.next;
++                if (curr == null) {
++                    return null;
++                }
++            }
++
++            final Object currentValue = curr.element;
++            if (currentValue != null) {
++                if (!remove) {
++                    //noinspection unchecked
++                    return (E) currentValue;
++                }
++
++                if (LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) != currentValue) {
++                    /* Some other thread read this element */
++                    ++failures;
++
++                    continue;
++                }
++                /* Successfully read element */
++
++                /* Try to CAS head forward */
++                final LinkedNode<E> next = curr.next;
++                if (next != null) {
++                    HEAD_HANDLE.compareAndExchange(this, currHead, next);
++                }
++
++                //noinspection unchecked
++                return (E) currentValue;
++            }
++            /* This element is removed, try again */
++        }
++    }
++
++    private static final class LinkedNode<E> {
++
++        private volatile Object element;
++        private volatile LinkedNode<E> next;
++
++        private static final VarHandle ELEMENT_HANDLE = ConcurrentUtil.getVarHandle(LinkedNode.class, "element", Object.class);
++        private static final VarHandle NEXT_HANDLE = ConcurrentUtil.getVarHandle(LinkedNode.class, "next", LinkedNode.class);
++
++        LinkedNode(final Object element, final LinkedNode<E> next) {
++            ELEMENT_HANDLE.set(this, element);
++            NEXT_HANDLE.set(this, next);
++        }
++
++    }
++
++    private static final class LinkedIterator<E> implements Iterator<E> {
++
++        private LinkedNode<E> curr;
++        private E next;
++
++        LinkedIterator(final LinkedNode<E> head) {
++            this.curr = head;
++        }
++
++        /* sets next to the next value, or null if empty */
++        private void findNext() {
++            LinkedNode<E> curr = this.curr;
++            for (; curr != null; curr = curr.next) {
++                //noinspection unchecked
++                final E element = (E) LinkedNode.ELEMENT_HANDLE.getAcquire(curr);
++                if (element != null) {
++                    this.curr = curr;
++                    this.next = element;
++                    return;
++                }
++            }
++            /* reached end of list */
++            this.curr = null;
++            this.next = null;
++        }
++
++        /**
++         * {@inheritDoc}
++         */
++        @Override
++        public boolean hasNext() {
++            if (this.next == null) {
++                this.findNext();
++            }
++            return this.next == null;
++        }
++
++        /**
++         * {@inheritDoc}
++         */
++        @Override
++        public E next() {
++            if (!this.hasNext()) {
++                throw new NoSuchElementException();
++            }
++            return this.next;
++        }
++
++        /**
++         * {@inheritDoc}
++         */
++        @Override
++        public void remove() {
++            if (this.next == null) {
++                throw new IllegalStateException();
++            }
++            LinkedNode.ELEMENT_HANDLE.setVolatile(this.curr, null);
++            this.next = null;
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentUtil.java b/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentUtil.java
+new file mode 100644
+index 00000000..19c424f6
+--- /dev/null
++++ b/src/main/java/com/github/spottedleaf/concrete/util/ConcurrentUtil.java
+@@ -0,0 +1,39 @@
++package com.github.spottedleaf.concrete.util;
++
++
++import java.lang.invoke.MethodHandles;
++import java.lang.invoke.VarHandle;
++
++public final class ConcurrentUtil {
++
++    /**
++     * Closest possible implementation of the x86 PAUSE instruction.
++     */
++    public static void pause() {
++        Thread.onSpinWait();
++    }
++
++    public static VarHandle getVarHandle(final Class<?> lookIn, final String fieldName, final Class<?> fieldType) {
++        try {
++            return MethodHandles.privateLookupIn(lookIn, MethodHandles.lookup()).findVarHandle(lookIn, fieldName, fieldType);
++        } catch (final Exception ex) {
++            throw new RuntimeException(ex);
++        }
++    }
++
++    public static VarHandle getStaticVarHandle(final Class<?> lookIn, final String fieldName, final Class<?> fieldType) {
++        try {
++            return MethodHandles.privateLookupIn(lookIn, MethodHandles.lookup()).findStaticVarHandle(lookIn, fieldName, fieldType);
++        } catch (final Exception ex) {
++            throw new RuntimeException(ex);
++        }
++    }
++
++    public static VarHandle getArrayHandle(final Class<?> type) {
++        return MethodHandles.arrayElementVarHandle(type);
++    }
++
++    private ConcurrentUtil() {
++        throw new RuntimeException();
++    }
++}
+\ No newline at end of file
+-- 
+2.20.1
+
