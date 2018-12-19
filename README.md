@@ -12,10 +12,9 @@ https://github.com/starlis/empirecraft
 The PATCHES-LICENSE file describes the license for api & server patches, 
 found in ./patches/api and ./patches/server.
 
-Everything else is licensed under the MIT license.
-
-The scripts are copied from https://github.com/electronicboy/byof, so
-I do not own them.
+Everything else is licensed under the MIT license. 
+See https://github.com/starlis/empirecraft and https://github.com/electronicboy/byof 
+for the license of material used/modified by this project.
 
 ### Plugin developers
 todo
