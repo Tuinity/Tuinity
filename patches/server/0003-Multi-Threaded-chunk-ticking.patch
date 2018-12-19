@@ -1,4 +1,4 @@
-From adb1dde4df0b4b7a689e57646de861a055623048 Mon Sep 17 00:00:00 2001
+From ffffbf9162c60174708a00ea3a8a89b5ba12a52f Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
@@ -6,11 +6,11 @@ Subject: [PATCH] Multi-Threaded chunk ticking
 ---
  pom.xml                                       |   4 +-
  .../concrete/chunk/ChunkRegionManager.java    |  19 +
- .../concurrent/ConcurrentArrayQueue.java      | 388 +++++++++++
+ .../concurrent/ConcurrentArrayQueue.java      | 392 +++++++++++
  .../concurrent/ConcurrentLinkedList.java      | 654 ++++++++++++++++++
  .../concrete/concurrent/ConcurrentUtil.java   |  39 ++
  .../concrete/util/IntegerUtil.java            |  31 +
- 6 files changed, 1133 insertions(+), 2 deletions(-)
+ 6 files changed, 1137 insertions(+), 2 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
@@ -59,10 +59,10 @@ index 000000000..7c76d6556
 +}
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
 new file mode 100644
-index 000000000..661c8fb2a
+index 000000000..aaa3672da
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
-@@ -0,0 +1,388 @@
+@@ -0,0 +1,392 @@
 +package io.github.spottedleaf.concrete.concurrent;
 +
 +import io.github.spottedleaf.concrete.util.IntegerUtil;
@@ -173,6 +173,7 @@ index 000000000..661c8fb2a
 +            final int lengthTail = IntegerUtil.roundFloorLog2(tail);
 +
 +            if (lengthHead != lengthTail) {
++                ConcurrentUtil.pause();
 +                continue;
 +            }
 +
@@ -206,6 +207,7 @@ index 000000000..661c8fb2a
 +            final int lengthTail = IntegerUtil.roundFloorLog2(tail);
 +
 +            if (lengthHead != lengthTail) {
++                ConcurrentUtil.pause();
 +                continue;
 +            }
 +
@@ -322,9 +324,11 @@ index 000000000..661c8fb2a
 +             */
 +
 +            if (currentHeadRaw == UINT_MAX) {
++                ConcurrentUtil.pause();
 +                continue;
 +            }
 +            if (IntegerUtil.roundFloorLog2(currentHeadRaw & INDEX_LENGTH_MASK) != length) {
++                ConcurrentUtil.pause();
 +                continue;
 +            }
 +
