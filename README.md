@@ -14,7 +14,7 @@ found in ./patches/api and ./patches/server.
 
 Everything else is licensed under the MIT license.
 
-The scripts are copied from https://github.com/starlis/empirecraft, so
+The scripts are copied from https://github.com/electronicboy/byof, so
 I do not own them.
 
 ### Plugin developers
