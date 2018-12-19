@@ -19,7 +19,7 @@ mkdir -p mc-dev/src/net/minecraft/server
 
 cd mc-dev
 if [ ! -d ".git" ]; then
-	git init
+    git init
 fi
 
 rm src/net/minecraft/server/*.java
@@ -29,9 +29,9 @@ base="$basedir/Paper/Paper-Server/src/main/java/net/minecraft/server"
 cd $basedir/mc-dev/src/net/minecraft/server/
 for file in $(/bin/ls $base)
 do
-	if [ -f "$file" ]; then
-		rm -f "$file"
-	fi
+    if [ -f "$file" ]; then
+        rm -f "$file"
+    fi
 done
 cd $basedir/mc-dev
 git add . -A
