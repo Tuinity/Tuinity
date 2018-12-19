@@ -1,20 +1,24 @@
-From aaa8387847516f8b71726efc7716ab24f0d1eb8f Mon Sep 17 00:00:00 2001
+From adb1dde4df0b4b7a689e57646de861a055623048 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
 
 ---
  pom.xml                                       |   4 +-
- .../concrete/chunk/ChunkRegionManager.java    |   5 +
- .../concrete/util/ConcurrentLinkedList.java   | 654 ++++++++++++++++++
- .../concrete/util/ConcurrentUtil.java         |  39 ++
- 4 files changed, 700 insertions(+), 2 deletions(-)
+ .../concrete/chunk/ChunkRegionManager.java    |  19 +
+ .../concurrent/ConcurrentArrayQueue.java      | 388 +++++++++++
+ .../concurrent/ConcurrentLinkedList.java      | 654 ++++++++++++++++++
+ .../concrete/concurrent/ConcurrentUtil.java   |  39 ++
+ .../concrete/util/IntegerUtil.java            |  31 +
+ 6 files changed, 1133 insertions(+), 2 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
- create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
- create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/ConcurrentUtil.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentUtil.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java
 
 diff --git a/pom.xml b/pom.xml
-index b025227ea..0532e6c79 100644
+index f86550347..51bbb61ed 100644
 --- a/pom.xml
 +++ b/pom.xml
 @@ -16,8 +16,8 @@
@@ -30,22 +34,430 @@ index b025227ea..0532e6c79 100644
      <parent>
 diff --git a/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
 new file mode 100644
-index 000000000..ccc690a82
+index 000000000..7c76d6556
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
-@@ -0,0 +1,5 @@
+@@ -0,0 +1,19 @@
 +package io.github.spottedleaf.concrete.chunk;
++
++import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +
 +public class ChunkRegionManager {
 +
++    private final Long2ObjectOpenHashMap<ChunkRegionReference> regions = new Long2ObjectOpenHashMap<>();
++
++    public class ChunkRegion {
++
++    }
++
++    public class ChunkRegionReference {
++
++        public ChunkRegion reference;
++
++    }
++
 +}
-diff --git a/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
+diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
 new file mode 100644
-index 000000000..f4d1c2f4d
+index 000000000..661c8fb2a
 --- /dev/null
-+++ b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentLinkedList.java
++++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
+@@ -0,0 +1,388 @@
++package io.github.spottedleaf.concrete.concurrent;
++
++import io.github.spottedleaf.concrete.util.IntegerUtil;
++
++import java.lang.invoke.VarHandle;
++import java.util.Arrays;
++
++public final class ConcurrentArrayQueue<E> {
++
++    public static final int NORESIZE_FLAG = (1 << 0);
++    public static final int PEEK_FLAG     = (1 << 1);
++
++    private static final int UINT_MAX = -1;
++    private static final int MAX_INDEX = UINT_MAX >>> 2; /* 1 bit for encoded length, 1 bit for resize flag */
++    private static final int MAX_LENGTH = MAX_INDEX + 1;
++    private static final int INDEX_LENGTH_MASK = MAX_INDEX | MAX_LENGTH;
++
++    private static final int READING_BIT = Integer.MIN_VALUE;
++
++    private Object[] elements; /* access synchronized through indices */
++
++    private volatile int headIndex;
++    private volatile int availableTailIndex;
++    private volatile int allocatedTailIndex;
++
++    private static final VarHandle HEAD_INDEX_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentArrayQueue.class, "headIndex", int.class);
++    private static final VarHandle AVAILABLE_TAIL_INDEX_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentArrayQueue.class, "availableTailIndex", int.class);
++    private static final VarHandle ALLOCATED_TAIL_INDEX_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentArrayQueue.class, "allocatedTailIndex", int.class);
++
++    public ConcurrentArrayQueue() {
++        this(32);
++    }
++
++    public ConcurrentArrayQueue(int capacity) {
++        if (capacity < 0 || capacity > MAX_LENGTH) {
++            throw new IllegalArgumentException("Capacity " + capacity + " is out of bounds");
++        } else if (capacity <= 32) {
++            capacity = 32;
++        } else {
++            final int prevCapacity = capacity;
++            capacity = IntegerUtil.roundCeilLog2(capacity);
++            if (capacity > MAX_LENGTH) {
++                throw new IllegalArgumentException("Capacity " + prevCapacity + " is out of bounds");
++            }
++        }
++
++        this.elements = new Object[capacity];
++        HEAD_INDEX_HANDLE.set(this, capacity);
++        AVAILABLE_TAIL_INDEX_HANDLE.set(this, capacity);
++        ALLOCATED_TAIL_INDEX_HANDLE.set(this, capacity);
++    }
++
++    /* Inclusive head, Exclusive tail */
++    private static int queueLength(final int head, final int tail, final int lengthMask) {
++        return (tail - head) & lengthMask;
++    }
++
++    /* Inclusive head, Exclusive tail */
++    private static int getRemainingLength(final int head, final int tail, final int length) {
++        if (head <= tail) {
++            return length - (tail - head);
++        } else {
++            return (head - tail);
++        }
++    }
++
++    public int capacity(final int flags) {
++        int failures = 0;
++        for (;;) {
++            final int tail = (int)ALLOCATED_TAIL_INDEX_HANDLE.getVolatile(this);
++
++            if (tail == UINT_MAX) {
++                if (++failures > 500) {
++                    failures = 0;
++                    Thread.yield();
++                }
++                ConcurrentUtil.pause();
++                continue;
++            }
++
++            return IntegerUtil.roundFloorLog2(tail);
++        }
++    }
++
++    public int size() {
++        int failures = 0;
++        for (;;) {
++            int head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
++            final int tail = (int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this);
++
++            if (head == UINT_MAX) {
++                ConcurrentUtil.pause();
++                continue;
++            }
++
++            if (tail == UINT_MAX) {
++                if (++failures > 500) {
++                    failures = 0;
++                    Thread.yield();
++                }
++                ConcurrentUtil.pause();
++                continue;
++            }
++
++            head &= INDEX_LENGTH_MASK;
++
++            final int lengthHead = IntegerUtil.roundFloorLog2(head);
++            final int lengthTail = IntegerUtil.roundFloorLog2(tail);
++
++            if (lengthHead != lengthTail) {
++                continue;
++            }
++
++            return queueLength(head ^ lengthHead, tail ^ lengthTail, lengthHead - 1);
++        }
++    }
++
++    public int remainingCapacity() {
++        int failures = 0;
++        for (;;) {
++            int head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
++            final int tail = (int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this);
++
++            if (head == UINT_MAX) {
++                ConcurrentUtil.pause();
++                continue;
++            }
++
++            if (tail == UINT_MAX) {
++                if (++failures > 500) {
++                    failures = 0;
++                    Thread.yield();
++                }
++                ConcurrentUtil.pause();
++                continue;
++            }
++
++            head &= INDEX_LENGTH_MASK;
++
++            final int lengthHead = IntegerUtil.roundFloorLog2(head);
++            final int lengthTail = IntegerUtil.roundFloorLog2(tail);
++
++            if (lengthHead != lengthTail) {
++                continue;
++            }
++
++            return getRemainingLength(head ^ lengthHead, tail ^ lengthTail, lengthHead);
++        }
++    }
++
++    public int read(final E[] buffer, final int maxItems, final int flags) {
++        int head;
++        if ((flags & NORESIZE_FLAG) != 0) {
++            head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
++        } else {
++            for (int failures = 0;;++failures) {
++                head = (int)HEAD_INDEX_HANDLE.getAndBitwiseOr(this, READING_BIT);
++                if (head != UINT_MAX) {
++                    break;
++                }
++                for (int i = 0; i < failures; ++i) {
++                    ConcurrentUtil.pause();
++                }
++            }
++        }
++
++        /* Since writes to tail are seq_cst, and sychronization already occured, tail is pretty up-to-date */
++        /* Use acquire to synchronize with the state at tail's point in time */
++        int tail = (int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this);
++
++        /* By locking the head it is guaranteed the tail will have the same length as head */
++        final Object[] elements = this.elements;
++
++        final int length = IntegerUtil.roundFloorLog2(head);
++        final int lengthMask = length - 1;
++
++        tail ^= length;
++        head ^= length;
++
++        int itemsToRead = queueLength(head, tail, lengthMask);
++
++        if (itemsToRead >= maxItems) {
++            itemsToRead = maxItems;
++        }
++
++        final int newHead = (head + itemsToRead) & lengthMask;
++
++        if (buffer != null) {
++            if (newHead >= head) {
++                /* Sequential */
++                System.arraycopy(elements, head, (Object[])buffer, 0, itemsToRead);
++            } else {
++                /* Wrapped */
++                final int end = length - head;
++                System.arraycopy(elements, head, (Object[])buffer, 0, end);
++                System.arraycopy(elements, 0, (Object[])buffer, end, itemsToRead - end);
++            }
++        }
++
++        if ((flags & PEEK_FLAG) != 0) {
++            /* Only write when there is a need to */
++            if ((flags & NORESIZE_FLAG) == 0) {
++                HEAD_INDEX_HANDLE.setVolatile(this, head | length);
++            }
++        } else {
++            HEAD_INDEX_HANDLE.setVolatile(this, newHead | length);
++        }
++
++        return itemsToRead;
++    }
++
++
++    @SafeVarargs
++    public final int add(final E... elements) {
++        return this.add(elements, 0, elements.length, 0);
++    }
++
++    public int add(final E[] elements, final int off, final int nitems, final int flags) {
++        final int maxLength = MAX_LENGTH;
++
++        if (nitems >= maxLength) {
++            throw new IllegalArgumentException("nitems is too large: " + nitems);
++        }
++
++        int currentIndex;
++        int failures = 0;
++        for (;;) {
++            /* Exponential backoff */
++            for (int i = 0; i < failures; ++i) {
++                ConcurrentUtil.pause();
++            }
++
++            /* Retrieve current_index after backoff to ensure it's not immediately out-of-date */
++            currentIndex = (int)ALLOCATED_TAIL_INDEX_HANDLE.getVolatile(this);
++
++            if (currentIndex == UINT_MAX) {
++                Thread.yield();
++                currentIndex = (int)ALLOCATED_TAIL_INDEX_HANDLE.getVolatile(this);
++            }
++
++            /* Not resizing */
++
++            /* Decode length */
++            final int length = IntegerUtil.roundFloorLog2(currentIndex);
++            final int lengthMask = length - 1;
++
++            final int allocatedStart = currentIndex ^ length; /* Inclusive */
++            final int allocatedEnd = (currentIndex + nitems) & lengthMask; /* Exclusive */
++
++            final int currentHeadRaw = (int)HEAD_INDEX_HANDLE.getAcquire(this);
++
++            /* Validate the indices */
++
++            /*
++             * May not be resizing
++             * Must have equal encoded lengths (otherwise size check is invalid)
++             */
++
++            if (currentHeadRaw == UINT_MAX) {
++                continue;
++            }
++            if (IntegerUtil.roundFloorLog2(currentHeadRaw & INDEX_LENGTH_MASK) != length) {
++                continue;
++            }
++
++            /* Finished validating the head index */
++
++            final int queueStart = currentHeadRaw & lengthMask; /* Inclusive */
++
++            /* Find remaining length to ensure there is enough space */
++            final int remainingLength = getRemainingLength(queueStart, allocatedStart, length);
++
++            if (remainingLength > nitems) {
++                /* space available */
++                if (!ALLOCATED_TAIL_INDEX_HANDLE.compareAndSet(this, currentIndex, allocatedEnd | length)) {
++                    ++failures;
++                    continue;
++                }
++
++                final Object[] queuedElements = this.elements;
++                if (allocatedEnd >= allocatedStart) {
++                    /* Sequential */
++                    System.arraycopy((Object[])elements, off, queuedElements, allocatedStart, nitems);
++                } else {
++                    /* Wrapped */
++                    final int end = length - allocatedStart;
++                    System.arraycopy((Object[])elements, off, queuedElements, allocatedStart, end);
++                    System.arraycopy((Object[])elements, off + end, queuedElements, 0, nitems - end);
++                }
++
++                while ((int)AVAILABLE_TAIL_INDEX_HANDLE.getVolatile(this) != currentIndex) {
++                    ConcurrentUtil.pause();
++                }
++                AVAILABLE_TAIL_INDEX_HANDLE.setVolatile(this, allocatedEnd | length);
++                return length - remainingLength;
++            }
++
++            final int requiredLength = (length - remainingLength) + nitems; /* Exclusive end of queue once resized and copied */
++
++            if ((flags & NORESIZE_FLAG) != 0 || requiredLength >= maxLength) {
++                return -1; /* TODO */
++            }
++
++            /* Attempt to lock allocated_tail_index */
++            if (!ALLOCATED_TAIL_INDEX_HANDLE.compareAndSet(this, currentIndex, UINT_MAX)) {
++                ++failures;
++                continue;
++            }
++
++            /* Add 1 to ensure that the resized queue will not be full */
++            /* It is an error if this queue is full as distinction between a full queue and an empty one is not possible */
++            /* exclusive end == inclusive start for both cases */
++            final int expectedLength = IntegerUtil.roundCeilLog2(requiredLength + 1);
++            final Object[] newElements = new Object[expectedLength];
++            final Object[] currElements = this.elements;
++
++            /* Copy previous elements over */
++            /* Note that while new indices cannot be allocated, some writes to the queue may not be finished */
++            /* wait for previous writes to complete */
++
++            /* Use acquire to acquire with the writes to elements */
++            while ((int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this) != currentIndex) {
++                ConcurrentUtil.pause();
++            }
++
++            /* Copy the elements over */
++
++            /* allocatedStart at this point is now the exclusive end of the queue */
++
++            if (queueStart < allocatedStart) {
++                /* Sequential */
++                System.arraycopy(currElements, queueStart, newElements, 0, length - remainingLength);
++            } else {
++                /* Wrapped */
++                final int end = length - queueStart;
++                System.arraycopy(currElements, queueStart, newElements, 0, end);
++                System.arraycopy(currElements, 0, newElements, end, allocatedStart);
++            }
++
++            /* Copy our elements over */
++
++            System.arraycopy((Object[])elements, off, newElements, length - remainingLength, nitems);
++
++            /* Update head */
++
++            for (int headcurr = (int)HEAD_INDEX_HANDLE.getVolatile(this);;) {
++                if ((headcurr & READING_BIT) != 0) {
++                    Thread.yield();
++                    headcurr = (int)HEAD_INDEX_HANDLE.getAcquire(this);
++                    continue;
++                }
++                /* Create new head index */
++                /* Elements may have been read during resizing, so we need to re-adjust */
++
++                final int oldHead = queueStart;
++                final int updatedHead = headcurr ^ length;
++
++                final int newHead = queueLength(oldHead, updatedHead, lengthMask) | expectedLength;
++
++                Arrays.fill(newElements, 0, newHead, null); /* Remove read elements */
++
++                /* Try to lock head */
++
++                if (!HEAD_INDEX_HANDLE.compareAndSet(this, headcurr, UINT_MAX)) {
++                    ConcurrentUtil.pause();
++                    continue;
++                }
++
++                /* Head is locked */
++                /* Note that this is the only area where reads can block */
++                this.elements = newElements;
++                AVAILABLE_TAIL_INDEX_HANDLE.set(this, requiredLength | expectedLength);
++
++                ALLOCATED_TAIL_INDEX_HANDLE.setRelease(this, requiredLength | expectedLength);
++
++                HEAD_INDEX_HANDLE.setVolatile(this, newHead);
++                /* Unlocked head */
++
++                break;
++            }
++
++            return length - remainingLength;
++        }
++
++    }
++
++
++}
+diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
+new file mode 100644
+index 000000000..0a1019761
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
 @@ -0,0 +1,654 @@
-+package io.github.spottedleaf.concrete.util;
++package io.github.spottedleaf.concrete.concurrent;
 +
 +
 +import javax.annotation.Nonnull;
@@ -700,13 +1112,13 @@ index 000000000..f4d1c2f4d
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentUtil.java b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentUtil.java
+diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentUtil.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentUtil.java
 new file mode 100644
-index 000000000..ed80c3094
+index 000000000..79615254d
 --- /dev/null
-+++ b/src/main/java/io/github/spottedleaf/concrete/util/ConcurrentUtil.java
++++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentUtil.java
 @@ -0,0 +1,39 @@
-+package io.github.spottedleaf.concrete.util;
++package io.github.spottedleaf.concrete.concurrent;
 +
 +
 +import java.lang.invoke.MethodHandles;
@@ -746,6 +1158,43 @@ index 000000000..ed80c3094
 +    }
 +}
 \ No newline at end of file
+diff --git a/src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java b/src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java
+new file mode 100644
+index 000000000..eedf0c9e2
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java
+@@ -0,0 +1,31 @@
++package io.github.spottedleaf.concrete.util;
++
++public class IntegerUtil {
++
++    private static final int HIGH_BIT = Integer.MIN_VALUE;
++
++    public static int ceilLog2(final int value) {
++        return 32 - Integer.numberOfLeadingZeros(value - 1);
++    }
++
++    public static int floorLog2(final int value) {
++        return 31 ^ Integer.numberOfLeadingZeros(value);
++    }
++
++    public static int roundCeilLog2(final int value) {
++        return HIGH_BIT >>> (Integer.numberOfLeadingZeros(value) - 1);
++    }
++
++    public static int roundFloorLog2(final int value) {
++        return HIGH_BIT >>> Integer.numberOfLeadingZeros(value);
++    }
++
++    public static boolean isPowerOfTwo(final int n) {
++        return (-n & n) == n;
++    }
++
++    private IntegerUtil() {
++        throw new RuntimeException();
++    }
++
++}
 -- 
 2.20.1
 
