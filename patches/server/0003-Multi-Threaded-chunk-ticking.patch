@@ -1,4 +1,4 @@
-From ffffbf9162c60174708a00ea3a8a89b5ba12a52f Mon Sep 17 00:00:00 2001
+From 187bdf8b6a0db88b80a8ea1939b080066482fa59 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
@@ -6,11 +6,11 @@ Subject: [PATCH] Multi-Threaded chunk ticking
 ---
  pom.xml                                       |   4 +-
  .../concrete/chunk/ChunkRegionManager.java    |  19 +
- .../concurrent/ConcurrentArrayQueue.java      | 392 +++++++++++
+ .../concurrent/ConcurrentArrayQueue.java      | 402 +++++++++++
  .../concurrent/ConcurrentLinkedList.java      | 654 ++++++++++++++++++
  .../concrete/concurrent/ConcurrentUtil.java   |  39 ++
  .../concrete/util/IntegerUtil.java            |  31 +
- 6 files changed, 1137 insertions(+), 2 deletions(-)
+ 6 files changed, 1147 insertions(+), 2 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
@@ -59,10 +59,10 @@ index 000000000..7c76d6556
 +}
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
 new file mode 100644
-index 000000000..aaa3672da
+index 000000000..5d80c6853
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
-@@ -0,0 +1,392 @@
+@@ -0,0 +1,402 @@
 +package io.github.spottedleaf.concrete.concurrent;
 +
 +import io.github.spottedleaf.concrete.util.IntegerUtil;
@@ -256,11 +256,21 @@ index 000000000..aaa3672da
 +            if (newHead >= head) {
 +                /* Sequential */
 +                System.arraycopy(elements, head, (Object[])buffer, 0, itemsToRead);
++                if ((flags & PEEK_FLAG) == 0) {
++                    Arrays.fill(elements, head, head + itemsToRead, null);
++                }
 +            } else {
 +                /* Wrapped */
 +                final int end = length - head;
-+                System.arraycopy(elements, head, (Object[])buffer, 0, end);
-+                System.arraycopy(elements, 0, (Object[])buffer, end, itemsToRead - end);
++                if ((flags & PEEK_FLAG) != 0) {
++                    System.arraycopy(elements, head, (Object[]) buffer, 0, end);
++                    System.arraycopy(elements, 0, (Object[]) buffer, end, itemsToRead - end);
++                } else {
++                    System.arraycopy(elements, head, (Object[]) buffer, 0, end);
++                    Arrays.fill(elements, head, head + end, null);
++                    System.arraycopy(elements, 0, (Object[]) buffer, end, itemsToRead - end);
++                    Arrays.fill(elements, 0, itemsToRead - end, null);
++                }
 +            }
 +        }
 +
