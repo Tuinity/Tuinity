@@ -1,4 +1,4 @@
-From 187bdf8b6a0db88b80a8ea1939b080066482fa59 Mon Sep 17 00:00:00 2001
+From 2a34d602e1affcd94a3c50c574a1f00adbec3d10 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
@@ -6,11 +6,11 @@ Subject: [PATCH] Multi-Threaded chunk ticking
 ---
  pom.xml                                       |   4 +-
  .../concrete/chunk/ChunkRegionManager.java    |  19 +
- .../concurrent/ConcurrentArrayQueue.java      | 402 +++++++++++
- .../concurrent/ConcurrentLinkedList.java      | 654 ++++++++++++++++++
+ .../concurrent/ConcurrentArrayQueue.java      | 439 ++++++++++++
+ .../concurrent/ConcurrentLinkedList.java      | 641 ++++++++++++++++++
  .../concrete/concurrent/ConcurrentUtil.java   |  39 ++
  .../concrete/util/IntegerUtil.java            |  31 +
- 6 files changed, 1147 insertions(+), 2 deletions(-)
+ 6 files changed, 1171 insertions(+), 2 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
@@ -59,10 +59,10 @@ index 000000000..7c76d6556
 +}
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
 new file mode 100644
-index 000000000..5d80c6853
+index 000000000..e883624db
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
-@@ -0,0 +1,402 @@
+@@ -0,0 +1,439 @@
 +package io.github.spottedleaf.concrete.concurrent;
 +
 +import io.github.spottedleaf.concrete.util.IntegerUtil;
@@ -84,13 +84,26 @@ index 000000000..5d80c6853
 +
 +    private Object[] elements; /* access synchronized through indices */
 +
-+    private volatile int headIndex;
-+    private volatile int availableTailIndex;
-+    private volatile int allocatedTailIndex;
++    /* Separate the indices into different cache lines */
++    private final int[] indices = new int[4 * (256 / 4)];
 +
-+    private static final VarHandle HEAD_INDEX_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentArrayQueue.class, "headIndex", int.class);
-+    private static final VarHandle AVAILABLE_TAIL_INDEX_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentArrayQueue.class, "availableTailIndex", int.class);
-+    private static final VarHandle ALLOCATED_TAIL_INDEX_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentArrayQueue.class, "allocatedTailIndex", int.class);
++
++    /**
++     * The first element in this queue.
++     */
++    private static final int AVAILABLE_HEAD_INDEX_INDEX = 1 * (256 / 4);
++
++    /**
++     * The ready-to-read last element added to this queue.
++     */
++    private static final int AVAILABLE_TAIL_INDEX_INDEX = 2 * (256 / 4);
++
++    /**
++     * The last element index allocated for writing.
++     */
++    private static final int ALLOCATED_TAIL_INDEX_INDEX = 3 * (256 / 4);
++
++    private static final VarHandle INDICES_HANDLE = ConcurrentUtil.getArrayHandle(int[].class);
 +
 +    public ConcurrentArrayQueue() {
 +        this(32);
@@ -110,9 +123,12 @@ index 000000000..5d80c6853
 +        }
 +
 +        this.elements = new Object[capacity];
-+        HEAD_INDEX_HANDLE.set(this, capacity);
++        INDICES_HANDLE.set(this.indices, AVAILABLE_HEAD_INDEX_INDEX, capacity);
++        INDICES_HANDLE.set(this.indices, AVAILABLE_TAIL_INDEX_INDEX, capacity);
++        INDICES_HANDLE.set(this.indices, ALLOCATED_TAIL_INDEX_INDEX, capacity);
++        /*HEAD_INDEX_HANDLE.set(this, capacity);
 +        AVAILABLE_TAIL_INDEX_HANDLE.set(this, capacity);
-+        ALLOCATED_TAIL_INDEX_HANDLE.set(this, capacity);
++        ALLOCATED_TAIL_INDEX_HANDLE.set(this, capacity);*/
 +    }
 +
 +    /* Inclusive head, Exclusive tail */
@@ -129,10 +145,11 @@ index 000000000..5d80c6853
 +        }
 +    }
 +
-+    public int capacity(final int flags) {
++    public int capacity() {
 +        int failures = 0;
 +        for (;;) {
-+            final int tail = (int)ALLOCATED_TAIL_INDEX_HANDLE.getVolatile(this);
++            //final int tail = (int)ALLOCATED_TAIL_INDEX_HANDLE.getVolatile(this);
++            final int tail = (int)INDICES_HANDLE.getVolatile(this.indices, ALLOCATED_TAIL_INDEX_INDEX);
 +
 +            if (tail == UINT_MAX) {
 +                if (++failures > 500) {
@@ -150,8 +167,10 @@ index 000000000..5d80c6853
 +    public int size() {
 +        int failures = 0;
 +        for (;;) {
-+            int head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
-+            final int tail = (int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this);
++            /*int head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
++            final int tail = (int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this);*/
++            int head = (int)INDICES_HANDLE.getVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX);
++            final int tail = (int)INDICES_HANDLE.getAcquire(this.indices, AVAILABLE_TAIL_INDEX_INDEX);
 +
 +            if (head == UINT_MAX) {
 +                ConcurrentUtil.pause();
@@ -184,8 +203,10 @@ index 000000000..5d80c6853
 +    public int remainingCapacity() {
 +        int failures = 0;
 +        for (;;) {
-+            int head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
-+            final int tail = (int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this);
++            /*int head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
++            final int tail = (int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this);*/
++            int head = (int)INDICES_HANDLE.getVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX);
++            final int tail = (int)INDICES_HANDLE.getAcquire(this.indices, AVAILABLE_TAIL_INDEX_INDEX);
 +
 +            if (head == UINT_MAX) {
 +                ConcurrentUtil.pause();
@@ -218,11 +239,13 @@ index 000000000..5d80c6853
 +    public int read(final E[] buffer, final int maxItems, final int flags) {
 +        int head;
 +        if ((flags & NORESIZE_FLAG) != 0) {
-+            head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
++            //head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
++            head = (int)INDICES_HANDLE.getVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX);
 +        } else {
 +            for (int failures = 0;;++failures) {
-+                head = (int)HEAD_INDEX_HANDLE.getAndBitwiseOr(this, READING_BIT);
-+                if (head != UINT_MAX) {
++                //head = (int)HEAD_INDEX_HANDLE.getAndBitwiseOr(this, READING_BIT);
++                head = (int)INDICES_HANDLE.getAndBitwiseOr(this.indices, AVAILABLE_HEAD_INDEX_INDEX, READING_BIT);
++                if ((head & READING_BIT) == 0) {
 +                    break;
 +                }
 +                for (int i = 0; i < failures; ++i) {
@@ -233,7 +256,8 @@ index 000000000..5d80c6853
 +
 +        /* Since writes to tail are seq_cst, and sychronization already occured, tail is pretty up-to-date */
 +        /* Use acquire to synchronize with the state at tail's point in time */
-+        int tail = (int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this);
++        //int tail = (int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this);
++        int tail = (int)INDICES_HANDLE.getAcquire(this.indices, AVAILABLE_TAIL_INDEX_INDEX);
 +
 +        /* By locking the head it is guaranteed the tail will have the same length as head */
 +        final Object[] elements = this.elements;
@@ -277,15 +301,16 @@ index 000000000..5d80c6853
 +        if ((flags & PEEK_FLAG) != 0) {
 +            /* Only write when there is a need to */
 +            if ((flags & NORESIZE_FLAG) == 0) {
-+                HEAD_INDEX_HANDLE.setVolatile(this, head | length);
++                //HEAD_INDEX_HANDLE.setVolatile(this, head | length);
++                INDICES_HANDLE.setVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX, head | length);
 +            }
 +        } else {
-+            HEAD_INDEX_HANDLE.setVolatile(this, newHead | length);
++            //HEAD_INDEX_HANDLE.setVolatile(this, newHead | length);
++            INDICES_HANDLE.setVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX, newHead | length);
 +        }
 +
 +        return itemsToRead;
 +    }
-+
 +
 +    @SafeVarargs
 +    public final int add(final E... elements) {
@@ -299,20 +324,22 @@ index 000000000..5d80c6853
 +            throw new IllegalArgumentException("nitems is too large: " + nitems);
 +        }
 +
-+        int currentIndex;
++        int currentIndex = (int)INDICES_HANDLE.getVolatile(this.indices, ALLOCATED_TAIL_INDEX_INDEX);
 +        int failures = 0;
 +        for (;;) {
 +            /* Exponential backoff */
 +            for (int i = 0; i < failures; ++i) {
 +                ConcurrentUtil.pause();
 +            }
-+
 +            /* Retrieve current_index after backoff to ensure it's not immediately out-of-date */
-+            currentIndex = (int)ALLOCATED_TAIL_INDEX_HANDLE.getVolatile(this);
++            /* Nevermind this drops perf by 4x */
++            //currentIndex = (int)ALLOCATED_TAIL_INDEX_HANDLE.getVolatile(this);
++            //currentIndex = (int)INDICES_HANDLE.getVolatile(this.indices, ALLOCATED_TAIL_INDEX_INDEX);
 +
 +            if (currentIndex == UINT_MAX) {
 +                Thread.yield();
-+                currentIndex = (int)ALLOCATED_TAIL_INDEX_HANDLE.getVolatile(this);
++                //currentIndex = (int)ALLOCATED_TAIL_INDEX_HANDLE.getVolatile(this);
++                currentIndex = (int)INDICES_HANDLE.getVolatile(this.indices, ALLOCATED_TAIL_INDEX_INDEX);
 +            }
 +
 +            /* Not resizing */
@@ -324,7 +351,8 @@ index 000000000..5d80c6853
 +            final int allocatedStart = currentIndex ^ length; /* Inclusive */
 +            final int allocatedEnd = (currentIndex + nitems) & lengthMask; /* Exclusive */
 +
-+            final int currentHeadRaw = (int)HEAD_INDEX_HANDLE.getAcquire(this);
++            //final int currentHeadRaw = (int)HEAD_INDEX_HANDLE.getAcquire(this);
++            final int currentHeadRaw = (int)INDICES_HANDLE.getAcquire(this.indices, AVAILABLE_HEAD_INDEX_INDEX);
 +
 +            /* Validate the indices */
 +
@@ -335,10 +363,12 @@ index 000000000..5d80c6853
 +
 +            if (currentHeadRaw == UINT_MAX) {
 +                ConcurrentUtil.pause();
++                currentIndex = (int)INDICES_HANDLE.getVolatile(this.indices, ALLOCATED_TAIL_INDEX_INDEX);
 +                continue;
 +            }
 +            if (IntegerUtil.roundFloorLog2(currentHeadRaw & INDEX_LENGTH_MASK) != length) {
 +                ConcurrentUtil.pause();
++                currentIndex = (int)INDICES_HANDLE.getVolatile(this.indices, ALLOCATED_TAIL_INDEX_INDEX);
 +                continue;
 +            }
 +
@@ -351,7 +381,10 @@ index 000000000..5d80c6853
 +
 +            if (remainingLength > nitems) {
 +                /* space available */
-+                if (!ALLOCATED_TAIL_INDEX_HANDLE.compareAndSet(this, currentIndex, allocatedEnd | length)) {
++                //if (!ALLOCATED_TAIL_INDEX_HANDLE.compareAndSet(this, currentIndex, allocatedEnd | length)) {
++                final int prevCurrIndex = currentIndex;
++                if ((currentIndex = (int)INDICES_HANDLE.compareAndExchange(this.indices, ALLOCATED_TAIL_INDEX_INDEX, currentIndex, allocatedEnd | length)) != prevCurrIndex) {
++                    ConcurrentUtil.pause();
 +                    ++failures;
 +                    continue;
 +                }
@@ -367,10 +400,11 @@ index 000000000..5d80c6853
 +                    System.arraycopy((Object[])elements, off + end, queuedElements, 0, nitems - end);
 +                }
 +
-+                while ((int)AVAILABLE_TAIL_INDEX_HANDLE.getVolatile(this) != currentIndex) {
++                while ((int)INDICES_HANDLE.getVolatile(this.indices, AVAILABLE_TAIL_INDEX_INDEX) != currentIndex) {
 +                    ConcurrentUtil.pause();
 +                }
-+                AVAILABLE_TAIL_INDEX_HANDLE.setVolatile(this, allocatedEnd | length);
++                //AVAILABLE_TAIL_INDEX_HANDLE.setVolatile(this, allocatedEnd | length);
++                INDICES_HANDLE.setVolatile(this.indices, AVAILABLE_TAIL_INDEX_INDEX, allocatedEnd | length);
 +                return length - remainingLength;
 +            }
 +
@@ -381,7 +415,8 @@ index 000000000..5d80c6853
 +            }
 +
 +            /* Attempt to lock allocated_tail_index */
-+            if (!ALLOCATED_TAIL_INDEX_HANDLE.compareAndSet(this, currentIndex, UINT_MAX)) {
++            //if (!ALLOCATED_TAIL_INDEX_HANDLE.compareAndSet(this, currentIndex, UINT_MAX)) {
++            if (!INDICES_HANDLE.compareAndSet(this.indices, ALLOCATED_TAIL_INDEX_INDEX, currentIndex, UINT_MAX)) {
 +                ++failures;
 +                continue;
 +            }
@@ -398,7 +433,8 @@ index 000000000..5d80c6853
 +            /* wait for previous writes to complete */
 +
 +            /* Use acquire to acquire with the writes to elements */
-+            while ((int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this) != currentIndex) {
++            //while ((int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this) != currentIndex) {
++            while ((int)INDICES_HANDLE.getAcquire(this.indices, AVAILABLE_TAIL_INDEX_INDEX) != currentIndex) {
 +                ConcurrentUtil.pause();
 +            }
 +
@@ -422,10 +458,11 @@ index 000000000..5d80c6853
 +
 +            /* Update head */
 +
-+            for (int headcurr = (int)HEAD_INDEX_HANDLE.getVolatile(this);;) {
++            //for (int headcurr = (int)HEAD_INDEX_HANDLE.getVolatile(this);;) {
++            for (int headcurr = (int)INDICES_HANDLE.getVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX);;) {
 +                if ((headcurr & READING_BIT) != 0) {
 +                    Thread.yield();
-+                    headcurr = (int)HEAD_INDEX_HANDLE.getAcquire(this);
++                    headcurr = (int)INDICES_HANDLE.getAcquire(this.indices, AVAILABLE_HEAD_INDEX_INDEX);
 +                    continue;
 +                }
 +                /* Create new head index */
@@ -440,7 +477,8 @@ index 000000000..5d80c6853
 +
 +                /* Try to lock head */
 +
-+                if (!HEAD_INDEX_HANDLE.compareAndSet(this, headcurr, UINT_MAX)) {
++                //if (!HEAD_INDEX_HANDLE.compareAndSet(this, headcurr, UINT_MAX)) {
++                if (!INDICES_HANDLE.compareAndSet(this.indices, AVAILABLE_HEAD_INDEX_INDEX, headcurr, UINT_MAX)) {
 +                    ConcurrentUtil.pause();
 +                    continue;
 +                }
@@ -448,33 +486,31 @@ index 000000000..5d80c6853
 +                /* Head is locked */
 +                /* Note that this is the only area where reads can block */
 +                this.elements = newElements;
-+                AVAILABLE_TAIL_INDEX_HANDLE.set(this, requiredLength | expectedLength);
++                //AVAILABLE_TAIL_INDEX_HANDLE.set(this, requiredLength | expectedLength);
++                INDICES_HANDLE.set(this.indices, AVAILABLE_TAIL_INDEX_INDEX, remainingLength | expectedLength);
 +
-+                ALLOCATED_TAIL_INDEX_HANDLE.setRelease(this, requiredLength | expectedLength);
++                //ALLOCATED_TAIL_INDEX_HANDLE.setRelease(this, requiredLength | expectedLength);
++                INDICES_HANDLE.setRelease(this.indices, requiredLength | expectedLength);
 +
-+                HEAD_INDEX_HANDLE.setVolatile(this, newHead);
++                //HEAD_INDEX_HANDLE.setVolatile(this, newHead);
++                INDICES_HANDLE.setVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX, newHead);
 +                /* Unlocked head */
 +
 +                break;
 +            }
-+
 +            return length - remainingLength;
 +        }
-+
 +    }
-+
-+
 +}
+\ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
 new file mode 100644
-index 000000000..0a1019761
+index 000000000..6125f23e4
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
-@@ -0,0 +1,654 @@
+@@ -0,0 +1,641 @@
 +package io.github.spottedleaf.concrete.concurrent;
 +
-+
-+import javax.annotation.Nonnull;
 +import java.lang.invoke.VarHandle;
 +import java.util.*;
 +import java.util.function.Consumer;
@@ -711,7 +747,7 @@ index 000000000..0a1019761
 +     * {@inheritDoc}
 +     */
 +    @Override
-+    public boolean removeAll(@Nonnull final Collection<?> collection) {
++    public boolean removeAll(final Collection<?> collection) {
 +        boolean ret = false;
 +        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
@@ -727,7 +763,7 @@ index 000000000..0a1019761
 +     * {@inheritDoc}
 +     */
 +    @Override
-+    public boolean retainAll(@Nonnull final Collection<?> collection) {
++    public boolean retainAll(final Collection<?> collection) {
 +        boolean ret = false;
 +        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
@@ -742,7 +778,6 @@ index 000000000..0a1019761
 +    /**
 +     * {@inheritDoc}
 +     */
-+    @Nonnull
 +    @Override
 +    public Object[] toArray() {
 +        final List<E> ret = new ArrayList<>();
@@ -762,9 +797,8 @@ index 000000000..0a1019761
 +    /**
 +     * {@inheritDoc}
 +     */
-+    @Nonnull
 +    @Override
-+    public <T> T[] toArray(@Nonnull final T[] array) {
++    public <T> T[] toArray(final T[] array) {
 +        final List<T> ret = new ArrayList<>();
 +
 +        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
@@ -837,7 +871,7 @@ index 000000000..0a1019761
 +     * {@inheritDoc}
 +     */
 +    @Override
-+    public boolean addAll(@Nonnull final Collection<? extends E> collection) {
++    public boolean addAll(final Collection<? extends E> collection) {
 +        final Iterator<? extends E> elements = collection.iterator();
 +        if (!elements.hasNext()) {
 +            return false;
@@ -862,7 +896,7 @@ index 000000000..0a1019761
 +     * {@inheritDoc}
 +     */
 +    @Override
-+    public boolean containsAll(@Nonnull final Collection<?> collection) {
++    public boolean containsAll(final Collection<?> collection) {
 +        for (final Object element : collection) {
 +            if (!this.contains(element)) {
 +                return false;
@@ -874,7 +908,6 @@ index 000000000..0a1019761
 +    /**
 +     * {@inheritDoc}
 +     */
-+    @Nonnull
 +    @Override
 +    public Iterator<E> iterator() {
 +        return new LinkedIterator<>(this.head);
@@ -943,109 +976,101 @@ index 000000000..0a1019761
 +    }
 +
 +    private boolean appendList(final LinkedNode<E> head, final LinkedNode<E> tail) {
-+        /* assume tail.next is null */
 +        int failures = 0;
-+        for (LinkedNode<E> currTail = null, curr = null;;) {
++
++        for (LinkedNode<E> currTail = this.tail, curr = currTail;;) {
++            /* It has been experimentally shown that placing the read before the backoff results in significantly greater performance */
++            final LinkedNode<E> next = curr.next;
 +            for (int i = 0; i < failures; ++i) {
 +                ConcurrentUtil.pause();
 +            }
-+            /* This allows a backoff to not become immediately out-of-date by allowing tail retrieval to happen after backoff */
-+            if (currTail != (currTail = this.tail)) {
-+                /* New tail */
-+                curr = currTail;
-+            }
++            if (next == null) {
++                //noinspection unchecked
++                final LinkedNode<E> compared = (LinkedNode<E>) LinkedNode.NEXT_HANDLE.compareAndExchange(curr, null, head);
 +
-+            /* this.tail cannot be null */
++                if (compared == null) {
++                    /* Added */
++                    if (curr != currTail) {
++                        /* Avoid CASing on tail more than we need to */
++                        /* CAS to avoid setting an out-of-date tail */
++                        TAIL_HANDLE.compareAndExchange(this, currTail, tail);
++                    }
++                    return true;
++                }
 +
-+            //noinspection ConstantConditions
-+            final LinkedNode<E> next = curr.next;
-+
-+            if (next == curr) {
-+                /* Queue additions are stopped */
++                ++failures;
++                curr = compared;
++                continue;
++            } else if (next == curr) {
++                /* Additions are stopped */
 +                return false;
 +            }
 +
-+            if (next == null) {
-+                /* End of queue */
-+                //noinspection unchecked
-+                final LinkedNode<E> updatedNext = (LinkedNode<E>) LinkedNode.NEXT_HANDLE.compareAndExchange(curr, null, head);
-+
-+                if (updatedNext != null) {
-+                    /* Failure */
-+                    ++failures;
-+
-+                    if (updatedNext == curr) {
-+                        /* Queue additions are stopped */
-+                        return false;
-+                    }
-+
-+                    curr = updatedNext;
-+                    continue;
-+                }
-+
-+                /* Try to update tail */
-+
-+                /* Note that on x86 a compare and exchange has the same cost as a volatile write */
-+
-+                /* Only write to tail if we have the updated version */
-+                /* This ensures that we don't set the tail to an outdated value */
-+                /* This matters for high contention */
-+
-+                TAIL_HANDLE.compareAndExchange(this, currTail, tail);
-+                return true;
-+            } else {
-+                /* Try to update to the latest tail if possible */
-+
++            if (curr == currTail) {
++                /* Tail is likely not up-to-date */
 +                curr = next;
++            } else {
++                /* Try to update to tail */
++                if (currTail == (currTail = this.tail)) {
++                    curr = next;
++                } else {
++                    curr = currTail;
++                }
 +            }
 +        }
 +    }
 +
 +    private E getHead(final boolean remove) {
 +        int failures = 0;
-+        for (LinkedNode<E> currHead = null, curr = null;;) {
++        for (LinkedNode<E> head = this.head, curr = head;;) {
++            final Object currentVal = curr.element;
++            //noinspection unchecked
++            final LinkedNode<E> next = (LinkedNode<E>) LinkedNode.NEXT_HANDLE.getAcquire(curr);
 +            for (int i = 0; i < failures; ++i) {
 +                ConcurrentUtil.pause();
 +            }
 +
-+            /* This allows a backoff to not become immediately out-of-date by allowing head/next retrieval to happen after backoff */
-+            if (currHead != (currHead = this.head)) {
-+                /* New head */
-+                curr = currHead;
-+            } else {
-+                /* Try to advance curr */
-+
-+                curr = curr.next;
-+                if (curr == null) {
-+                    return null;
-+                }
-+            }
-+
-+            final Object currentValue = curr.element;
-+            if (currentValue != null) {
++            if (currentVal != null) {
 +                if (!remove) {
-+                    //noinspection unchecked
-+                    return (E) currentValue;
++                    return (E) currentVal;
 +                }
-+
-+                if (LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) != currentValue) {
-+                    /* Some other thread read this element */
++                if (!LinkedNode.ELEMENT_HANDLE.compareAndSet(curr, currentVal, null)) {
++                    /* Failed to get head */
 +                    ++failures;
-+
++                    if (curr == (curr = curr.next)) {
++                        return null;
++                    }
 +                    continue;
 +                }
-+                /* Successfully read element */
 +
-+                /* Try to CAS head forward */
-+                final LinkedNode<E> next = curr.next;
 +                if (next != null) {
-+                    HEAD_HANDLE.compareAndExchange(this, currHead, next);
++                    /* Try to set head to the latest value */
++                    curr = next;
 +                }
 +
-+                //noinspection unchecked
-+                return (E) currentValue;
++                if (head != curr) {
++                    /* Avoid CASing on head more than we need to */
++                    /* CAS to avoid setting an out-of-date head */
++                    HEAD_HANDLE.compareAndExchange(this, head, curr);
++                }
++                return (E) currentVal;
 +            }
-+            /* This element is removed, try again */
++
++            if (next == null) {
++                return null; /* End of queue */
++            }
++
++            if (head == curr) {
++                /* head is likely not up-to-date */
++                curr = next;
++            } else {
++                /* Try to update to head */
++                if (head == (head = this.head)) {
++                    curr = next;
++                } else {
++                    curr = head;
++                }
++            }
 +        }
 +    }
 +
