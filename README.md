@@ -8,7 +8,7 @@ https://github.com/starlis/empirecraft
 ## Contact
 [IRC](http://irc.spi.gt/iris/?channels=concrete)
 
-### License
+## License
 The PATCHES-LICENSE file describes the license for api & server patches, 
 found in ./patches/api and ./patches/server.
 
