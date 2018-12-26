@@ -1,21 +1,23 @@
-From 2a34d602e1affcd94a3c50c574a1f00adbec3d10 Mon Sep 17 00:00:00 2001
+From 0398f729ee8c1860376793c049f9dc3f5d7b197d Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
 
 ---
  pom.xml                                       |   4 +-
- .../concrete/chunk/ChunkRegionManager.java    |  19 +
- .../concurrent/ConcurrentArrayQueue.java      | 439 ++++++++++++
+ .../concrete/chunk/ChunkRegionManager.java    | 187 +++++
+ .../concurrent/ConcurrentArrayQueue.java      | 461 +++++++++++++
  .../concurrent/ConcurrentLinkedList.java      | 641 ++++++++++++++++++
  .../concrete/concurrent/ConcurrentUtil.java   |  39 ++
- .../concrete/util/IntegerUtil.java            |  31 +
- 6 files changed, 1171 insertions(+), 2 deletions(-)
+ .../concrete/util/IntegerUtil.java            |  52 ++
+ .../concrete/util/RegionChunkList.java        |  86 +++
+ 7 files changed, 1468 insertions(+), 2 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentUtil.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/RegionChunkList.java
 
 diff --git a/pom.xml b/pom.xml
 index f86550347..51bbb61ed 100644
@@ -34,35 +36,203 @@ index f86550347..51bbb61ed 100644
      <parent>
 diff --git a/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
 new file mode 100644
-index 000000000..7c76d6556
+index 000000000..71896f87f
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,187 @@
 +package io.github.spottedleaf.concrete.chunk;
 +
++import io.github.spottedleaf.concrete.concurrent.ConcurrentLinkedList;
++import io.github.spottedleaf.concrete.util.RegionChunkList;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
++import net.minecraft.server.Chunk;
++
++import java.util.concurrent.locks.ReentrantLock;
++import java.util.function.Consumer;
 +
 +public class ChunkRegionManager {
 +
-+    private final Long2ObjectOpenHashMap<ChunkRegionReference> regions = new Long2ObjectOpenHashMap<>();
++    public static final int REGION_WIDTH = 16; /* must be a power of two */
 +
-+    public class ChunkRegion {
++    private final Long2ObjectOpenHashMap<ChunkRegion> regions = new Long2ObjectOpenHashMap<>(2048);
 +
++    public static long getRegionKey(final int regionX, final int regionZ) {
++        return (long)(regionX) | ((long)regionZ << 32);
 +    }
 +
-+    public class ChunkRegionReference {
-+
-+        public ChunkRegion reference;
-+
++    public static int getRegionX(final long key) {
++        return (int)key;
 +    }
 +
++    public static int getRegionZ(final long key) {
++        return (int)(key >>> 32);
++    }
++
++    public static int getRegionCoordinate(final int chunkCoord) {
++        return chunkCoord >> 4;
++    }
++
++    /**
++     * Adds a chunk to this region manager. If {@code synchronously} is {@code true}, then the chunk's region
++     * lock is acquired, the chunk is added, then the region's lock is released. Otherwise, the chunk add is performed
++     * via {@link ChunkRegion#executeNonUrgentTask(Consumer)}.
++     * <p>
++     * This function is MT-Safe.
++     * </p>
++     * @param chunk The specified chunk to add.
++     * @param synchronously Whether to add the chunk synchronously.
++     */
++    public void addChunk(final Chunk chunk, final boolean synchronously) {
++        final int regionX = ChunkRegionManager.getRegionCoordinate(chunk.locX);
++        final int regionZ = ChunkRegionManager.getRegionCoordinate(chunk.locZ);
++        final long regionKey = ChunkRegionManager.getRegionKey(regionX, regionZ);
++
++        final ChunkRegion region;
++        synchronized (this.regions) {
++            region = this.regions.computeIfAbsent(regionKey, (final long key) -> {
++                return new ChunkRegion(ChunkRegionManager.this, regionX, regionZ, key);
++            });
++        }
++        if (synchronously) {
++            region.acquireLock();
++            region.addChunk(chunk);
++            region.releaseLock();
++        } else {
++            region.executeNonUrgentTask((final ChunkRegion r) -> r.addChunk(chunk));
++        }
++    }
++
++    /**
++     * Adds a chunk to this region manager. This function assumes the caller already owns the region which the
++     * specified chunk resides in. If the caller does not own the region, undefined behaviour occurs.
++     * @param chunk The specified chunk.
++     */
++    public void addChunkRelaxed(final Chunk chunk) {
++        final int regionX = ChunkRegionManager.getRegionCoordinate(chunk.locX);
++        final int regionZ = ChunkRegionManager.getRegionCoordinate(chunk.locZ);
++        final long regionKey = ChunkRegionManager.getRegionKey(regionX, regionZ);
++
++        final ChunkRegion region;
++        synchronized (this.regions) {
++            region = this.regions.get(regionKey);
++        }
++        region.addChunk(chunk);
++    }
++
++    /**
++     * Removes the specified chunk from this region manager. This function presumes no chunks can be removed or
++     * added concurrently. That is, chunks are only removed by a single thread at the end of a tick.
++     * <p>
++     * This function is not MT-Safe.
++     * </p>
++     * @param chunk The specified chunk.
++     */
++    public void removeChunk(final Chunk chunk) {
++        final int regionX = ChunkRegionManager.getRegionCoordinate(chunk.locX);
++        final int regionZ = ChunkRegionManager.getRegionCoordinate(chunk.locZ);
++        final long regionKey = ChunkRegionManager.getRegionKey(regionX, regionZ);
++
++        final ChunkRegion region = this.regions.get(regionKey);
++        if (region.chunkConut() == 1) {
++            this.regions.remove(regionKey);
++        } else {
++            region.removeChunk(chunk);
++        }
++    }
++
++    public static class ChunkRegion {
++
++        public final long regionKey;
++        public final ChunkRegionManager regionManager;
++        public final int regionX;
++        public final int regionZ;
++
++        public final RegionChunkList chunkList = new RegionChunkList();
++
++        private final ReentrantLock lock = new ReentrantLock();
++
++        /**
++         * Tasks that need to be executed after releasing the region.
++         */
++        private final ConcurrentLinkedList<Consumer<ChunkRegion>> tasks = new ConcurrentLinkedList<>();
++
++        public ChunkRegion(final ChunkRegionManager regionManager, final int regionX, final int regionZ, final long regionKey) {
++            this.regionManager = regionManager;
++            this.regionX = regionX;
++            this.regionZ = regionZ;
++            this.regionKey = regionKey;
++            this.tasks.preventAdds(); /* Required to prevent race conditions */
++        }
++
++        public void addChunk(final Chunk chunk) {
++            this.chunkList.add(chunk);
++        }
++
++        public void removeChunk(final Chunk chunk) {
++            this.chunkList.remove(chunk);
++        }
++
++        public int chunkConut() {
++            return this.chunkList.size();
++        }
++
++        private void drainTasks() {
++            Consumer<ChunkRegion> task;
++            while ((task = this.tasks.poll()) != null) {
++                task.accept(this);
++            }
++        }
++
++        public void releaseLock() {
++            if (this.lock.getHoldCount() == 1) {
++                /* This is required to prevent a race condition where a task is executed on a tick segment later than it is expected */
++                this.drainTasks();
++                this.tasks.preventAdds();
++                this.drainTasks(); /* Double check */
++            }
++            this.lock.unlock();
++        }
++
++        public void acquireLock() {
++            this.lock.lock();
++            if (this.lock.getHoldCount() == 1) {
++                this.tasks.allowAdds();
++            }
++        }
++
++        public boolean tryAcquireLock() {
++            if (!this.lock.tryLock()) {
++                return false;
++            }
++            if (this.lock.getHoldCount() == 1) {
++                this.tasks.allowAdds();
++            }
++            return true;
++        }
++
++        public boolean executeNonUrgentTask(final Consumer<ChunkRegion> consumer) {
++            for (;;) {
++                /* Either successfully add to wait queue or lock the region */
++                /* Note that order here matters, threads already owning a region should execute its task synchronously! */
++                if (this.tryAcquireLock()) {
++                    consumer.accept(this);
++                    this.releaseLock();
++                    return true;
++                } else if (this.tasks.add(consumer)) {
++                    return false;
++                }
++                /* Failure means retry, one has to eventually work (and we only reach this point due to a rare race condition) */
++            }
++        }
++
++    }
 +}
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
 new file mode 100644
-index 000000000..e883624db
+index 000000000..1f2ce7936
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
-@@ -0,0 +1,439 @@
+@@ -0,0 +1,461 @@
 +package io.github.spottedleaf.concrete.concurrent;
 +
 +import io.github.spottedleaf.concrete.util.IntegerUtil;
@@ -236,7 +406,7 @@ index 000000000..e883624db
 +        }
 +    }
 +
-+    public int read(final E[] buffer, final int maxItems, final int flags) {
++    private int acquireHead(final int flags) {
 +        int head;
 +        if ((flags & NORESIZE_FLAG) != 0) {
 +            //head = (int)HEAD_INDEX_HANDLE.getVolatile(this);
@@ -253,6 +423,24 @@ index 000000000..e883624db
 +                }
 +            }
 +        }
++        return head;
++    }
++
++    private void releaseHead(final int oldHead, final int newHead, final int length, final int flags) {
++        if ((flags & PEEK_FLAG) != 0) {
++            /* Only write when there is a need to */
++            if ((flags & NORESIZE_FLAG) == 0) {
++                //HEAD_INDEX_HANDLE.setVolatile(this, head | length);
++                INDICES_HANDLE.setVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX, oldHead | length);
++            }
++        } else {
++            //HEAD_INDEX_HANDLE.setVolatile(this, newHead | length);
++            INDICES_HANDLE.setVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX, newHead | length);
++        }
++    }
++
++    public int read(final E[] buffer, final int maxItems, final int flags) {
++        int head = this.acquireHead(flags);
 +
 +        /* Since writes to tail are seq_cst, and sychronization already occured, tail is pretty up-to-date */
 +        /* Use acquire to synchronize with the state at tail's point in time */
@@ -276,38 +464,35 @@ index 000000000..e883624db
 +
 +        final int newHead = (head + itemsToRead) & lengthMask;
 +
-+        if (buffer != null) {
-+            if (newHead >= head) {
-+                /* Sequential */
-+                System.arraycopy(elements, head, (Object[])buffer, 0, itemsToRead);
-+                if ((flags & PEEK_FLAG) == 0) {
-+                    Arrays.fill(elements, head, head + itemsToRead, null);
++        if (newHead >= head) {
++            /* Sequential */
++            if (buffer != null) {
++                System.arraycopy(elements, head, (Object[]) buffer, 0, itemsToRead);
++            }
++            if ((flags & PEEK_FLAG) == 0) {
++                Arrays.fill(elements, head, head + itemsToRead, null);
++            }
++        } else {
++            /* Wrapped */
++            final int end = length - head;
++            if ((flags & PEEK_FLAG) != 0) {
++                if (buffer != null) {
++                    System.arraycopy(elements, head, (Object[]) buffer, 0, end);
++                    System.arraycopy(elements, 0, (Object[]) buffer, end, itemsToRead - end);
 +                }
 +            } else {
-+                /* Wrapped */
-+                final int end = length - head;
-+                if ((flags & PEEK_FLAG) != 0) {
++                if (buffer != null) {
 +                    System.arraycopy(elements, head, (Object[]) buffer, 0, end);
-+                    System.arraycopy(elements, 0, (Object[]) buffer, end, itemsToRead - end);
-+                } else {
-+                    System.arraycopy(elements, head, (Object[]) buffer, 0, end);
-+                    Arrays.fill(elements, head, head + end, null);
-+                    System.arraycopy(elements, 0, (Object[]) buffer, end, itemsToRead - end);
-+                    Arrays.fill(elements, 0, itemsToRead - end, null);
 +                }
++                Arrays.fill(elements, head, head + end, null);
++                if (buffer != null) {
++                    System.arraycopy(elements, 0, (Object[]) buffer, end, itemsToRead - end);
++                }
++                Arrays.fill(elements, 0, itemsToRead - end, null);
 +            }
 +        }
 +
-+        if ((flags & PEEK_FLAG) != 0) {
-+            /* Only write when there is a need to */
-+            if ((flags & NORESIZE_FLAG) == 0) {
-+                //HEAD_INDEX_HANDLE.setVolatile(this, head | length);
-+                INDICES_HANDLE.setVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX, head | length);
-+            }
-+        } else {
-+            //HEAD_INDEX_HANDLE.setVolatile(this, newHead | length);
-+            INDICES_HANDLE.setVolatile(this.indices, AVAILABLE_HEAD_INDEX_INDEX, newHead | length);
-+        }
++        this.releaseHead(head, newHead, length, flags);
 +
 +        return itemsToRead;
 +    }
@@ -432,10 +617,17 @@ index 000000000..e883624db
 +            /* Note that while new indices cannot be allocated, some writes to the queue may not be finished */
 +            /* wait for previous writes to complete */
 +
-+            /* Use acquire to acquire with the writes to elements */
++            /* Use acquire to acquire with the writes to elements (thus synchronizing with other writers) */
 +            //while ((int)AVAILABLE_TAIL_INDEX_HANDLE.getAcquire(this) != currentIndex) {
++            int spinWaitFailures = 0;
 +            while ((int)INDICES_HANDLE.getAcquire(this.indices, AVAILABLE_TAIL_INDEX_INDEX) != currentIndex) {
++                if (spinWaitFailures == 1000) {
++                    spinWaitFailures = 0;
++                    Thread.yield();
++                    /* This will not fix the thread scheduling issues however it should prevent total loss of performance */
++                }
 +                ConcurrentUtil.pause();
++                ++spinWaitFailures;
 +            }
 +
 +            /* Copy the elements over */
@@ -1199,33 +1391,54 @@ index 000000000..79615254d
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java b/src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java
 new file mode 100644
-index 000000000..eedf0c9e2
+index 000000000..81f974cb2
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,52 @@
 +package io.github.spottedleaf.concrete.util;
 +
 +public class IntegerUtil {
 +
-+    private static final int HIGH_BIT = Integer.MIN_VALUE;
++    public static final int HIGH_BIT_U32 = Integer.MIN_VALUE;
++    public static final long HIGH_BIT_U64 = Long.MIN_VALUE;
 +
 +    public static int ceilLog2(final int value) {
 +        return 32 - Integer.numberOfLeadingZeros(value - 1);
++    }
++
++    public static long ceilLog2(final long value) {
++        return 64 - Long.numberOfLeadingZeros(value - 1);
 +    }
 +
 +    public static int floorLog2(final int value) {
 +        return 31 ^ Integer.numberOfLeadingZeros(value);
 +    }
 +
++    public static int floorLog2(final long value) {
++        return 63 ^ Long.numberOfLeadingZeros(value);
++    }
++
 +    public static int roundCeilLog2(final int value) {
-+        return HIGH_BIT >>> (Integer.numberOfLeadingZeros(value) - 1);
++        return HIGH_BIT_U32 >>> (Integer.numberOfLeadingZeros(value - 1) - 1);
++    }
++
++    public static long roundCeilLog2(final long value) {
++        return HIGH_BIT_U64 >>> (Long.numberOfLeadingZeros(value - 1) - 1);
 +    }
 +
 +    public static int roundFloorLog2(final int value) {
-+        return HIGH_BIT >>> Integer.numberOfLeadingZeros(value);
++        return HIGH_BIT_U32 >>> Integer.numberOfLeadingZeros(value);
++    }
++
++    public static long roundFloorLog2(final long value) {
++        return HIGH_BIT_U64 >>> Long.numberOfLeadingZeros(value);
 +    }
 +
 +    public static boolean isPowerOfTwo(final int n) {
++        return (-n & n) == n;
++    }
++
++    public static boolean isPowerOfTwo(final long n) {
 +        return (-n & n) == n;
 +    }
 +
@@ -1234,6 +1447,99 @@ index 000000000..eedf0c9e2
 +    }
 +
 +}
+diff --git a/src/main/java/io/github/spottedleaf/concrete/util/RegionChunkList.java b/src/main/java/io/github/spottedleaf/concrete/util/RegionChunkList.java
+new file mode 100644
+index 000000000..c0b66231b
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/util/RegionChunkList.java
+@@ -0,0 +1,86 @@
++package io.github.spottedleaf.concrete.util;
++
++import io.github.spottedleaf.concrete.chunk.ChunkRegionManager;
++import net.minecraft.server.Chunk;
++
++import java.util.function.Consumer;
++
++public class RegionChunkList {
++
++    private final long[] keyset = new long[ChunkRegionManager.REGION_WIDTH * ChunkRegionManager.REGION_WIDTH / Long.SIZE];
++
++    private final Chunk[] chunks = new Chunk[ChunkRegionManager.REGION_WIDTH * ChunkRegionManager.REGION_WIDTH];
++
++    private int size;
++
++    public int size() {
++        return this.size;
++    }
++
++    public void add(final Chunk chunk) {
++        final int x = chunk.locX & (ChunkRegionManager.REGION_WIDTH - 1);
++        final int z = chunk.locZ & (ChunkRegionManager.REGION_WIDTH - 1);
++
++        final int arrayIndex = (z << 4) | x;
++
++        final int keysetIndex = z >>> 2;
++        final int keysetBitfield = ((z & 0xF) << 4) | x;
++
++        final long chunkField = 1 << keysetBitfield;
++        long curr = this.keyset[keysetIndex];
++        if (curr == (curr |= chunkField)) {
++            throw new IllegalStateException("Already contains chunk (" + x + "," + z + ")");
++        }
++
++        this.keyset[keysetIndex] = curr;
++        this.chunks[arrayIndex] = chunk;
++        ++this.size;
++    }
++
++    public Chunk getChunk(final int chunkX, final int chunkZ) {
++        final int x = chunkX & (ChunkRegionManager.REGION_WIDTH - 1);
++        final int z = chunkZ & (ChunkRegionManager.REGION_WIDTH - 1);
++        return this.chunks[(z << 4) | x];
++    }
++
++    public Chunk remove(final Chunk chunk) {
++        return this.remove(chunk.locX, chunk.locZ);
++    }
++
++    public Chunk remove(final int chunkX, final int chunkZ) {
++        final int x = chunkX & (ChunkRegionManager.REGION_WIDTH - 1);
++        final int z = chunkZ & (ChunkRegionManager.REGION_WIDTH - 1);
++
++        final int arrayIndex = (z << 4) | x;
++
++        final int keysetIndex = z >>> 2;
++        final int keysetBitfield = ((z & 0xF) << 4) | x;
++
++        final long chunkField = 1 << keysetBitfield;
++        long curr = this.keyset[keysetIndex];
++        if (curr < (curr ^= chunkField)) {
++            /* If the chunk isn't mapped, then the XOR op will add a bitfield to the current value thus causing the value to be greater-than previous */
++            throw new IllegalStateException("Does not contain chunk (" + x + "," + z + ")");
++        }
++
++        this.keyset[keysetIndex] = curr;
++
++        final Chunk ret = this.chunks[arrayIndex];
++        this.chunks[arrayIndex] = null;
++        --this.size;
++        return ret;
++    }
++
++    public void forEach(final Consumer<Chunk> consumer) {
++        for (int i = 0; i < this.keyset.length; ++i) {
++            long curr = this.keyset[i];
++            final int offset = i << 6;
++            while (curr != 0) {
++                final int trailing = Long.numberOfTrailingZeros(curr);
++                curr ^= (1 << trailing);
++                consumer.accept(this.chunks[offset + trailing]);
++            }
++        }
++    }
++
++}
+\ No newline at end of file
 -- 
 2.20.1
 
