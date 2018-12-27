@@ -1,16 +1,16 @@
-From 63b1ecdddc54296fd1d0ac1bad2111fd4ffb5a24 Mon Sep 17 00:00:00 2001
+From a5800d2b670d5713c1a95754a9fbdfd47fd82e34 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
 
 ---
  .../concrete/chunk/ChunkRegionManager.java    | 186 +++++
- .../concurrent/ConcurrentArrayQueue.java      | 461 ++++++++++++
- .../concurrent/ConcurrentLinkedList.java      | 678 ++++++++++++++++++
+ .../concurrent/ConcurrentArrayQueue.java      | 461 +++++++++++
+ .../concurrent/ConcurrentLinkedList.java      | 734 ++++++++++++++++++
  .../concrete/concurrent/ConcurrentUtil.java   |  39 +
  .../concrete/util/IntegerUtil.java            |  52 ++
- .../concrete/util/RegionChunkList.java        |  86 +++
- 6 files changed, 1502 insertions(+)
+ .../concrete/util/RegionChunkList.java        |  86 ++
+ 6 files changed, 1558 insertions(+)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
@@ -680,10 +680,10 @@ index 000000000..1f2ce7936
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
 new file mode 100644
-index 000000000..33f3dbf7e
+index 000000000..359ad1a69
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
-@@ -0,0 +1,678 @@
+@@ -0,0 +1,734 @@
 +package io.github.spottedleaf.concrete.concurrent;
 +
 +import java.lang.invoke.VarHandle;
@@ -888,14 +888,18 @@ index 000000000..33f3dbf7e
 +        if (object == null) {
 +            throw new NullPointerException();
 +        }
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
-+            if (element == null) {
-+                continue;
++            if (element != null) {
++                if ((element == object || element.equals(object))
++                        && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element) {
++                    return true;
++                }
 +            }
-+            if ((element == object || element.equals(object))
-+                    && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element) {
-+                return true;
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
 +            }
 +        }
 +        return false;
@@ -907,13 +911,17 @@ index 000000000..33f3dbf7e
 +    @Override
 +    public boolean removeIf(final Predicate<? super E> filter) {
 +        boolean ret = false;
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
-+            if (element == null) {
-+                continue;
++            if (element != null) {
++                //noinspection unchecked
++                ret |= filter.test((E) element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
 +            }
-+            //noinspection unchecked
-+            ret |= filter.test((E) element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
++            }
 +        }
 +        return ret;
 +    }
@@ -924,12 +932,16 @@ index 000000000..33f3dbf7e
 +    @Override
 +    public boolean removeAll(final Collection<?> collection) {
 +        boolean ret = false;
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
-+            if (element == null) {
-+                continue;
++            if (element != null) {
++                ret |= collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
 +            }
-+            ret |= collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
++            }
 +        }
 +        return ret;
 +    }
@@ -940,12 +952,16 @@ index 000000000..33f3dbf7e
 +    @Override
 +    public boolean retainAll(final Collection<?> collection) {
 +        boolean ret = false;
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
-+            if (element == null) {
-+                continue;
++            if (element != null) {
++                ret |= !collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
 +            }
-+            ret |= !collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
++            }
 +        }
 +        return ret;
 +    }
@@ -957,13 +973,17 @@ index 000000000..33f3dbf7e
 +    public Object[] toArray() {
 +        final List<E> ret = new ArrayList<>();
 +
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
-+            if (element == null) {
-+                continue;
++            if (element != null) {
++                //noinspection unchecked
++                ret.add((E) element);
 +            }
-+            //noinspection unchecked
-+            ret.add((E) element);
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
++            }
 +        }
 +
 +        return ret.toArray();
@@ -976,13 +996,17 @@ index 000000000..33f3dbf7e
 +    public <T> T[] toArray(final T[] array) {
 +        final List<T> ret = new ArrayList<>();
 +
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
-+            if (element == null) {
-+                continue;
++            if (element != null) {
++                //noinspection unchecked
++                ret.add((T) element);
 +            }
-+            //noinspection unchecked
-+            ret.add((T) element);
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
++            }
 +        }
 +
 +        return ret.toArray(array);
@@ -995,13 +1019,17 @@ index 000000000..33f3dbf7e
 +    public <T> T[] toArray(final IntFunction<T[]> generator) {
 +        final List<T> ret = new ArrayList<>();
 +
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
 +            if (element == null) {
-+                continue;
++                //noinspection unchecked
++                ret.add((T) element);
 +            }
-+            //noinspection unchecked
-+            ret.add((T) element);
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
++            }
 +        }
 +
 +        return ret.toArray(generator);
@@ -1021,7 +1049,7 @@ index 000000000..33f3dbf7e
 +        int totalEntries = 0;
 +        int aliveEntries = 0;
 +
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next, ++totalEntries) {
++        for (LinkedNode<E> curr = this.head;; ++totalEntries) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
 +            if (element == null) {
 +                ++deadEntries;
@@ -1034,6 +1062,12 @@ index 000000000..33f3dbf7e
 +            }
 +
 +            builder.append(totalEntries).append(": \"").append(element).append('"');
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
++            }
++
 +        }
 +
 +        builder.append("}, total_entries: \"").append(totalEntries).append("\", alive_entries: \"").append(aliveEntries)
@@ -1098,12 +1132,16 @@ index 000000000..33f3dbf7e
 +    @Override
 +    public int size() {
 +        int size = 0;
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
-+            if (element == null) {
-+                continue;
++            if (element != null) {
++                ++size;
 +            }
-+            ++size;
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
++            }
 +        }
 +        return size;
 +    }
@@ -1124,10 +1162,15 @@ index 000000000..33f3dbf7e
 +        if (object == null) {
 +            throw new NullPointerException();
 +        }
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
-+            if (element == object || element.equals(object)) {
++            if (element != null && (element == object || element.equals(object))) {
 +                return true;
++            }
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
 +            }
 +        }
 +        return false;
@@ -1141,11 +1184,16 @@ index 000000000..33f3dbf7e
 +        if (action == null) {
 +            throw new NullPointerException();
 +        }
-+        for (LinkedNode<E> curr = this.head; curr != null; curr = curr.next) {
++        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
 +            if (element != null) {
 +                //noinspection unchecked
 +                action.accept((E) element);
++            }
++
++            final LinkedNode<E> next = curr.next;
++            if (next == null || next == curr) {
++                break;
 +            }
 +        }
 +    }
@@ -1269,7 +1317,7 @@ index 000000000..33f3dbf7e
 +            /* Make sure to acquire with the write to the element field */
 +            //noinspection unchecked
 +            final LinkedNode<E> next = (LinkedNode<E>) LinkedNode.NEXT_HANDLE.getAcquire(curr);
-+            if (next == null || next == curr) {
++            if (next == curr) {
 +                break;
 +            }
 +            if (currentVal == null) {
@@ -1282,6 +1330,9 @@ index 000000000..33f3dbf7e
 +
 +            //noinspection unchecked
 +            consumer.accept((E) currentVal);
++            if (next == null) {
++                break;
++            }
 +        }
 +        HEAD_HANDLE.setVolatile(this, curr);
 +    }
@@ -1313,7 +1364,7 @@ index 000000000..33f3dbf7e
 +        /* sets next to the next value, or null if empty */
 +        private void findNext() {
 +            LinkedNode<E> curr = this.curr;
-+            for (; curr != null; curr = curr.next) {
++            for (;curr != null;) {
 +                //noinspection unchecked
 +                final E element = (E) LinkedNode.ELEMENT_HANDLE.getAcquire(curr);
 +                if (element != null) {
@@ -1321,6 +1372,11 @@ index 000000000..33f3dbf7e
 +                    this.next = element;
 +                    return;
 +                }
++                final LinkedNode<E> next = curr.next;
++                if (next == curr) {
++                    break;
++                }
++                curr = next;
 +            }
 +            /* reached end of list */
 +            this.curr = null;
