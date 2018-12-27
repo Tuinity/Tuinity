@@ -1,4 +1,4 @@
-From a5800d2b670d5713c1a95754a9fbdfd47fd82e34 Mon Sep 17 00:00:00 2001
+From d91e00a2bf8cacc89c3496e97ed61e94ceb15665 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
@@ -680,7 +680,7 @@ index 000000000..1f2ce7936
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
 new file mode 100644
-index 000000000..359ad1a69
+index 000000000..74ffae534
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
 @@ -0,0 +1,734 @@
@@ -1217,7 +1217,7 @@ index 000000000..359ad1a69
 +                    if (curr != currTail) {
 +                        /* Avoid CASing on tail more than we need to */
 +                        /* CAS to avoid setting an out-of-date tail */
-+                        TAIL_HANDLE.compareAndExchange(this, currTail, tail);
++                        TAIL_HANDLE.weakCompareAndSet(this, currTail, tail);
 +                    }
 +                    return true;
 +                }
@@ -1256,27 +1256,24 @@ index 000000000..359ad1a69
 +
 +            if (currentVal != null) {
 +                if (!remove) {
++                    //noinspection unchecked
 +                    return (E) currentVal;
 +                }
 +                if (!LinkedNode.ELEMENT_HANDLE.compareAndSet(curr, currentVal, null)) {
 +                    /* Failed to get head */
 +                    ++failures;
-+                    if (curr == (curr = curr.next)) {
++                    if (curr == (curr = next)) {
 +                        return null;
 +                    }
 +                    continue;
 +                }
 +
-+                if (next != null) {
-+                    /* Try to set head to the latest value */
-+                    curr = next;
-+                }
-+
-+                if (head != curr) {
++                if (curr != head) {
 +                    /* Avoid CASing on head more than we need to */
 +                    /* CAS to avoid setting an out-of-date head */
-+                    HEAD_HANDLE.compareAndExchange(this, head, curr);
++                    HEAD_HANDLE.weakCompareAndSet(this, head, next != null ? next : curr);
 +                }
++                //noinspection unchecked
 +                return (E) currentVal;
 +            }
 +
@@ -1309,8 +1306,9 @@ index 000000000..359ad1a69
 +     * @param consumer The consumer to accept the elements.
 +     */
 +    public void drain(final Consumer<E> consumer) {
++        final LinkedNode<E> head;
 +        //noinspection unchecked
-+        LinkedNode<E> curr = (LinkedNode<E>) HEAD_HANDLE.getVolatile(this);
++        LinkedNode<E> curr = head = (LinkedNode<E>) HEAD_HANDLE.getVolatile(this);
 +        for (;;) {
 +            final Object currentVal = LinkedNode.ELEMENT_HANDLE.get(curr);
 +
@@ -1334,7 +1332,9 @@ index 000000000..359ad1a69
 +                break;
 +            }
 +        }
-+        HEAD_HANDLE.setVolatile(this, curr);
++        if (curr != head) {
++            HEAD_HANDLE.setVolatile(this, curr);
++        }
 +    }
 +
 +    private static final class LinkedNode<E> {
