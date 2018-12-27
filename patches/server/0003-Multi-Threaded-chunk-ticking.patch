@@ -1,17 +1,16 @@
-From 0398f729ee8c1860376793c049f9dc3f5d7b197d Mon Sep 17 00:00:00 2001
+From 63b1ecdddc54296fd1d0ac1bad2111fd4ffb5a24 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
 
 ---
- pom.xml                                       |   4 +-
- .../concrete/chunk/ChunkRegionManager.java    | 187 +++++
- .../concurrent/ConcurrentArrayQueue.java      | 461 +++++++++++++
- .../concurrent/ConcurrentLinkedList.java      | 641 ++++++++++++++++++
- .../concrete/concurrent/ConcurrentUtil.java   |  39 ++
+ .../concrete/chunk/ChunkRegionManager.java    | 186 +++++
+ .../concurrent/ConcurrentArrayQueue.java      | 461 ++++++++++++
+ .../concurrent/ConcurrentLinkedList.java      | 678 ++++++++++++++++++
+ .../concrete/concurrent/ConcurrentUtil.java   |  39 +
  .../concrete/util/IntegerUtil.java            |  52 ++
  .../concrete/util/RegionChunkList.java        |  86 +++
- 7 files changed, 1468 insertions(+), 2 deletions(-)
+ 6 files changed, 1502 insertions(+)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
@@ -19,27 +18,12 @@ Subject: [PATCH] Multi-Threaded chunk ticking
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/RegionChunkList.java
 
-diff --git a/pom.xml b/pom.xml
-index f86550347..51bbb61ed 100644
---- a/pom.xml
-+++ b/pom.xml
-@@ -16,8 +16,8 @@
-         <buildtag.prefix>git-Bukkit-</buildtag.prefix>
-         <buildtag.suffix></buildtag.suffix>
-         <maven.build.timestamp.format>yyyyMMdd-HHmm</maven.build.timestamp.format>
--        <maven.compiler.source>1.8</maven.compiler.source>
--        <maven.compiler.target>1.8</maven.compiler.target>
-+        <maven.compiler.source>11</maven.compiler.source>
-+        <maven.compiler.target>11</maven.compiler.target>
-     </properties>
- 
-     <parent>
 diff --git a/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
 new file mode 100644
-index 000000000..71896f87f
+index 000000000..f333766da
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,186 @@
 +package io.github.spottedleaf.concrete.chunk;
 +
 +import io.github.spottedleaf.concrete.concurrent.ConcurrentLinkedList;
@@ -161,7 +145,7 @@ index 000000000..71896f87f
 +            this.regionX = regionX;
 +            this.regionZ = regionZ;
 +            this.regionKey = regionKey;
-+            this.tasks.preventAdds(); /* Required to prevent race conditions */
++            this.tasks.preventAdds(); /* Required since an add-blocked queue represents a free region */
 +        }
 +
 +        public void addChunk(final Chunk chunk) {
@@ -177,10 +161,9 @@ index 000000000..71896f87f
 +        }
 +
 +        private void drainTasks() {
-+            Consumer<ChunkRegion> task;
-+            while ((task = this.tasks.poll()) != null) {
-+                task.accept(this);
-+            }
++            this.tasks.drain((final Consumer<ChunkRegion> consumer) -> {
++                consumer.accept(ChunkRegion.this);
++            });
 +        }
 +
 +        public void releaseLock() {
@@ -697,10 +680,10 @@ index 000000000..1f2ce7936
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
 new file mode 100644
-index 000000000..6125f23e4
+index 000000000..33f3dbf7e
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
-@@ -0,0 +1,641 @@
+@@ -0,0 +1,678 @@
 +package io.github.spottedleaf.concrete.concurrent;
 +
 +import java.lang.invoke.VarHandle;
@@ -715,7 +698,7 @@ index 000000000..6125f23e4
 + * This queue should out-perform {@link java.util.concurrent.ConcurrentLinkedQueue} in high-contention reads/writes, and is
 + * not any slower in lower contention reads/writes.
 + * <p>
-+ * Note that this queue breaks the specification laid out by {@link Collection}, see {@link #preventAdds()}.
++ * Note that this queue breaks the specification laid out by {@link Collection}, see {@link #preventAdds()} and {@link Collection#add(Object)}.
 + * </p>
 + * @param <E> Type of element in this queue.
 + */
@@ -735,7 +718,7 @@ index 000000000..6125f23e4
 +    private static final VarHandle TAIL_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentLinkedList.class, "tail", LinkedNode.class);
 +
 +    /**
-+     * Constructs a {@code ConcurrentLinkedList} initially empty.
++     * Constructs a {@code ConcurrentLinkedList}, initially empty.
 +     * <p>
 +     * The returned object may not be published without synchronization.
 +     * </p>
@@ -747,7 +730,7 @@ index 000000000..6125f23e4
 +    }
 +
 +    /**
-+     * Constructs a {@code ConcurrentLinkedList} initially containing all elements in the specified {@code collection}.
++     * Constructs a {@code ConcurrentLinkedList}, initially containing all elements in the specified {@code collection}.
 +     * <p>
 +     * The returned object may not be published without synchronization.
 +     * </p>
@@ -870,10 +853,10 @@ index 000000000..6125f23e4
 +
 +    /**
 +     * Prevents elements from being added to this queue. Once this is called, any attempt to add to this queue will fail.
-+     * @return {@code true} if the queue was modified to prevent additions, {@code false} if it already prevented additions.
 +     * <p>
 +     * This function is MT-Safe.
 +     * </p>
++     * @return {@code true} if the queue was modified to prevent additions, {@code false} if it already prevented additions.
 +     */
 +    public boolean preventAdds() {
 +        final LinkedNode<E> deadEnd = new LinkedNode<>(null, null);
@@ -881,7 +864,7 @@ index 000000000..6125f23e4
 +        if (!this.appendList(deadEnd, deadEnd)) {
 +            return false;
 +        }
-+        TAIL_HANDLE.setVolatile(this, deadEnd);
++        TAIL_HANDLE.setRelease(this, deadEnd); /* Ensure tail is set for the following #allowAdds call */
 +        return true;
 +    }
 +
@@ -1172,6 +1155,7 @@ index 000000000..6125f23e4
 +
 +        for (LinkedNode<E> currTail = this.tail, curr = currTail;;) {
 +            /* It has been experimentally shown that placing the read before the backoff results in significantly greater performance */
++            /* It is likely due to false sharing */
 +            final LinkedNode<E> next = curr.next;
 +            for (int i = 0; i < failures; ++i) {
 +                ConcurrentUtil.pause();
@@ -1264,6 +1248,42 @@ index 000000000..6125f23e4
 +                }
 +            }
 +        }
++    }
++
++    /**
++     * Empties the queue into the specified consumer. This function is optimized for single-threaded reads, and should
++     * be faster than a loop on {@link #poll()}.
++     * <p>
++     * This function is not MT-Safe. This function cannot be called with other read operations ({@link #peek()}, {@link #poll()},
++     * {@link #clear()}, {@link #fastClear()}, etc).
++     * Write operations are safe to be called concurrently.
++     * </p>
++     * @param consumer The consumer to accept the elements.
++     */
++    public void drain(final Consumer<E> consumer) {
++        //noinspection unchecked
++        LinkedNode<E> curr = (LinkedNode<E>) HEAD_HANDLE.getVolatile(this);
++        for (;;) {
++            final Object currentVal = LinkedNode.ELEMENT_HANDLE.get(curr);
++
++            /* Make sure to acquire with the write to the element field */
++            //noinspection unchecked
++            final LinkedNode<E> next = (LinkedNode<E>) LinkedNode.NEXT_HANDLE.getAcquire(curr);
++            if (next == null || next == curr) {
++                break;
++            }
++            if (currentVal == null) {
++                curr = next;
++                continue;
++            }
++            /* Since there are no reads concurrently they will just synchronize with these plain writes after reading head */
++            LinkedNode.ELEMENT_HANDLE.set(curr, null);
++            curr = next;
++
++            //noinspection unchecked
++            consumer.accept((E) currentVal);
++        }
++        HEAD_HANDLE.setVolatile(this, curr);
 +    }
 +
 +    private static final class LinkedNode<E> {
