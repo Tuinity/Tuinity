@@ -1,4 +1,4 @@
-From d91e00a2bf8cacc89c3496e97ed61e94ceb15665 Mon Sep 17 00:00:00 2001
+From 5bf6d0d19c0f4493d8d3e08451a4efbc6834269a Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
@@ -6,11 +6,11 @@ Subject: [PATCH] Multi-Threaded chunk ticking
 ---
  .../concrete/chunk/ChunkRegionManager.java    | 186 +++++
  .../concurrent/ConcurrentArrayQueue.java      | 461 +++++++++++
- .../concurrent/ConcurrentLinkedList.java      | 734 ++++++++++++++++++
+ .../concurrent/ConcurrentLinkedList.java      | 731 ++++++++++++++++++
  .../concrete/concurrent/ConcurrentUtil.java   |  39 +
  .../concrete/util/IntegerUtil.java            |  52 ++
- .../concrete/util/RegionChunkList.java        |  86 ++
- 6 files changed, 1558 insertions(+)
+ .../concrete/util/RegionChunkList.java        |  86 +++
+ 6 files changed, 1555 insertions(+)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
@@ -680,10 +680,10 @@ index 000000000..1f2ce7936
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
 new file mode 100644
-index 000000000..74ffae534
+index 000000000..3616c4ce0
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
-@@ -0,0 +1,734 @@
+@@ -0,0 +1,731 @@
 +package io.github.spottedleaf.concrete.concurrent;
 +
 +import java.lang.invoke.VarHandle;
@@ -803,10 +803,7 @@ index 000000000..74ffae534
 +     */
 +    @Override
 +    public boolean offer(final E element) {
-+        if (element == null) {
-+            throw new NullPointerException();
-+        }
-+        final LinkedNode<E> node = new LinkedNode<>(element, null);
++        final LinkedNode<E> node = new LinkedNode<>(validateNotNull(element), null);
 +        return this.appendList(node, node);
 +    }
 +
@@ -1021,7 +1018,7 @@ index 000000000..74ffae534
 +
 +        for (LinkedNode<E> curr = this.head;;) {
 +            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
-+            if (element == null) {
++            if (element != null) {
 +                //noinspection unchecked
 +                ret.add((T) element);
 +            }
@@ -1322,7 +1319,7 @@ index 000000000..74ffae534
 +                curr = next;
 +                continue;
 +            }
-+            /* Since there are no reads concurrently they will just synchronize with these plain writes after reading head */
++
 +            LinkedNode.ELEMENT_HANDLE.set(curr, null);
 +            curr = next;
 +
