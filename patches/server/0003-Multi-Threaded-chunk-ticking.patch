@@ -1,33 +1,30 @@
-From 5bf6d0d19c0f4493d8d3e08451a4efbc6834269a Mon Sep 17 00:00:00 2001
+From bfea6a10f7c5bdee46e4c82fdcfce364a6ca27e2 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
 Subject: [PATCH] Multi-Threaded chunk ticking
 
 ---
- .../concrete/chunk/ChunkRegionManager.java    | 186 +++++
- .../concurrent/ConcurrentArrayQueue.java      | 461 +++++++++++
- .../concurrent/ConcurrentLinkedList.java      | 731 ++++++++++++++++++
+ .../concrete/chunk/ChunkRegionManager.java    | 126 +++
+ .../concurrent/ConcurrentArrayQueue.java      | 461 ++++++++++
+ .../concurrent/ConcurrentLinkedList.java      | 846 ++++++++++++++++++
  .../concrete/concurrent/ConcurrentUtil.java   |  39 +
  .../concrete/util/IntegerUtil.java            |  52 ++
- .../concrete/util/RegionChunkList.java        |  86 +++
- 6 files changed, 1555 insertions(+)
+ 5 files changed, 1524 insertions(+)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentArrayQueue.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentUtil.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/IntegerUtil.java
- create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/RegionChunkList.java
 
 diff --git a/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
 new file mode 100644
-index 000000000..f333766da
+index 000000000..5e0e2ea99
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
-@@ -0,0 +1,186 @@
+@@ -0,0 +1,126 @@
 +package io.github.spottedleaf.concrete.chunk;
 +
 +import io.github.spottedleaf.concrete.concurrent.ConcurrentLinkedList;
-+import io.github.spottedleaf.concrete.util.RegionChunkList;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +import net.minecraft.server.Chunk;
 +
@@ -36,25 +33,7 @@ index 000000000..f333766da
 +
 +public class ChunkRegionManager {
 +
-+    public static final int REGION_WIDTH = 16; /* must be a power of two */
-+
 +    private final Long2ObjectOpenHashMap<ChunkRegion> regions = new Long2ObjectOpenHashMap<>(2048);
-+
-+    public static long getRegionKey(final int regionX, final int regionZ) {
-+        return (long)(regionX) | ((long)regionZ << 32);
-+    }
-+
-+    public static int getRegionX(final long key) {
-+        return (int)key;
-+    }
-+
-+    public static int getRegionZ(final long key) {
-+        return (int)(key >>> 32);
-+    }
-+
-+    public static int getRegionCoordinate(final int chunkCoord) {
-+        return chunkCoord >> 4;
-+    }
 +
 +    /**
 +     * Adds a chunk to this region manager. If {@code synchronously} is {@code true}, then the chunk's region
@@ -67,23 +46,7 @@ index 000000000..f333766da
 +     * @param synchronously Whether to add the chunk synchronously.
 +     */
 +    public void addChunk(final Chunk chunk, final boolean synchronously) {
-+        final int regionX = ChunkRegionManager.getRegionCoordinate(chunk.locX);
-+        final int regionZ = ChunkRegionManager.getRegionCoordinate(chunk.locZ);
-+        final long regionKey = ChunkRegionManager.getRegionKey(regionX, regionZ);
 +
-+        final ChunkRegion region;
-+        synchronized (this.regions) {
-+            region = this.regions.computeIfAbsent(regionKey, (final long key) -> {
-+                return new ChunkRegion(ChunkRegionManager.this, regionX, regionZ, key);
-+            });
-+        }
-+        if (synchronously) {
-+            region.acquireLock();
-+            region.addChunk(chunk);
-+            region.releaseLock();
-+        } else {
-+            region.executeNonUrgentTask((final ChunkRegion r) -> r.addChunk(chunk));
-+        }
 +    }
 +
 +    /**
@@ -92,15 +55,7 @@ index 000000000..f333766da
 +     * @param chunk The specified chunk.
 +     */
 +    public void addChunkRelaxed(final Chunk chunk) {
-+        final int regionX = ChunkRegionManager.getRegionCoordinate(chunk.locX);
-+        final int regionZ = ChunkRegionManager.getRegionCoordinate(chunk.locZ);
-+        final long regionKey = ChunkRegionManager.getRegionKey(regionX, regionZ);
 +
-+        final ChunkRegion region;
-+        synchronized (this.regions) {
-+            region = this.regions.get(regionKey);
-+        }
-+        region.addChunk(chunk);
 +    }
 +
 +    /**
@@ -112,26 +67,12 @@ index 000000000..f333766da
 +     * @param chunk The specified chunk.
 +     */
 +    public void removeChunk(final Chunk chunk) {
-+        final int regionX = ChunkRegionManager.getRegionCoordinate(chunk.locX);
-+        final int regionZ = ChunkRegionManager.getRegionCoordinate(chunk.locZ);
-+        final long regionKey = ChunkRegionManager.getRegionKey(regionX, regionZ);
 +
-+        final ChunkRegion region = this.regions.get(regionKey);
-+        if (region.chunkConut() == 1) {
-+            this.regions.remove(regionKey);
-+        } else {
-+            region.removeChunk(chunk);
-+        }
 +    }
 +
 +    public static class ChunkRegion {
 +
-+        public final long regionKey;
 +        public final ChunkRegionManager regionManager;
-+        public final int regionX;
-+        public final int regionZ;
-+
-+        public final RegionChunkList chunkList = new RegionChunkList();
 +
 +        private final ReentrantLock lock = new ReentrantLock();
 +
@@ -140,29 +81,28 @@ index 000000000..f333766da
 +         */
 +        private final ConcurrentLinkedList<Consumer<ChunkRegion>> tasks = new ConcurrentLinkedList<>();
 +
-+        public ChunkRegion(final ChunkRegionManager regionManager, final int regionX, final int regionZ, final long regionKey) {
++        public ChunkRegion(final ChunkRegionManager regionManager) {
 +            this.regionManager = regionManager;
-+            this.regionX = regionX;
-+            this.regionZ = regionZ;
-+            this.regionKey = regionKey;
 +            this.tasks.preventAdds(); /* Required since an add-blocked queue represents a free region */
 +        }
 +
 +        public void addChunk(final Chunk chunk) {
-+            this.chunkList.add(chunk);
++
 +        }
 +
 +        public void removeChunk(final Chunk chunk) {
-+            this.chunkList.remove(chunk);
++
 +        }
 +
 +        public int chunkConut() {
-+            return this.chunkList.size();
++
 +        }
 +
 +        private void drainTasks() {
 +            this.tasks.drain((final Consumer<ChunkRegion> consumer) -> {
 +                consumer.accept(ChunkRegion.this);
++            },true, (final Exception ex) -> {
++                throw new RuntimeException(ex);
 +            });
 +        }
 +
@@ -170,8 +110,6 @@ index 000000000..f333766da
 +            if (this.lock.getHoldCount() == 1) {
 +                /* This is required to prevent a race condition where a task is executed on a tick segment later than it is expected */
 +                this.drainTasks();
-+                this.tasks.preventAdds();
-+                this.drainTasks(); /* Double check */
 +            }
 +            this.lock.unlock();
 +        }
@@ -680,10 +618,10 @@ index 000000000..1f2ce7936
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
 new file mode 100644
-index 000000000..3616c4ce0
+index 000000000..cb5df1fcb
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/concurrent/ConcurrentLinkedList.java
-@@ -0,0 +1,731 @@
+@@ -0,0 +1,846 @@
 +package io.github.spottedleaf.concrete.concurrent;
 +
 +import java.lang.invoke.VarHandle;
@@ -717,6 +655,32 @@ index 000000000..3616c4ce0
 +    private static final VarHandle HEAD_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentLinkedList.class, "head", LinkedNode.class);
 +    private static final VarHandle TAIL_HANDLE = ConcurrentUtil.getVarHandle(ConcurrentLinkedList.class, "tail", LinkedNode.class);
 +
++    private void setHeadPlain(final LinkedNode<E> newHead) {
++        HEAD_HANDLE.set(this, newHead);
++    }
++
++    private void setTailPlain(final LinkedNode<E> newTail) {
++        TAIL_HANDLE.set(this, newTail);
++    }
++
++    private void setHeadOpaque(final LinkedNode<E> newHead) {
++        HEAD_HANDLE.setOpaque(this, newHead);
++    }
++
++    private void setTailOpaque(final LinkedNode<E> newTail) {
++        TAIL_HANDLE.setOpaque(this, newTail);
++    }
++
++    @SuppressWarnings("unchecked")
++    private LinkedNode<E> getHeadOpaque() {
++        return (LinkedNode<E>)HEAD_HANDLE.getOpaque(this);
++    }
++
++    @SuppressWarnings("unchecked")
++    private LinkedNode<E> getTailOpaque() {
++        return (LinkedNode<E>)TAIL_HANDLE.getOpaque(this);
++    }
++
 +    /**
 +     * Constructs a {@code ConcurrentLinkedList}, initially empty.
 +     * <p>
@@ -725,8 +689,8 @@ index 000000000..3616c4ce0
 +     */
 +    public ConcurrentLinkedList() {
 +        final LinkedNode<E> value = new LinkedNode<>(null, null);
-+        HEAD_HANDLE.set(this, value);
-+        TAIL_HANDLE.set(this, value);
++        this.setHeadPlain(value);
++        this.setTailPlain(value);
 +    }
 +
 +    /**
@@ -741,8 +705,8 @@ index 000000000..3616c4ce0
 +        final Iterator<? extends E> elements = collection.iterator();
 +        if (!elements.hasNext()) {
 +            final LinkedNode<E> value = new LinkedNode<>(null, null);
-+            HEAD_HANDLE.set(this, value);
-+            TAIL_HANDLE.set(this, value);
++            this.setHeadPlain(value);
++            this.setTailPlain(value);
 +            return;
 +        }
 +
@@ -751,12 +715,12 @@ index 000000000..3616c4ce0
 +
 +        while (elements.hasNext()) {
 +            final LinkedNode<E> next = new LinkedNode<>(validateNotNull(elements.next()), null);
-+            LinkedNode.NEXT_HANDLE.set(tail, next);
++            tail.setNextPlain(next);
 +            tail = next;
 +        }
 +
-+        HEAD_HANDLE.set(this, head);
-+        TAIL_HANDLE.set(this, tail);
++        this.setHeadPlain(head);
++        this.setTailPlain(tail);
 +    }
 +
 +    private static <T> T validateNotNull(final T value) {
@@ -833,22 +797,6 @@ index 000000000..3616c4ce0
 +    }
 +
 +    /**
-+     * Constant time clear operation for this queue. Note that it is possible that some threads reading the queue will not
-+     * be updated to this operation. For example, iterators and remove variants will not be notified, and sometimes
-+     * peek/poll will not be notified. If there are no concurrent accesses to this queue, then this method will have the
-+     * same effect as {@link #clear()}.
-+     * @return {@code true} if the queue was cleared, {@code false} otherwise.
-+     */
-+    public boolean fastClear() {
-+        final LinkedNode<E> newHead = new LinkedNode<>(null, null);
-+        if (!this.appendList(newHead, newHead)) {
-+            return false;
-+        }
-+        HEAD_HANDLE.setVolatile(this, newHead);
-+        return true;
-+    }
-+
-+    /**
 +     * Prevents elements from being added to this queue. Once this is called, any attempt to add to this queue will fail.
 +     * <p>
 +     * This function is MT-Safe.
@@ -857,11 +805,11 @@ index 000000000..3616c4ce0
 +     */
 +    public boolean preventAdds() {
 +        final LinkedNode<E> deadEnd = new LinkedNode<>(null, null);
-+        LinkedNode.NEXT_HANDLE.set(deadEnd, deadEnd);
++        deadEnd.setNextPlain(deadEnd);
 +        if (!this.appendList(deadEnd, deadEnd)) {
 +            return false;
 +        }
-+        TAIL_HANDLE.setRelease(this, deadEnd); /* Ensure tail is set for the following #allowAdds call */
++        this.setTailPlain(deadEnd); /* Ensure tail is set for the following #allowAdds call */
 +        return true;
 +    }
 +
@@ -873,8 +821,11 @@ index 000000000..3616c4ce0
 +     * </p>
 +     */
 +    public void allowAdds() {
-+        //noinspection unchecked
-+        LinkedNode.NEXT_HANDLE.setVolatile(((LinkedNode<E>)TAIL_HANDLE.get(this)), null);
++        LinkedNode<E> tail = this.getTailOpaque();
++        /* We need to find the tail given the cas on tail isn't atomic (nor volatile) in this.appendList */
++        /* Thus it is possible for an outdated tail to be set */
++        while (tail != (tail = tail.getNextPlain())) {}
++        tail.setNextVolatile(null);
 +    }
 +
 +    /**
@@ -885,19 +836,20 @@ index 000000000..3616c4ce0
 +        if (object == null) {
 +            throw new NullPointerException();
 +        }
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null) {
 +                if ((element == object || element.equals(object))
-+                        && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element) {
++                        && curr.getAndSetElementVolatile(null) == element) {
 +                    return true;
 +                }
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +        return false;
 +    }
@@ -908,17 +860,17 @@ index 000000000..3616c4ce0
 +    @Override
 +    public boolean removeIf(final Predicate<? super E> filter) {
 +        boolean ret = false;
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null) {
-+                //noinspection unchecked
-+                ret |= filter.test((E) element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
++                ret |= filter.test(element) && curr.getAndSetElementVolatile(null) == element;
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +        return ret;
 +    }
@@ -929,16 +881,17 @@ index 000000000..3616c4ce0
 +    @Override
 +    public boolean removeAll(final Collection<?> collection) {
 +        boolean ret = false;
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null) {
-+                ret |= collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
++                ret |= collection.contains(element) && curr.getAndSetElementVolatile(null) == element;
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +        return ret;
 +    }
@@ -949,16 +902,17 @@ index 000000000..3616c4ce0
 +    @Override
 +    public boolean retainAll(final Collection<?> collection) {
 +        boolean ret = false;
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null) {
-+                ret |= !collection.contains(element) && LinkedNode.ELEMENT_HANDLE.getAndSet( curr, null) == element;
++                ret |= !collection.contains(element) && curr.getAndSetElementVolatile(null) == element;
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +        return ret;
 +    }
@@ -970,17 +924,17 @@ index 000000000..3616c4ce0
 +    public Object[] toArray() {
 +        final List<E> ret = new ArrayList<>();
 +
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null) {
-+                //noinspection unchecked
-+                ret.add((E) element);
++                ret.add(element);
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +
 +        return ret.toArray();
@@ -993,17 +947,18 @@ index 000000000..3616c4ce0
 +    public <T> T[] toArray(final T[] array) {
 +        final List<T> ret = new ArrayList<>();
 +
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null) {
 +                //noinspection unchecked
 +                ret.add((T) element);
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +
 +        return ret.toArray(array);
@@ -1016,17 +971,18 @@ index 000000000..3616c4ce0
 +    public <T> T[] toArray(final IntFunction<T[]> generator) {
 +        final List<T> ret = new ArrayList<>();
 +
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null) {
 +                //noinspection unchecked
 +                ret.add((T) element);
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +
 +        return ret.toArray(generator);
@@ -1046,8 +1002,9 @@ index 000000000..3616c4ce0
 +        int totalEntries = 0;
 +        int aliveEntries = 0;
 +
-+        for (LinkedNode<E> curr = this.head;; ++totalEntries) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();; ++totalEntries) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element == null) {
 +                ++deadEntries;
 +            } else {
@@ -1060,11 +1017,10 @@ index 000000000..3616c4ce0
 +
 +            builder.append(totalEntries).append(": \"").append(element).append('"');
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
-+
++            curr = next;
 +        }
 +
 +        builder.append("}, total_entries: \"").append(totalEntries).append("\", alive_entries: \"").append(aliveEntries)
@@ -1084,14 +1040,14 @@ index 000000000..3616c4ce0
 +        }
 +
 +        /* Build a list of nodes to append */
-+        /* This is an order of magnitudes faster due to the fact that zero synchronization is performed */
++        /* This is an much faster due to the fact that zero additional synchronization is performed */
 +
 +        final LinkedNode<E> head = new LinkedNode<>(validateNotNull(elements.next()), null);
 +        LinkedNode<E> tail = head;
 +
 +        while (elements.hasNext()) {
 +            final LinkedNode<E> next = new LinkedNode<>(validateNotNull(elements.next()), null);
-+            LinkedNode.NEXT_HANDLE.set(tail, next);
++            tail.setNextPlain(next);
 +            tail = next;
 +        }
 +
@@ -1116,7 +1072,7 @@ index 000000000..3616c4ce0
 +     */
 +    @Override
 +    public Iterator<E> iterator() {
-+        return new LinkedIterator<>(this.head);
++        return new LinkedIterator<>(this.getHeadOpaque());
 +    }
 +
 +    /**
@@ -1129,16 +1085,17 @@ index 000000000..3616c4ce0
 +    @Override
 +    public int size() {
 +        int size = 0;
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null) {
 +                ++size;
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +        return size;
 +    }
@@ -1159,16 +1116,17 @@ index 000000000..3616c4ce0
 +        if (object == null) {
 +            throw new NullPointerException();
 +        }
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null && (element == object || element.equals(object))) {
 +                return true;
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +        return false;
 +    }
@@ -1181,40 +1139,38 @@ index 000000000..3616c4ce0
 +        if (action == null) {
 +            throw new NullPointerException();
 +        }
-+        for (LinkedNode<E> curr = this.head;;) {
-+            final Object element = LinkedNode.ELEMENT_HANDLE.getAcquire(curr); /* Likely in sync */
++        for (LinkedNode<E> curr = this.getHeadOpaque();;) {
++            final E element = curr.getElementPlain(); /* Likely in sync */
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            if (element != null) {
-+                //noinspection unchecked
-+                action.accept((E) element);
++                action.accept(element);
 +            }
 +
-+            final LinkedNode<E> next = curr.next;
 +            if (next == null || next == curr) {
 +                break;
 +            }
++            curr = next;
 +        }
 +    }
 +
 +    private boolean appendList(final LinkedNode<E> head, final LinkedNode<E> tail) {
 +        int failures = 0;
-+
-+        for (LinkedNode<E> currTail = this.tail, curr = currTail;;) {
++        for (LinkedNode<E> currTail = this.getTailOpaque(), curr = currTail;;) {
 +            /* It has been experimentally shown that placing the read before the backoff results in significantly greater performance */
 +            /* It is likely due to false sharing */
-+            final LinkedNode<E> next = curr.next;
++            final LinkedNode<E> next = curr.getNextVolatile();
 +            for (int i = 0; i < failures; ++i) {
 +                ConcurrentUtil.pause();
 +            }
 +            if (next == null) {
-+                //noinspection unchecked
-+                final LinkedNode<E> compared = (LinkedNode<E>) LinkedNode.NEXT_HANDLE.compareAndExchange(curr, null, head);
++                final LinkedNode<E> compared = curr.compreExchangeNextVolatile(null, head);
 +
 +                if (compared == null) {
 +                    /* Added */
-+                    if (curr != currTail) {
-+                        /* Avoid CASing on tail more than we need to */
-+                        /* CAS to avoid setting an out-of-date tail */
-+                        TAIL_HANDLE.weakCompareAndSet(this, currTail, tail);
++                    /* Avoid CASing on tail more than we need to */
++                    /* CAS to avoid setting an out-of-date tail */
++                    if (this.getTailOpaque() == currTail) {
++                        this.setTailOpaque(tail);
 +                    }
 +                    return true;
 +                }
@@ -1232,7 +1188,7 @@ index 000000000..3616c4ce0
 +                curr = next;
 +            } else {
 +                /* Try to update to tail */
-+                if (currTail == (currTail = this.tail)) {
++                if (currTail == (currTail = this.getTailOpaque())) {
 +                    curr = next;
 +                } else {
 +                    curr = currTail;
@@ -1243,35 +1199,39 @@ index 000000000..3616c4ce0
 +
 +    private E getHead(final boolean remove) {
 +        int failures = 0;
-+        for (LinkedNode<E> head = this.head, curr = head;;) {
-+            final Object currentVal = curr.element;
-+            //noinspection unchecked
-+            final LinkedNode<E> next = (LinkedNode<E>) LinkedNode.NEXT_HANDLE.getAcquire(curr);
++        for (LinkedNode<E> head = this.getHeadOpaque(), curr = head;;) {
++            final E currentVal = curr.getElementVolatile();
++            LinkedNode<E> next = null;
++            if (currentVal == null) {
++                next = curr.getNextPlain();
++            }
 +            for (int i = 0; i < failures; ++i) {
 +                ConcurrentUtil.pause();
 +            }
 +
 +            if (currentVal != null) {
 +                if (!remove) {
-+                    //noinspection unchecked
-+                    return (E) currentVal;
++                    return currentVal;
 +                }
-+                if (!LinkedNode.ELEMENT_HANDLE.compareAndSet(curr, currentVal, null)) {
++                if (curr.compareExchangeElementVolatile(currentVal, null) != currentVal) {
 +                    /* Failed to get head */
-+                    ++failures;
++                    next = curr.getNextPlain();
 +                    if (curr == (curr = next)) {
 +                        return null;
 +                    }
++                    ++failures;
 +                    continue;
 +                }
 +
 +                if (curr != head) {
++                    next = curr.getNextPlain();
 +                    /* Avoid CASing on head more than we need to */
 +                    /* CAS to avoid setting an out-of-date head */
-+                    HEAD_HANDLE.weakCompareAndSet(this, head, next != null ? next : curr);
++                    if (this.getHeadOpaque() == head) {
++                        this.setHeadOpaque(next != null ? next : curr);
++                    }
 +                }
-+                //noinspection unchecked
-+                return (E) currentVal;
++                return currentVal;
 +            }
 +
 +            if (next == null) {
@@ -1283,7 +1243,7 @@ index 000000000..3616c4ce0
 +                curr = next;
 +            } else {
 +                /* Try to update to head */
-+                if (head == (head = this.head)) {
++                if (head == (head = this.getHeadOpaque())) {
 +                    curr = next;
 +                } else {
 +                    curr = head;
@@ -1297,21 +1257,46 @@ index 000000000..3616c4ce0
 +     * be faster than a loop on {@link #poll()}.
 +     * <p>
 +     * This function is not MT-Safe. This function cannot be called with other read operations ({@link #peek()}, {@link #poll()},
-+     * {@link #clear()}, {@link #fastClear()}, etc).
++     * {@link #clear()}, etc).
 +     * Write operations are safe to be called concurrently.
 +     * </p>
 +     * @param consumer The consumer to accept the elements.
++     * @return The total number of elements drained.
 +     */
-+    public void drain(final Consumer<E> consumer) {
++    public int drain(final Consumer<E> consumer) {
++        return this.drain(consumer, false, (final Exception ex) -> {
++            throw new RuntimeException(ex);
++        });
++    }
++
++    /**
++     * Empties the queue into the specified consumer. This function is optimized for single-threaded reads, and should
++     * be faster than a loop on {@link #poll()}.
++     * <p>
++     * If {@code preventAdds} is {@code true}, then after this function returns the queue is guaranteed to be empty and
++     * additions to the queue will fail.
++     * </p>
++     * <p>
++     * This function is not MT-Safe. This function cannot be called with other read operations ({@link #peek()}, {@link #poll()},
++     * {@link #clear()}, {@link #remove(Object)} etc).
++     * Only write operations are safe to be called concurrently.
++     * </p>
++     * @param consumer The consumer to accept the elements.
++     * @param preventAdds Whether to prevent additions to this queue after draining.
++     * @param exceptionHandler Invoked when the consumer raises an exception.
++     * @return The total number of elements drained.
++     */
++    public int drain(final Consumer<E> consumer, final boolean preventAdds, final Consumer<Exception> exceptionHandler) {
++        /* This function assumes proper synchronization is made to ensure drain and no other read function are called concurrently */
++        /* This allows plain write usages instead of opaque or higher */
++        int total = 0;
 +        final LinkedNode<E> head;
-+        //noinspection unchecked
-+        LinkedNode<E> curr = head = (LinkedNode<E>) HEAD_HANDLE.getVolatile(this);
++        LinkedNode<E> curr = head = this.getHeadOpaque();
 +        for (;;) {
-+            final Object currentVal = LinkedNode.ELEMENT_HANDLE.get(curr);
++            final E currentVal = curr.getElementPlain();
 +
 +            /* Make sure to acquire with the write to the element field */
-+            //noinspection unchecked
-+            final LinkedNode<E> next = (LinkedNode<E>) LinkedNode.NEXT_HANDLE.getAcquire(curr);
++            LinkedNode<E> next = curr.getNextAcquire();
 +            if (next == curr) {
 +                break;
 +            }
@@ -1320,18 +1305,32 @@ index 000000000..3616c4ce0
 +                continue;
 +            }
 +
-+            LinkedNode.ELEMENT_HANDLE.set(curr, null);
-+            curr = next;
++            curr.setElementPlain(null);
++            ++total;
 +
-+            //noinspection unchecked
-+            consumer.accept((E) currentVal);
++            try {
++                consumer.accept(currentVal);
++            } catch (final Exception ex) {
++                this.setHeadPlain(next != null ? next : curr); /* Avoid perf penalty if the exception handler decides to re-throw */
++                exceptionHandler.accept(ex);
++            }
++
 +            if (next == null) {
++                if (preventAdds) {
++                    if ((next = curr.compreExchangeNextVolatile(null, curr)) != null) {
++                        /* Retry with next value */
++                        curr = next;
++                        continue;
++                    }
++                }
 +                break;
 +            }
++            curr = next;
 +        }
 +        if (curr != head) {
-+            HEAD_HANDLE.setVolatile(this, curr);
++            this.setHeadOpaque(curr);
 +        }
++        return total;
 +    }
 +
 +    private static final class LinkedNode<E> {
@@ -1347,6 +1346,61 @@ index 000000000..3616c4ce0
 +            NEXT_HANDLE.set(this, next);
 +        }
 +
++        public void setElementPlain(final E update) {
++            ELEMENT_HANDLE.set(this, (Object)update);
++        }
++
++        public void setElementOpaque(final E update) {
++            ELEMENT_HANDLE.setOpaque(this, (Object)update);
++        }
++
++        @SuppressWarnings("unchecked")
++        public E getElementPlain() {
++            return (E)ELEMENT_HANDLE.get(this);
++        }
++
++        @SuppressWarnings("unchecked")
++        public E getElementVolatile() {
++            return (E)ELEMENT_HANDLE.getVolatile(this);
++        }
++
++        @SuppressWarnings("unchecked")
++        public E compareExchangeElementVolatile(final E expect, final E update) {
++            return (E)ELEMENT_HANDLE.compareAndExchange(this, expect, update);
++        }
++
++        @SuppressWarnings("unchecked")
++        public E getAndSetElementVolatile(final E update) {
++            return (E)ELEMENT_HANDLE.getAndSet(this, update);
++        }
++
++        public void setNextPlain(final LinkedNode<E> next) {
++            NEXT_HANDLE.set(this, next);
++        }
++
++        public void setNextVolatile(final LinkedNode<E> next) {
++            NEXT_HANDLE.setVolatile(this, next);
++        }
++
++        @SuppressWarnings("unchecked")
++        public LinkedNode<E> compreExchangeNextVolatile(final LinkedNode<E> expect, final LinkedNode<E> set) {
++            return (LinkedNode<E>)NEXT_HANDLE.compareAndExchange(this, expect, set);
++        }
++
++        @SuppressWarnings("unchecked")
++        public LinkedNode<E> getNextPlain() {
++            return (LinkedNode<E>)NEXT_HANDLE.get(this);
++        }
++
++        @SuppressWarnings("unchecked")
++        public LinkedNode<E> getNextAcquire() {
++            return (LinkedNode<E>)NEXT_HANDLE.getAcquire(this);
++        }
++
++        @SuppressWarnings("unchecked")
++        public LinkedNode<E> getNextVolatile() {
++            return (LinkedNode<E>)NEXT_HANDLE.getVolatile(this);
++        }
 +    }
 +
 +    private static final class LinkedIterator<E> implements Iterator<E> {
@@ -1362,14 +1416,13 @@ index 000000000..3616c4ce0
 +        private void findNext() {
 +            LinkedNode<E> curr = this.curr;
 +            for (;curr != null;) {
-+                //noinspection unchecked
-+                final E element = (E) LinkedNode.ELEMENT_HANDLE.getAcquire(curr);
++                final E element = (E) curr.getElementPlain();
++                final LinkedNode<E> next = curr.getNextVolatile();
 +                if (element != null) {
 +                    this.curr = curr;
 +                    this.next = element;
 +                    return;
 +                }
-+                final LinkedNode<E> next = curr.next;
 +                if (next == curr) {
 +                    break;
 +                }
@@ -1410,7 +1463,7 @@ index 000000000..3616c4ce0
 +            if (this.next == null) {
 +                throw new IllegalStateException();
 +            }
-+            LinkedNode.ELEMENT_HANDLE.setVolatile(this.curr, null);
++            this.curr.setElementOpaque(null);
 +            this.next = null;
 +        }
 +    }
@@ -1520,99 +1573,6 @@ index 000000000..81f974cb2
 +    }
 +
 +}
-diff --git a/src/main/java/io/github/spottedleaf/concrete/util/RegionChunkList.java b/src/main/java/io/github/spottedleaf/concrete/util/RegionChunkList.java
-new file mode 100644
-index 000000000..c0b66231b
---- /dev/null
-+++ b/src/main/java/io/github/spottedleaf/concrete/util/RegionChunkList.java
-@@ -0,0 +1,86 @@
-+package io.github.spottedleaf.concrete.util;
-+
-+import io.github.spottedleaf.concrete.chunk.ChunkRegionManager;
-+import net.minecraft.server.Chunk;
-+
-+import java.util.function.Consumer;
-+
-+public class RegionChunkList {
-+
-+    private final long[] keyset = new long[ChunkRegionManager.REGION_WIDTH * ChunkRegionManager.REGION_WIDTH / Long.SIZE];
-+
-+    private final Chunk[] chunks = new Chunk[ChunkRegionManager.REGION_WIDTH * ChunkRegionManager.REGION_WIDTH];
-+
-+    private int size;
-+
-+    public int size() {
-+        return this.size;
-+    }
-+
-+    public void add(final Chunk chunk) {
-+        final int x = chunk.locX & (ChunkRegionManager.REGION_WIDTH - 1);
-+        final int z = chunk.locZ & (ChunkRegionManager.REGION_WIDTH - 1);
-+
-+        final int arrayIndex = (z << 4) | x;
-+
-+        final int keysetIndex = z >>> 2;
-+        final int keysetBitfield = ((z & 0xF) << 4) | x;
-+
-+        final long chunkField = 1 << keysetBitfield;
-+        long curr = this.keyset[keysetIndex];
-+        if (curr == (curr |= chunkField)) {
-+            throw new IllegalStateException("Already contains chunk (" + x + "," + z + ")");
-+        }
-+
-+        this.keyset[keysetIndex] = curr;
-+        this.chunks[arrayIndex] = chunk;
-+        ++this.size;
-+    }
-+
-+    public Chunk getChunk(final int chunkX, final int chunkZ) {
-+        final int x = chunkX & (ChunkRegionManager.REGION_WIDTH - 1);
-+        final int z = chunkZ & (ChunkRegionManager.REGION_WIDTH - 1);
-+        return this.chunks[(z << 4) | x];
-+    }
-+
-+    public Chunk remove(final Chunk chunk) {
-+        return this.remove(chunk.locX, chunk.locZ);
-+    }
-+
-+    public Chunk remove(final int chunkX, final int chunkZ) {
-+        final int x = chunkX & (ChunkRegionManager.REGION_WIDTH - 1);
-+        final int z = chunkZ & (ChunkRegionManager.REGION_WIDTH - 1);
-+
-+        final int arrayIndex = (z << 4) | x;
-+
-+        final int keysetIndex = z >>> 2;
-+        final int keysetBitfield = ((z & 0xF) << 4) | x;
-+
-+        final long chunkField = 1 << keysetBitfield;
-+        long curr = this.keyset[keysetIndex];
-+        if (curr < (curr ^= chunkField)) {
-+            /* If the chunk isn't mapped, then the XOR op will add a bitfield to the current value thus causing the value to be greater-than previous */
-+            throw new IllegalStateException("Does not contain chunk (" + x + "," + z + ")");
-+        }
-+
-+        this.keyset[keysetIndex] = curr;
-+
-+        final Chunk ret = this.chunks[arrayIndex];
-+        this.chunks[arrayIndex] = null;
-+        --this.size;
-+        return ret;
-+    }
-+
-+    public void forEach(final Consumer<Chunk> consumer) {
-+        for (int i = 0; i < this.keyset.length; ++i) {
-+            long curr = this.keyset[i];
-+            final int offset = i << 6;
-+            while (curr != 0) {
-+                final int trailing = Long.numberOfTrailingZeros(curr);
-+                curr ^= (1 << trailing);
-+                consumer.accept(this.chunks[offset + trailing]);
-+            }
-+        }
-+    }
-+
-+}
-\ No newline at end of file
 -- 
 2.20.1
 
