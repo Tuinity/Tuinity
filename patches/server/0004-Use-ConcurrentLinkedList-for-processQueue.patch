@@ -1,0 +1,60 @@
+From 17038fe8a1b5f8a7590eb79ed99a0cd5c5422b75 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sat, 5 Jan 2019 11:48:09 -0800
+Subject: [PATCH] Use ConcurrentLinkedList for processQueue
+
+---
+ .../net/minecraft/server/MinecraftServer.java    | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 3b1349d77..d4c41bd7f 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -119,7 +119,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
+     private final GameProfileRepository W;
+     private final UserCache X;
+     private long Y;
+-    protected final Queue<FutureTask<?>> f = Queues.newConcurrentLinkedQueue();
++    protected final io.github.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<FutureTask<?>> f = new io.github.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); /* Concrete - Use CLL */
+     private Thread serverThread;
+     private long nextTick = SystemUtils.getMonotonicMillis();
+     private final IReloadableResourceManager ac;
+@@ -146,7 +146,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
+     public static int currentTick = 0; // Paper - Further improve tick loop
+     public boolean serverAutoSave = false; // Paper
+     public final Thread primaryThread;
+-    public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
++    public io.github.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<Runnable> processQueue = new io.github.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); /* Concrete - Use CLL */
+     public int autosavePeriod;
+     public File bukkitDataPackFolder;
+     public CommandDispatcher vanillaCommandDispatcher;
+@@ -1007,9 +1007,11 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
+ 
+         FutureTask futuretask;
+ 
+-        while ((futuretask = (FutureTask) this.f.poll()) != null) {
+-            SystemUtils.a(futuretask, MinecraftServer.LOGGER);
+-        }
++        /* Concrete - Use CLL drain */
++        this.f.drain((final FutureTask<?> task) -> {
++            SystemUtils.a(task, MinecraftServer.LOGGER);
++        });
++        /* Concrete end */
+         PaperAsyncChunkProvider.processMainThreadQueue(this); // Paper
+         MinecraftTimings.minecraftSchedulerTimer.stopTiming(); // Paper
+ 
+@@ -1022,9 +1024,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
+         // CraftBukkit start
+         // Run tasks that are waiting on processing
+         MinecraftTimings.processQueueTimer.startTiming(); // Spigot
+-        while (!processQueue.isEmpty()) {
+-            processQueue.remove().run();
+-        }
++        processQueue.drain(Runnable::run); /* Concrete - Use efficient drain method */
+         MinecraftTimings.processQueueTimer.stopTiming(); // Spigot
+ 
+         MinecraftTimings.chunkIOTickTimer.startTiming(); // Spigot
+-- 
+2.20.1
+

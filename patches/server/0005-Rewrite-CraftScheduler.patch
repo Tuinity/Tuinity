@@ -1,0 +1,1183 @@
+From 6b79f56518d5da91d5c5c4aee7966f524083e72f Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 13 Jan 2019 12:50:34 -0800
+Subject: [PATCH] Rewrite CraftScheduler
+
+---
+ .../concrete/scheduler/AsyncConcreteTask.java | 253 ++++++++++++
+ .../scheduler/AsyncTaskScheduler.java         |  97 +++++
+ .../concrete/scheduler/ConcreteScheduler.java | 376 ++++++++++++++++++
+ .../concrete/scheduler/ConcreteTask.java      | 207 ++++++++++
+ .../concrete/scheduler/TaskScheduler.java     | 172 ++++++++
+ .../org/bukkit/craftbukkit/CraftServer.java   |   4 +-
+ 6 files changed, 1107 insertions(+), 2 deletions(-)
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
+
+diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
+new file mode 100644
+index 000000000..3cceefd62
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
+@@ -0,0 +1,253 @@
++package io.github.spottedleaf.concrete.scheduler;
++
++import io.github.spottedleaf.concurrentutil.ConcurrentUtil;
++import org.bukkit.plugin.Plugin;
++import org.bukkit.scheduler.BukkitTask;
++import org.bukkit.scheduler.BukkitWorker;
++
++import java.lang.invoke.VarHandle;
++import java.util.ArrayDeque;
++import java.util.List;
++import java.util.function.Consumer;
++
++public class AsyncConcreteTask extends ConcreteTask {
++
++    final ArrayDeque<ConcreteWorker> workers = new ArrayDeque<>();
++
++    /* when lower 32bits is running or runningtrycancel, upper 32bits represents the number of running tasks. */
++    volatile long asyncState;
++    private static final long RUNNER_INCREMENT = 1L << 32;
++    private static final long RUNNER_MASK = (Long.MIN_VALUE >> 31);
++
++    private static final VarHandle ASYNC_STATE_HANDLE = ConcurrentUtil.getVarHandle(AsyncConcreteTask.class, "asyncState", long.class);
++
++    public AsyncConcreteTask(final int id, final Consumer<BukkitTask> task, final Plugin plugin,
++                        final long period, final long nextRun, final TaskScheduler scheduler) {
++        super(id, task, plugin, period, nextRun, scheduler);
++    }
++
++    @Override
++    int compareExchangeStateVolatile(final int expect, final int update) {
++        throw new UnsupportedOperationException(); // for debug
++    }
++
++    @Override
++    void setStateVolatile(final int state) {
++        throw new UnsupportedOperationException(); // for debug
++    }
++
++    @Override
++    int getStateVolatile() {
++        return (int)this.getAsyncStateVolatile();
++    }
++
++    long getAsyncStateVolatile() {
++        return (long)ASYNC_STATE_HANDLE.getVolatile(this);
++    }
++
++    void setAsyncStateVolatile(final long val) {
++        ASYNC_STATE_HANDLE.setVolatile(this, val);
++    }
++
++    long compareExchangeAsyncStateVolatile(final long expect, final long update) {
++        return (long)ASYNC_STATE_HANDLE.compareAndExchange(this, expect, update);
++    }
++
++    void tryFinishError() {
++        this.setAsyncStateVolatile(ConcreteTask.ERROR_FINISHED);
++    }
++
++    @Override
++    boolean tryFinish() {
++        for (long curr = this.getAsyncStateVolatile();;) {
++            if (curr == ConcreteTask.FINISHED || curr == ConcreteTask.ERROR_FINISHED) {
++                return false;
++            }
++            if (curr == ConcreteTask.CANCELLED_TASK) {
++                throw new IllegalStateException("curr =" + curr);
++            }
++            final int currState = (int)curr;
++            if (this.period == ConcreteTask.RUN_ONCE && currState == ConcreteTask.RUNNING) {
++                this.setAsyncStateVolatile(ConcreteTask.FINISHED); /* Only this thread can modify state */
++                return false;
++            }
++            final long runners = curr & AsyncConcreteTask.RUNNER_MASK;
++            if (runners == AsyncConcreteTask.RUNNER_INCREMENT) {
++                /* 1 runner */
++                if (currState == ConcreteTask.RUNNING_TRYCANCEL) {
++                    if (curr == (curr = this.compareExchangeAsyncStateVolatile(curr, ConcreteTask.CANCELLED_TASK))) {
++                        return false;
++                    }
++                    continue;
++                }
++                if (currState == ConcreteTask.RUNNING) {
++                    if (curr == (curr = this.compareExchangeAsyncStateVolatile(curr, ConcreteTask.QUEUED))) {
++                        return true;
++                    }
++                    continue;
++                }
++                throw new IllegalStateException("curr =" + curr);
++            }
++
++            if (currState != ConcreteTask.RUNNING && currState != ConcreteTask.RUNNING_TRYCANCEL) {
++                throw new IllegalStateException("curr =" + curr);
++            }
++
++            if (curr == (curr = this.compareExchangeAsyncStateVolatile(curr, curr - AsyncConcreteTask.RUNNER_INCREMENT))) {
++                return true;
++            }
++            continue;
++        }
++    }
++
++    @Override
++    boolean tryCancel() {
++        for (long curr = this.getAsyncStateVolatile();;) {
++            if (curr == ConcreteTask.FINISHED || curr == ConcreteTask.ERROR_FINISHED || curr == ConcreteTask.CANCELLED_TASK) {
++                return false;
++            }
++
++            final int currState = (int)curr;
++            if (this.period == ConcreteTask.RUN_ONCE && currState == ConcreteTask.RUNNING) {
++                return false;
++            }
++            if (currState == ConcreteTask.RUNNING_TRYCANCEL) {
++                return false;
++            }
++            if (currState == ConcreteTask.QUEUED) {
++                if (curr == (curr = this.compareExchangeAsyncStateVolatile(curr, ConcreteTask.CANCELLED_TASK))) {
++                    return true;
++                }
++                continue;
++            }
++            // debug
++            if (currState != ConcreteTask.RUNNING) {
++                throw new IllegalStateException("state: " + curr);
++            }
++            // debug
++            /* Must be running at this stage */
++            if (curr == (curr = this.compareExchangeAsyncStateVolatile(curr, (curr ^ ConcreteTask.RUNNING) + ConcreteTask.RUNNING_TRYCANCEL))) {
++                return true;
++            }
++            continue;
++        }
++    }
++
++    @Override
++    boolean trySetRunning() {
++        for (long curr = this.getAsyncStateVolatile();;) {
++            if (curr == ConcreteTask.FINISHED || curr == ConcreteTask.ERROR_FINISHED || curr == ConcreteTask.CANCELLED_TASK) {
++                return false;
++            }
++
++            final int currState = (int)curr;
++            if (this.period == ConcreteTask.RUN_ONCE && currState == ConcreteTask.RUNNING) {
++                return false;
++            }
++            if (currState == ConcreteTask.RUNNING_TRYCANCEL) {
++                return false;
++            }
++            if (currState == ConcreteTask.QUEUED) {
++                if (curr == (curr = this.compareExchangeAsyncStateVolatile(curr, (RUNNER_INCREMENT + ConcreteTask.QUEUED)))) {
++                    return true;
++                }
++                continue;
++            }
++            // debug
++            if (currState != ConcreteTask.RUNNING) {
++                throw new IllegalStateException("state: " + curr);
++            }
++            // debug
++            /* Must be running at this stage */
++            if (curr == (curr = this.compareExchangeAsyncStateVolatile(curr, curr + AsyncConcreteTask.RUNNER_INCREMENT))) {
++                return true;
++            }
++            continue;
++        }
++    }
++
++    boolean needsRemoving() {
++        final int state = (int)this.getAsyncStateVolatile();
++        return state == ConcreteTask.ERROR_FINISHED || state == ConcreteTask.FINISHED || state == ConcreteTask.CANCELLED_TASK;
++    }
++
++    boolean canSchedule() {
++        final int state = (int)this.getAsyncStateVolatile();
++        return state == ConcreteTask.QUEUED || state == ConcreteTask.RUNNING;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean isSync() {
++        return false;
++    }
++
++    @Override
++    public void run() {
++        /* This is called on its own thread */
++        final Thread currentThread = Thread.currentThread();
++        final ConcreteWorker thisWorker = new ConcreteWorker(this.id, currentThread, this.plugin);
++
++        final Consumer<BukkitTask> task = this.task;
++
++        if (task == null || !this.trySetRunning()) {
++            return; /* if cancelled for whatever reason */
++        }
++
++        synchronized (this.workers) {
++            this.workers.add(thisWorker);
++        }
++
++        try {
++            task.accept(this);
++            this.tryFinish();
++        } catch (final Throwable throwable) {
++            this.tryFinishError();
++            /* TODO: Handle ex */
++
++            if (throwable instanceof ThreadDeath) {
++                throw (ThreadDeath) throwable;
++            }
++        } finally {
++            synchronized (this.workers) {
++                this.workers.removeFirstOccurrence(thisWorker);
++            }
++        }
++    }
++
++    public void getWorkers(final List<BukkitWorker> workers) {
++        synchronized (this.workers) {
++            workers.addAll(this.workers);
++        }
++    }
++
++    class ConcreteWorker implements BukkitWorker {
++
++        public final int id;
++        public final Thread thread;
++        public final Plugin owner;
++
++        ConcreteWorker(final int id, final Thread thread, final Plugin owner) {
++            this.id = id;
++            this.thread = thread;
++            this.owner = owner;
++        }
++
++        @Override
++        public Plugin getOwner() {
++            return this.owner;
++        }
++
++        @Override
++        public int getTaskId() {
++            return this.id;
++        }
++
++        @Override
++        public Thread getThread() {
++            return this.thread;
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
+new file mode 100644
+index 000000000..892afac5a
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
+@@ -0,0 +1,97 @@
++package io.github.spottedleaf.concrete.scheduler;
++
++import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
++import org.bukkit.plugin.Plugin;
++import org.bukkit.scheduler.BukkitTask;
++import org.bukkit.scheduler.BukkitWorker;
++
++import java.util.List;
++import java.util.concurrent.LinkedBlockingQueue;
++import java.util.concurrent.ThreadPoolExecutor;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicInteger;
++import java.util.function.Consumer;
++
++public class AsyncTaskScheduler extends TaskScheduler {
++
++    private final ThreadPoolExecutor asyncExecutor;
++
++    AsyncTaskScheduler(final int initId, final int delta) {
++        super(initId, delta);
++        final AtomicInteger threadIds = new AtomicInteger();
++        this.asyncExecutor = new ThreadPoolExecutor(Runtime.getRuntime().availableProcessors(), Integer.MAX_VALUE,
++                    1, TimeUnit.MINUTES, new LinkedBlockingQueue<>(), (final Runnable runnable) -> {
++            final Thread ret = new Thread(runnable);
++            ret.setName("Concrete Asynchronous Task Executor #" + threadIds.getAndIncrement());
++
++            return ret;
++        });
++    }
++
++    @Override
++    protected ConcreteTask createTask(final int id, final Consumer<BukkitTask> task, final Plugin plugin, final long period, final long nextRun) {
++        return new AsyncConcreteTask(id, task, plugin, period, nextRun, this);
++    }
++
++    @Override
++    public void heartbeat(final long currentTick) {
++        this.currentTick = currentTick;
++
++        this.repeatQueue.removeIf((final ConcreteTask task0) -> {
++            final AsyncConcreteTask task = (AsyncConcreteTask) task0;
++
++            if (task.needsRemoving()) {
++                this.tasksById.remove(Integer.valueOf(task.id));
++                return true;
++            }
++
++            if (!task.canSchedule()) {
++                return false;
++            }
++
++            final long nextRun = task.nextRun;
++            if (nextRun <= currentTick && nextRun != -1L) {
++                this.asyncExecutor.execute(task);
++                if (task.period == ConcreteTask.RUN_ONCE) {
++                    task.nextRun = -1L;
++                    return false;
++                }
++                task.nextRun = currentTick + task.period;
++            }
++            return false;
++        });
++
++        this.pending.drain((final ConcreteTask task0) -> {
++            final AsyncConcreteTask task = (AsyncConcreteTask) task0;
++
++            if (!task.canSchedule() || task.needsRemoving()) {
++                return;
++            }
++
++            final long nextRun = task.nextRun;
++            if (nextRun <= currentTick) {
++                this.asyncExecutor.execute(task);
++
++                if (task.period != ConcreteTask.RUN_ONCE) {
++                    task.nextRun = currentTick + task.period;
++                } else {
++                    task.nextRun = -1L;
++                }
++            }
++
++            /* We still keep one-time tasks since they need to be able to be accounted for (i.e getWorkers) */
++            this.repeatQueue.add(task);
++            this.tasksById.put(Integer.valueOf(task.id), task);
++        });
++
++    }
++
++    public void getWorkers(final List<BukkitWorker> workers) {
++        final IntOpenHashSet checked = new IntOpenHashSet(Math.max(32, this.tasksById.size()));
++        this.forEachTask((final ConcreteTask task) -> {
++            if (checked.add(task.id)) {
++                ((AsyncConcreteTask)task).getWorkers(workers);
++            }
++        });
++    }
++}
+diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
+new file mode 100644
+index 000000000..2a84ba44f
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
+@@ -0,0 +1,376 @@
++package io.github.spottedleaf.concrete.scheduler;
++
++import org.bukkit.plugin.IllegalPluginAccessException;
++import org.bukkit.plugin.Plugin;
++import org.bukkit.scheduler.BukkitRunnable;
++import org.bukkit.scheduler.BukkitScheduler;
++import org.bukkit.scheduler.BukkitTask;
++import org.bukkit.scheduler.BukkitWorker;
++
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++import java.util.concurrent.*;
++import java.util.function.Consumer;
++
++public class ConcreteScheduler implements BukkitScheduler {
++
++    private final TaskScheduler mainScheduler = new TaskScheduler(2, 2);
++    private final AsyncTaskScheduler offMainScheduler = new AsyncTaskScheduler(1, 2);
++
++    static final int RUN_IMMEDIATELY = 0;
++
++    private final ExecutorService ASYNC_MANAGER = Executors.newSingleThreadExecutor((final Runnable runnable) -> {
++        final Thread ret = new Thread(runnable);
++        ret.setName("Concrete Off-Main Thread Scheduler Master");
++
++        return ret;
++    });
++
++    private static boolean isMain(final int taskId) {
++        return (taskId & 1) == 0;
++    }
++
++    public ConcreteTask getTaskById(final int id) {
++        if (isMain(id)) {
++            return this.mainScheduler.getTask(id);
++        } else {
++            return this.offMainScheduler.getTask(id);
++        }
++    }
++
++    private static void checkPlugin(final Plugin plugin) {
++        if (plugin == null) {
++            throw new NullPointerException("plugin is null");
++        }
++        if (!plugin.isEnabled()) {
++            throw new IllegalPluginAccessException("Plugin attempted to register task while disabled");
++        }
++    }
++
++    public ConcreteTask scheduleTask(final Consumer<BukkitTask> task, final Plugin plugin, final long delay,
++                                     long period, final boolean onMain) {
++        checkPlugin(plugin);
++        return onMain ? this.mainScheduler.scheduleTask(task, plugin, delay, period) :
++                        this.offMainScheduler.scheduleTask(task, plugin, delay, period);
++    }
++
++
++    public void mainThreadHeartbeat(final long currentTick) {
++        this.ASYNC_MANAGER.submit(() -> {
++            ConcreteScheduler.this.offMainScheduler.heartbeat(currentTick);
++        });
++        this.mainScheduler.heartbeat(currentTick);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public List<BukkitTask> getPendingTasks() {
++        final List<BukkitTask> ret = new ArrayList<>();
++        this.mainScheduler.getPendingTasks(ret);
++        this.offMainScheduler.getPendingTasks(ret);
++        return Collections.unmodifiableList(ret);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public List<BukkitWorker> getActiveWorkers() {
++        final List<BukkitWorker> ret = new ArrayList<>();
++        this.offMainScheduler.getWorkers(ret);
++        return ret;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void cancelTasks(final Plugin plugin) {
++        this.offMainScheduler.cancelTasks(plugin);
++        this.mainScheduler.cancelTasks(plugin);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void cancelTask(final int taskId) {
++        final ConcreteTask task = this.getTaskById(taskId);
++        if (task != null) {
++            task.cancel();
++        }
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean isCurrentlyRunning(final int taskId) {
++        final ConcreteTask task = this.getTaskById(taskId);
++        if (task == null) {
++            return false;
++        }
++        final int state = task.getStateVolatile();
++        return state == ConcreteTask.RUNNING || state == ConcreteTask.RUNNING_TRYCANCEL;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean isQueued(final int taskId) {
++        final ConcreteTask task = this.getTaskById(taskId);
++        if (task == null) {
++            return false;
++        }
++
++        return task.getStateVolatile() == ConcreteTask.QUEUED;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public <T> Future<T> callSyncMethod(final Plugin plugin, final Callable<T> task) {
++        final CompletableFuture<T> future = new CompletableFuture<>() {
++            @Override
++            public synchronized boolean cancel(final boolean mayInterruptIfRunning) {
++                return super.cancel(mayInterruptIfRunning);
++            }
++        };
++
++        this.runTask(plugin, () -> {
++            synchronized (future) {
++                if (future.isCancelled()) {
++                    return;
++                }
++                try {
++                    future.complete(task.call());
++                } catch (final Exception ex) {
++                    future.completeExceptionally(ex);
++                }
++            }
++        });
++
++        return future;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTask(final Plugin plugin, final Runnable task) throws IllegalArgumentException {
++        return this.scheduleTask((final BukkitTask unused) -> task.run(), plugin, ConcreteScheduler.RUN_IMMEDIATELY, ConcreteTask.RUN_ONCE, true);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTaskAsynchronously(final Plugin plugin, final Runnable task) throws IllegalArgumentException {
++        return this.scheduleTask((final BukkitTask unused) -> task.run(), plugin, ConcreteScheduler.RUN_IMMEDIATELY, ConcreteTask.RUN_ONCE, false);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTaskLater(final Plugin plugin, final Runnable task, final long delay) throws IllegalArgumentException {
++        return this.scheduleTask((final BukkitTask unused) -> task.run(), plugin, delay, ConcreteTask.RUN_ONCE, true);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTaskLaterAsynchronously(final Plugin plugin, final Runnable task, final long delay) throws IllegalArgumentException {
++        return this.scheduleTask((final BukkitTask unused) -> task.run(), plugin, delay, ConcreteTask.RUN_ONCE, false);
++    }
++    /**
++     * {@inheritDoc}
++     */
++
++    @Override
++    public BukkitTask runTaskTimer(final Plugin plugin, final Runnable task, final long delay, final long period) throws IllegalArgumentException {
++        return this.scheduleTask((final BukkitTask unused) -> task.run(), plugin, delay, period, true);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTaskTimerAsynchronously(final Plugin plugin, final Runnable task, final long delay, final long period) throws IllegalArgumentException {
++        return this.scheduleTask((final BukkitTask unused) -> task.run(), plugin, delay, period, false);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void runTask(final Plugin plugin, final Consumer<BukkitTask> task) throws IllegalArgumentException {
++        this.scheduleTask(task, plugin, ConcreteScheduler.RUN_IMMEDIATELY, ConcreteTask.RUN_ONCE, true);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void runTaskAsynchronously(final Plugin plugin, final Consumer<BukkitTask> task) throws IllegalArgumentException {
++        this.scheduleTask(task, plugin, ConcreteScheduler.RUN_IMMEDIATELY, ConcreteTask.RUN_ONCE, false);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void runTaskLater(final Plugin plugin, final Consumer<BukkitTask> task, final long delay) throws IllegalArgumentException {
++        this.scheduleTask(task, plugin, delay, ConcreteTask.RUN_ONCE, true);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void runTaskLaterAsynchronously(final Plugin plugin, final Consumer<BukkitTask> task, final long delay) throws IllegalArgumentException {
++        this.scheduleTask(task, plugin, delay, ConcreteTask.RUN_ONCE, false);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void runTaskTimer(final Plugin plugin, final Consumer<BukkitTask> task, final long delay, final long period) throws IllegalArgumentException {
++        this.scheduleTask(task, plugin, delay, period, true);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void runTaskTimerAsynchronously(final Plugin plugin, final Consumer<BukkitTask> task, final long delay, final long period) throws IllegalArgumentException {
++        this.scheduleTask(task, plugin, delay, period, false);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTask(final Plugin plugin, final BukkitRunnable task) throws IllegalArgumentException {
++        return task.runTask(plugin);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTaskAsynchronously(final Plugin plugin, final BukkitRunnable task) throws IllegalArgumentException {
++        return task.runTaskAsynchronously(plugin);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTaskLater(final Plugin plugin, final BukkitRunnable task, final long delay) throws IllegalArgumentException {
++        return task.runTaskLater(plugin, delay);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTaskLaterAsynchronously(final Plugin plugin, final BukkitRunnable task, final long delay) throws IllegalArgumentException {
++        return task.runTaskLaterAsynchronously(plugin, delay);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTaskTimer(final Plugin plugin, final BukkitRunnable task, final long delay, final long period) throws IllegalArgumentException {
++        return task.runTaskTimer(plugin, delay, period);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public BukkitTask runTaskTimerAsynchronously(final Plugin plugin, final BukkitRunnable task, final long delay, final long period) throws IllegalArgumentException {
++        return task.runTaskTimerAsynchronously(plugin, delay, period);
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int scheduleSyncDelayedTask(final Plugin plugin, final Runnable task) {
++        return this.runTask(plugin, task).getTaskId();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int scheduleSyncDelayedTask(final Plugin plugin, final Runnable task, final long delay) {
++        return this.runTaskLater(plugin, task, delay).getTaskId();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int scheduleSyncRepeatingTask(final Plugin plugin, final Runnable task, final long delay, final long period) {
++        return this.runTaskTimer(plugin, task, delay, period).getTaskId();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int scheduleAsyncDelayedTask(final Plugin plugin, final Runnable task) {
++        return this.runTaskAsynchronously(plugin, task).getTaskId();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int scheduleAsyncDelayedTask(final Plugin plugin, final Runnable task, final long delay) {
++        return this.runTaskLaterAsynchronously(plugin, task, delay).getTaskId();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int scheduleAsyncRepeatingTask(final Plugin plugin, final Runnable task, final long delay, final long period) {
++        return this.runTaskTimerAsynchronously(plugin, task, delay, period).getTaskId();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int scheduleSyncDelayedTask(final Plugin plugin, final BukkitRunnable task) {
++        return this.runTask(plugin, task).getTaskId();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int scheduleSyncDelayedTask(final Plugin plugin, final BukkitRunnable task, final long delay) {
++        return this.runTaskLater(plugin, task, delay).getTaskId();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int scheduleSyncRepeatingTask(final Plugin plugin, final BukkitRunnable task, final long delay, final long period) {
++        return this.runTaskTimer(plugin, task, delay, period).getTaskId();
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java
+new file mode 100644
+index 000000000..bcce26aa2
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java
+@@ -0,0 +1,207 @@
++package io.github.spottedleaf.concrete.scheduler;
++
++import io.github.spottedleaf.concurrentutil.ConcurrentUtil;
++import org.bukkit.plugin.Plugin;
++import org.bukkit.scheduler.BukkitTask;
++
++import java.lang.invoke.VarHandle;
++import java.util.function.Consumer;
++
++public class ConcreteTask implements BukkitTask, Runnable {
++
++    /* State values */
++    /** Task in queue to be executed */
++    public static final int QUEUED            = 0;
++
++    /** Task is executing */
++    public static final int RUNNING           = 1;
++
++    /** Task is executing with a pending cancel */
++    public static final int RUNNING_TRYCANCEL = 2;
++
++    /** Task is cancelled and not running */
++    public static final int CANCELLED_TASK    = 3;
++
++    /** Task was a run-once task and has completed execution */
++    public static final int FINISHED          = 4;
++
++    /** Task has been cancelled due to an error in execution */
++    public static final int ERROR_FINISHED    = 5;
++
++    /* Special period values */
++    /** If the task is not a repeating task */
++    public static final long RUN_ONCE = -1L;
++
++    final int id;
++    final Plugin plugin;
++    Consumer<BukkitTask> task;
++    final TaskScheduler scheduler;
++
++    final long period;
++    long nextRun;
++
++    volatile long state;
++
++    static final VarHandle STATE_HANDLE = ConcurrentUtil.getVarHandle(ConcreteTask.class, "state", long.class);
++
++    public ConcreteTask(final int id, final Consumer<BukkitTask> task, final Plugin plugin,
++                        final long period, final long nextRun, final TaskScheduler scheduler) {
++        this.id = id;
++        this.plugin = plugin;
++        this.task = task;
++        this.nextRun = nextRun;
++        this.scheduler = scheduler;
++        this.period = period;
++    }
++
++    int compareExchangeStateVolatile(final int expect, final int update) {
++        return (int)STATE_HANDLE.compareAndExchange(this, expect, update);
++    }
++
++    int getStateVolatile() {
++        return (int)STATE_HANDLE.getVolatile(this);
++    }
++
++    void setStateVolatile(final int state) {
++        STATE_HANDLE.setVolatile(this, state);
++    }
++
++    /**
++     * @return {@code true} if the task can be executed, {@code false} if cancelled.
++     */
++    boolean trySetRunning() {
++        for (int curr = this.getStateVolatile();;) {
++            if (curr != ConcreteTask.QUEUED && curr != ConcreteTask.CANCELLED_TASK) {
++                throw new IllegalStateException("State: " + curr + " is not allowed!");
++            }
++            if (curr == ConcreteTask.CANCELLED_TASK) {
++                return false;
++            }
++            if (curr == (curr = this.compareExchangeStateVolatile(curr, ConcreteTask.RUNNING))) {
++                return true;
++            }
++        }
++    }
++
++    /**
++     * @return {@code true} if the task can be re-scheduled, {@code false} otherwise
++     */
++    boolean tryFinish() {
++        final long period = this.period;
++        final int curr = this.getStateVolatile();
++
++        /* state cannot be ERROR_FINISHED here */
++
++        if (curr == ConcreteTask.QUEUED || curr == ConcreteTask.FINISHED || curr == ConcreteTask.CANCELLED_TASK) {
++            throw new IllegalStateException("State: " + curr + " is not allowed!");
++        }
++        if (period == ConcreteTask.RUN_ONCE) {
++            /* We use finished here because this task was only executed once, and if we're here it cannot be cancelled.*/
++            this.setStateVolatile(ConcreteTask.FINISHED);
++            return false;
++        }
++        if (curr == ConcreteTask.RUNNING) {
++            if (curr == this.compareExchangeStateVolatile(curr, ConcreteTask.QUEUED)) {
++                return true;
++            }
++        }
++
++
++        // debug
++        if (curr != ConcreteTask.RUNNING_TRYCANCEL) {
++            throw new IllegalStateException("state: " + curr);
++        }
++        // debug
++
++        /* curr can only be RUNNING_TRYCANCEL here */
++        this.setStateVolatile(ConcreteTask.CANCELLED_TASK);
++        return false;
++    }
++
++    /**
++     * Tries to cancel the given task, returning a boolean value indicating success. Note that the boolean value indicates
++     * whether this call cancelled the task, not whether the task is cancelled. This means if two threads try to cancel
++     * the same task, only one will see this call return true.
++     * @return {@code true} if this call cancelled the task.
++     */
++    boolean tryCancel() {
++        for (int curr = this.getStateVolatile();;) {
++            if (curr == ConcreteTask.CANCELLED_TASK || curr == ConcreteTask.FINISHED || curr == ConcreteTask.RUNNING_TRYCANCEL
++                    || curr == ConcreteTask.ERROR_FINISHED) {
++                return false;
++            }
++            if (curr == ConcreteTask.RUNNING) {
++                if (curr == (curr = this.compareExchangeStateVolatile(curr, ConcreteTask.RUNNING_TRYCANCEL))) {
++                    this.task = null; /* For GC */
++                    return true;
++                }
++                continue;
++            }
++            /* At this point only queued can be curr */
++            if (curr == (curr = this.compareExchangeStateVolatile(curr, ConcreteTask.CANCELLED_TASK))) {
++                this.task = null; /* For GC */
++                return true;
++            }
++        }
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public int getTaskId() {
++        return this.id;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public Plugin getOwner() {
++        return this.plugin;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean isSync() {
++        return true;
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public void cancel() {
++        this.tryCancel();
++    }
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean isCancelled() {
++        return this.getStateVolatile() == ConcreteTask.CANCELLED_TASK;
++    }
++
++    @Override
++    public int hashCode() {
++        return this.id;
++    }
++
++    @Override
++    public void run() {
++        final Consumer<BukkitTask> task = this.task;
++        if (task == null) {
++            return; /* cancelled */
++        }
++        this.task.accept(this);
++    }
++
++    @Override
++    public String toString() {
++        return "ConcreteTask: {main thread task: '" + this.isSync() + "', state: '" + this.getStateVolatile() + ("', " +
++                "plugin: '") + this.plugin.getName() + "', id: '" + this.id + "', task: '" + this.task + "'}";
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
+new file mode 100644
+index 000000000..2934235a4
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
+@@ -0,0 +1,172 @@
++package io.github.spottedleaf.concrete.scheduler;
++
++import io.github.spottedleaf.concurrentutil.map.SingleWriterMultiReaderHashMap;
++import io.github.spottedleaf.concurrentutil.queue.ConcurrentLinkedList;
++import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
++import org.bukkit.plugin.Plugin;
++import org.bukkit.scheduler.BukkitTask;
++
++import java.util.*;
++import java.util.concurrent.atomic.AtomicInteger;
++import java.util.function.Consumer;
++
++public class TaskScheduler {
++
++    protected final int idGeneratorIncrement;
++
++    protected final AtomicInteger idGenerator;
++
++    protected final ConcurrentLinkedList<ConcreteTask> pending = new ConcurrentLinkedList<>();
++
++    /*
++     * Important note:
++     * Writes to this map are released, which allows the use of CLL drain.
++     * CLL drain removes elements (weakly) after they are handled. tasksById is wrote to before this occurs, which
++     * allows getTask(int) to remain consistent if pending does not contain the task (as it can only read null for the
++     * element if tasksById is published due to release).
++     */
++    protected final SingleWriterMultiReaderHashMap<Integer, ConcreteTask> tasksById = new SingleWriterMultiReaderHashMap<>(64);
++
++    protected final ArrayDeque<ConcreteTask> repeatQueue = new ArrayDeque<>();
++
++    protected volatile long currentTick;
++
++    TaskScheduler(final int initId, final int delta) {
++        this.idGenerator = new AtomicInteger(initId);
++        this.idGeneratorIncrement = delta;
++    }
++
++    public ConcreteTask getTask(final int id) {
++        final Integer key = Integer.valueOf(id);
++        ConcreteTask task = this.tasksById.get(key);
++        if (task != null) {
++            return task;
++        }
++
++        task = this.pending.find((final ConcreteTask temp) -> {
++            return temp.id == id;
++        });
++        if (task != null) {
++            return task;
++        }
++        /* It's possible a task with the id was just moved from pending to tasksById, re-check */
++        return this.tasksById.get(key);
++    }
++
++    protected ConcreteTask createTask(final int id, final Consumer<BukkitTask> task, final Plugin plugin,
++                                      final long period, final long nextRun) {
++        return new ConcreteTask(id, task, plugin, period, nextRun, this);
++    }
++
++    public ConcreteTask scheduleTask(final Consumer<BukkitTask> task, final Plugin plugin, long delay,
++                                     long period) {
++        if (delay < ConcreteScheduler.RUN_IMMEDIATELY) {
++            delay = ConcreteScheduler.RUN_IMMEDIATELY;
++        }
++        if (period < ConcreteTask.RUN_ONCE) {
++            period = ConcreteTask.RUN_ONCE;
++        } else if (period == 0) {
++            period = 1;
++        }
++        final long currentTick = this.currentTick;
++
++        final int id = this.idGenerator.getAndAdd(this.idGeneratorIncrement);
++
++        final ConcreteTask scheduled = this.createTask(id, task, plugin, period, currentTick + delay);
++
++        this.pending.add(scheduled);
++        return scheduled;
++    }
++
++    /** @return a boolean value indicating whether the task needs to be executed again */
++    private boolean executeTask(final ConcreteTask task) {
++        try {
++            if (!task.trySetRunning()) {
++                return false;
++            }
++            task.run();
++            return task.tryFinish();
++        } catch (final Throwable ex) {
++            /* TODO: Handle ex */
++
++            /* Cancel the task, exceptions are fatal in concrete */
++            task.setStateVolatile(ConcreteTask.ERROR_FINISHED); /* substitutes tryFinish() */
++            return false;
++        }
++    }
++
++    public void heartbeat(final long currentTick) {
++        this.currentTick = currentTick;
++        /* Repeat queue goes first, then pending is handled */
++        /* This ensures we get the latest from pending, and that we don't needlessly iterate over freshly re-scheduled tasks from pending */
++        this.repeatQueue.removeIf((final ConcreteTask task) -> {
++            final long nextRun = task.nextRun;
++            if (nextRun > currentTick) {
++                /* Check cancelled */
++                if (task.getStateVolatile() == ConcreteTask.CANCELLED_TASK) {
++                    TaskScheduler.this.tasksById.remove(Integer.valueOf(task.id));
++                    return true;
++                }
++                return false;
++            }
++
++            if (!TaskScheduler.this.executeTask(task)) {
++                TaskScheduler.this.tasksById.remove(Integer.valueOf(task.id));
++                return true;
++            }
++
++            task.nextRun = currentTick + task.period;
++            return false;
++        });
++
++        this.pending.drain((final ConcreteTask task) -> {
++            final long nextRun = task.nextRun;
++            if (nextRun > currentTick) {
++                /* Move to repeatQueue if not cancelled */
++                TaskScheduler.this.repeatQueue.add(task);
++                TaskScheduler.this.tasksById.put(Integer.valueOf(task.id), task);
++                return;
++            }
++
++            /* We need to execute the task now */
++            if (!TaskScheduler.this.executeTask(task)) {
++                /* Do not re-canSchedule */
++                return;
++            }
++
++            task.nextRun = currentTick + task.period;
++
++            /* Note: drain is defined to only remove an element after this call succeeds, which allows this.getTask(int) */
++            /* to work, since 'task' will always be present in either tasksById or pending */
++            TaskScheduler.this.repeatQueue.add(task);
++            TaskScheduler.this.tasksById.put(Integer.valueOf(task.id), task);
++        });
++    }
++
++    public void forEachTask(final Consumer<ConcreteTask> consumer) {
++        /* Pending needs to be first */
++        /* Tasks are added to the by id map before removal of pending, so this ensures we check all tasks */
++        /* The same task may be iterated twice as a consequence though */
++        this.pending.forEach(consumer);
++        this.tasksById.forEach((final Integer key, final ConcreteTask val) -> {
++            consumer.accept(val);
++        });
++    }
++
++    public void cancelTasks(final Plugin plugin) {
++        this.forEachTask((final ConcreteTask task) -> {
++            if (task.getOwner() == plugin) {
++                task.cancel();
++            }
++        });
++    }
++
++    public void getPendingTasks(final List<BukkitTask> tasks) {
++        final IntOpenHashSet contains = new IntOpenHashSet(Math.max(32, this.tasksById.size()));
++        this.forEachTask((final ConcreteTask task) -> {
++            if (task.getStateVolatile() == ConcreteTask.QUEUED && contains.add(task.id)) {
++                tasks.add(task);
++            }
++        });
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index f5d131ddb..dc0f9b2ca 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -172,7 +172,7 @@ public final class CraftServer implements Server {
+     private final String bukkitVersion = Versioning.getBukkitVersion();
+     private final Logger logger = Logger.getLogger("Minecraft");
+     private final ServicesManager servicesManager = new SimpleServicesManager();
+-    private final CraftScheduler scheduler = new CraftScheduler();
++    private final io.github.spottedleaf.concrete.scheduler.ConcreteScheduler scheduler = new io.github.spottedleaf.concrete.scheduler.ConcreteScheduler();
+     private final CraftCommandMap commandMap = new CraftCommandMap(this);
+     private final SimpleHelpMap helpMap = new SimpleHelpMap(this);
+     private final StandardMessenger messenger = new StandardMessenger();
+@@ -661,7 +661,7 @@ public final class CraftServer implements Server {
+     }
+ 
+     @Override
+-    public CraftScheduler getScheduler() {
++    public io.github.spottedleaf.concrete.scheduler.ConcreteScheduler getScheduler() { /* Concrete - Use concrete scheduler */
+         return scheduler;
+     }
+ 
+-- 
+2.20.1
+
