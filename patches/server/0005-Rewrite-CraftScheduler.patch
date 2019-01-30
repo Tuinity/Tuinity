@@ -1,16 +1,16 @@
-From 4665d091072d38e25245a17c48cacc1dcb5c8d56 Mon Sep 17 00:00:00 2001
+From 9e7732bf15271a7124802e86700883e267a8a220 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 13 Jan 2019 12:50:34 -0800
 Subject: [PATCH] Rewrite CraftScheduler
 
 ---
- .../concrete/scheduler/AsyncConcreteTask.java | 253 ++++++++++++
+ .../concrete/scheduler/AsyncConcreteTask.java | 259 ++++++++++++
  .../scheduler/AsyncTaskScheduler.java         |  97 +++++
- .../concrete/scheduler/ConcreteScheduler.java | 376 ++++++++++++++++++
+ .../concrete/scheduler/ConcreteScheduler.java | 384 ++++++++++++++++++
  .../concrete/scheduler/ConcreteTask.java      | 207 ++++++++++
- .../concrete/scheduler/TaskScheduler.java     | 172 ++++++++
+ .../concrete/scheduler/TaskScheduler.java     | 185 +++++++++
  .../org/bukkit/craftbukkit/CraftServer.java   |   4 +-
- 6 files changed, 1107 insertions(+), 2 deletions(-)
+ 6 files changed, 1134 insertions(+), 2 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
@@ -19,12 +19,14 @@ Subject: [PATCH] Rewrite CraftScheduler
 
 diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
 new file mode 100644
-index 000000000..3cceefd62
+index 000000000..f7d90c7f1
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,259 @@
 +package io.github.spottedleaf.concrete.scheduler;
 +
++import com.destroystokyo.paper.event.server.ServerExceptionEvent;
++import com.destroystokyo.paper.exception.ServerSchedulerException;
 +import io.github.spottedleaf.concurrentutil.ConcurrentUtil;
 +import org.bukkit.plugin.Plugin;
 +import org.bukkit.scheduler.BukkitTask;
@@ -34,6 +36,7 @@ index 000000000..3cceefd62
 +import java.util.ArrayDeque;
 +import java.util.List;
 +import java.util.function.Consumer;
++import java.util.logging.Level;
 +
 +public class AsyncConcreteTask extends ConcreteTask {
 +
@@ -228,12 +231,15 @@ index 000000000..3cceefd62
 +        try {
 +            task.accept(this);
 +            this.tryFinish();
-+        } catch (final Throwable throwable) {
++        } catch (final Throwable ex) {
 +            this.tryFinishError();
-+            /* TODO: Handle ex */
++            final Plugin owner = this.plugin;
++            final String message;
++            owner.getLogger().log(Level.SEVERE, message = "Task #" + this.id + " for plugin '" + owner.getDescription().getFullName() + "' generated an exception.", ex);
++            new ServerExceptionEvent(new ServerSchedulerException(message, ex, this)).callEvent();
 +
-+            if (throwable instanceof ThreadDeath) {
-+                throw (ThreadDeath) throwable;
++            if (ex instanceof ThreadDeath) {
++                throw (ThreadDeath) ex;
 +            }
 +        } finally {
 +            synchronized (this.workers) {
@@ -382,10 +388,10 @@ index 000000000..892afac5a
 +}
 diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
 new file mode 100644
-index 000000000..2a84ba44f
+index 000000000..0ce279b83
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,384 @@
 +package io.github.spottedleaf.concrete.scheduler;
 +
 +import org.bukkit.plugin.IllegalPluginAccessException;
@@ -479,6 +485,14 @@ index 000000000..2a84ba44f
 +    public void cancelTasks(final Plugin plugin) {
 +        this.offMainScheduler.cancelTasks(plugin);
 +        this.mainScheduler.cancelTasks(plugin);
++    }
++
++    /**
++     * Cancels all tasks currently scheduled.
++     */
++    public void cancelAllTasks() {
++        this.offMainScheduler.cancelAllTasks();
++        this.mainScheduler.cancelAllTasks();
 +    }
 +
 +    /**
@@ -979,12 +993,14 @@ index 000000000..fc647c991
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
 new file mode 100644
-index 000000000..2934235a4
+index 000000000..82885e8ad
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,185 @@
 +package io.github.spottedleaf.concrete.scheduler;
 +
++import com.destroystokyo.paper.event.server.ServerExceptionEvent;
++import com.destroystokyo.paper.exception.ServerSchedulerException;
 +import io.github.spottedleaf.concurrentutil.map.SingleWriterMultiReaderHashMap;
 +import io.github.spottedleaf.concurrentutil.queue.ConcurrentLinkedList;
 +import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -994,6 +1010,7 @@ index 000000000..2934235a4
 +import java.util.*;
 +import java.util.concurrent.atomic.AtomicInteger;
 +import java.util.function.Consumer;
++import java.util.logging.Level;
 +
 +public class TaskScheduler {
 +
@@ -1072,7 +1089,10 @@ index 000000000..2934235a4
 +            task.run();
 +            return task.tryFinish();
 +        } catch (final Throwable ex) {
-+            /* TODO: Handle ex */
++            final Plugin owner = task.plugin;
++            final String message;
++            owner.getLogger().log(Level.SEVERE, message = "Task #" + task.id + " for plugin '" + owner.getDescription().getFullName() + "' generated an exception.", ex);
++            new ServerExceptionEvent(new ServerSchedulerException(message, ex, task)).callEvent();
 +
 +            /* Cancel the task, exceptions are fatal in concrete */
 +            task.setStateVolatile(ConcreteTask.ERROR_FINISHED); /* substitutes tryFinish() */
@@ -1138,7 +1158,14 @@ index 000000000..2934235a4
 +        });
 +    }
 +
++    public void cancelAllTasks() {
++        this.forEachTask(ConcreteTask::cancel);
++    }
++
 +    public void cancelTasks(final Plugin plugin) {
++        if (plugin == null) {
++            throw new NullPointerException("plugin is null");
++        }
 +        this.forEachTask((final ConcreteTask task) -> {
 +            if (task.getOwner() == plugin) {
 +                task.cancel();
