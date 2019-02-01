@@ -1,4 +1,4 @@
-From ad81017f5110a0c0fe733d3ba1ae25abdc69cdf5 Mon Sep 17 00:00:00 2001
+From 63681b52684e9f586f9bbd49f047c860f1020f57 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 13 Jan 2019 12:50:34 -0800
 Subject: [PATCH] Rewrite CraftScheduler
@@ -8,9 +8,9 @@ Subject: [PATCH] Rewrite CraftScheduler
  .../scheduler/AsyncTaskScheduler.java         |  97 +++++
  .../concrete/scheduler/ConcreteScheduler.java | 384 ++++++++++++++++++
  .../concrete/scheduler/ConcreteTask.java      | 207 ++++++++++
- .../concrete/scheduler/TaskScheduler.java     | 185 +++++++++
+ .../concrete/scheduler/TaskScheduler.java     | 184 +++++++++
  .../org/bukkit/craftbukkit/CraftServer.java   |   4 +-
- 6 files changed, 1134 insertions(+), 2 deletions(-)
+ 6 files changed, 1133 insertions(+), 2 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
@@ -993,10 +993,10 @@ index 000000000..fc647c991
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
 new file mode 100644
-index 000000000..82885e8ad
+index 000000000..76ed52b76
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,184 @@
 +package io.github.spottedleaf.concrete.scheduler;
 +
 +import com.destroystokyo.paper.event.server.ServerExceptionEvent;
@@ -1081,7 +1081,7 @@ index 000000000..82885e8ad
 +    }
 +
 +    /** @return a boolean value indicating whether the task needs to be executed again */
-+    private boolean executeTask(final ConcreteTask task) {
++    private static boolean executeTask(final ConcreteTask task) {
 +        try {
 +            if (!task.trySetRunning()) {
 +                return false;
@@ -1115,7 +1115,7 @@ index 000000000..82885e8ad
 +                return false;
 +            }
 +
-+            if (!TaskScheduler.this.executeTask(task)) {
++            if (!TaskScheduler.executeTask(task)) {
 +                TaskScheduler.this.tasksById.remove(Integer.valueOf(task.id));
 +                return true;
 +            }
@@ -1127,14 +1127,13 @@ index 000000000..82885e8ad
 +        this.pending.drain((final ConcreteTask task) -> {
 +            final long nextRun = task.nextRun;
 +            if (nextRun > currentTick) {
-+                /* Move to repeatQueue if not cancelled */
 +                TaskScheduler.this.repeatQueue.add(task);
 +                TaskScheduler.this.tasksById.put(Integer.valueOf(task.id), task);
 +                return;
 +            }
 +
 +            /* We need to execute the task now */
-+            if (!TaskScheduler.this.executeTask(task)) {
++            if (!TaskScheduler.executeTask(task)) {
 +                /* Do not re-canSchedule */
 +                return;
 +            }
@@ -1184,10 +1183,10 @@ index 000000000..82885e8ad
 +}
 \ No newline at end of file
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index f5d131ddb..dc0f9b2ca 100644
+index a8c598e93..0808ac2f0 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-@@ -172,7 +172,7 @@ public final class CraftServer implements Server {
+@@ -174,7 +174,7 @@ public final class CraftServer implements Server {
      private final String bukkitVersion = Versioning.getBukkitVersion();
      private final Logger logger = Logger.getLogger("Minecraft");
      private final ServicesManager servicesManager = new SimpleServicesManager();
@@ -1196,7 +1195,7 @@ index f5d131ddb..dc0f9b2ca 100644
      private final CraftCommandMap commandMap = new CraftCommandMap(this);
      private final SimpleHelpMap helpMap = new SimpleHelpMap(this);
      private final StandardMessenger messenger = new StandardMessenger();
-@@ -661,7 +661,7 @@ public final class CraftServer implements Server {
+@@ -663,7 +663,7 @@ public final class CraftServer implements Server {
      }
  
      @Override
