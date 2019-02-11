@@ -1,4 +1,4 @@
-From 63681b52684e9f586f9bbd49f047c860f1020f57 Mon Sep 17 00:00:00 2001
+From 3762bc3dbb511426fc72b5a8942db96e2e484733 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 13 Jan 2019 12:50:34 -0800
 Subject: [PATCH] Rewrite CraftScheduler
@@ -19,7 +19,7 @@ Subject: [PATCH] Rewrite CraftScheduler
 
 diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
 new file mode 100644
-index 000000000..f7d90c7f1
+index 000000000..b2bfa3d10
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
 @@ -0,0 +1,259 @@
@@ -176,7 +176,7 @@ index 000000000..f7d90c7f1
 +                return false;
 +            }
 +            if (currState == ConcreteTask.QUEUED) {
-+                if (curr == (curr = this.compareExchangeAsyncStateVolatile(curr, (RUNNER_INCREMENT + ConcreteTask.QUEUED)))) {
++                if (curr == (curr = this.compareExchangeAsyncStateVolatile(curr, (RUNNER_INCREMENT + ConcreteTask.RUNNING)))) {
 +                    return true;
 +                }
 +                continue;
@@ -1183,7 +1183,7 @@ index 000000000..76ed52b76
 +}
 \ No newline at end of file
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index a8c598e93..0808ac2f0 100644
+index 8d09ceef5..dce8104dd 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -174,7 +174,7 @@ public final class CraftServer implements Server {
