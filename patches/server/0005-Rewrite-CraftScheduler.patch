@@ -1,4 +1,4 @@
-From 3762bc3dbb511426fc72b5a8942db96e2e484733 Mon Sep 17 00:00:00 2001
+From 6af2d25f8cafb3eebcc0148f4e0091efadeb5e8b Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 13 Jan 2019 12:50:34 -0800
 Subject: [PATCH] Rewrite CraftScheduler
@@ -8,9 +8,9 @@ Subject: [PATCH] Rewrite CraftScheduler
  .../scheduler/AsyncTaskScheduler.java         |  97 +++++
  .../concrete/scheduler/ConcreteScheduler.java | 384 ++++++++++++++++++
  .../concrete/scheduler/ConcreteTask.java      | 207 ++++++++++
- .../concrete/scheduler/TaskScheduler.java     | 184 +++++++++
+ .../concrete/scheduler/TaskScheduler.java     | 182 +++++++++
  .../org/bukkit/craftbukkit/CraftServer.java   |   4 +-
- 6 files changed, 1133 insertions(+), 2 deletions(-)
+ 6 files changed, 1131 insertions(+), 2 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
@@ -993,10 +993,10 @@ index 000000000..fc647c991
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
 new file mode 100644
-index 000000000..76ed52b76
+index 000000000..ad525fdc9
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,182 @@
 +package io.github.spottedleaf.concrete.scheduler;
 +
 +import com.destroystokyo.paper.event.server.ServerExceptionEvent;
@@ -1134,7 +1134,7 @@ index 000000000..76ed52b76
 +
 +            /* We need to execute the task now */
 +            if (!TaskScheduler.executeTask(task)) {
-+                /* Do not re-canSchedule */
++                /* Do not re-schedule */
 +                return;
 +            }
 +
@@ -1152,9 +1152,7 @@ index 000000000..76ed52b76
 +        /* Tasks are added to the by id map before removal of pending, so this ensures we check all tasks */
 +        /* The same task may be iterated twice as a consequence though */
 +        this.pending.forEach(consumer);
-+        this.tasksById.forEach((final Integer key, final ConcreteTask val) -> {
-+            consumer.accept(val);
-+        });
++        this.tasksById.forEachValue(consumer);
 +    }
 +
 +    public void cancelAllTasks() {
