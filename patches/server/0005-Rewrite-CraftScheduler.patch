@@ -1,18 +1,18 @@
-From 6b2eddd31b297e07b00c5066aedc47ba9f128ab3 Mon Sep 17 00:00:00 2001
+From 4e3791cf8537f0319dec495b310d78edc2e00117 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 13 Jan 2019 12:50:34 -0800
 Subject: [PATCH] Rewrite CraftScheduler
 
 ---
  .../co/aikar/timings/MinecraftTimings.java    |   4 +
- .../concrete/scheduler/AsyncConcreteTask.java | 305 +++++++++++++
+ .../concrete/scheduler/AsyncConcreteTask.java | 300 +++++++++++++
  .../scheduler/AsyncTaskScheduler.java         |  97 +++++
  .../concrete/scheduler/ConcreteScheduler.java | 402 ++++++++++++++++++
  .../concrete/scheduler/ConcreteTask.java      | 251 +++++++++++
  .../concrete/scheduler/TaskScheduler.java     | 196 +++++++++
  .../net/minecraft/server/MinecraftServer.java |   2 +-
  .../org/bukkit/craftbukkit/CraftServer.java   |   4 +-
- 8 files changed, 1258 insertions(+), 3 deletions(-)
+ 8 files changed, 1253 insertions(+), 3 deletions(-)
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
  create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
@@ -36,20 +36,18 @@ index 66d02e048..3bf4eae03 100644
  
 diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
 new file mode 100644
-index 000000000..cbd21e121
+index 000000000..e8f4b40b0
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
-@@ -0,0 +1,305 @@
+@@ -0,0 +1,300 @@
 +package io.github.spottedleaf.concrete.scheduler;
 +
 +import com.destroystokyo.paper.event.server.ServerExceptionEvent;
 +import com.destroystokyo.paper.exception.ServerSchedulerException;
-+import io.github.spottedleaf.concurrentutil.ConcurrentUtil;
 +import org.bukkit.plugin.Plugin;
 +import org.bukkit.scheduler.BukkitTask;
 +import org.bukkit.scheduler.BukkitWorker;
 +
-+import java.lang.invoke.VarHandle;
 +import java.util.ArrayDeque;
 +import java.util.ArrayList;
 +import java.util.Collections;
@@ -62,11 +60,8 @@ index 000000000..cbd21e121
 +    final ArrayDeque<ConcreteWorker> workers = new ArrayDeque<>();
 +
 +    /* when lower 32bits is running or runningtrycancel, upper 32bits represents the number of running tasks. */
-+    volatile long asyncState;
 +    private static final long RUNNER_INCREMENT = 1L << 32;
 +    private static final long RUNNER_MASK = (Long.MIN_VALUE >> 31);
-+
-+    private static final VarHandle ASYNC_STATE_HANDLE = ConcurrentUtil.getVarHandle(AsyncConcreteTask.class, "asyncState", long.class);
 +
 +    public AsyncConcreteTask(final int id, final Consumer<BukkitTask> task, final Plugin plugin,
 +                        final long period, final long nextRun, final TaskScheduler scheduler) {
@@ -89,15 +84,15 @@ index 000000000..cbd21e121
 +    }
 +
 +    long getAsyncStateVolatile() {
-+        return (long)ASYNC_STATE_HANDLE.getVolatile(this);
++        return (long)STATE_HANDLE.getVolatile(this);
 +    }
 +
 +    void setAsyncStateVolatile(final long val) {
-+        ASYNC_STATE_HANDLE.setVolatile(this, val);
++        STATE_HANDLE.setVolatile(this, val);
 +    }
 +
 +    long compareExchangeAsyncStateVolatile(final long expect, final long update) {
-+        return (long)ASYNC_STATE_HANDLE.compareAndExchange(this, expect, update);
++        return (long)STATE_HANDLE.compareAndExchange(this, expect, update);
 +    }
 +
 +    @Override
@@ -860,7 +855,7 @@ index 000000000..9cb35b675
 \ No newline at end of file
 diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java
 new file mode 100644
-index 000000000..3a925d23d
+index 000000000..cbe44a0e1
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java
 @@ -0,0 +1,251 @@
@@ -911,9 +906,9 @@ index 000000000..3a925d23d
 +    final long period;
 +    long nextRun;
 +
-+    volatile int state;
++    volatile long state;
 +
-+    static final VarHandle STATE_HANDLE = ConcurrentUtil.getVarHandle(ConcreteTask.class, "state", int.class);
++    static final VarHandle STATE_HANDLE = ConcurrentUtil.getVarHandle(ConcreteTask.class, "state", long.class);
 +
 +    public ConcreteTask(final int id, final Consumer<BukkitTask> task, final Plugin plugin,
 +                        final long period, final long nextRun, final TaskScheduler scheduler) {
@@ -926,15 +921,15 @@ index 000000000..3a925d23d
 +    }
 +
 +    int compareExchangeStateVolatile(final int expect, final int update) {
-+        return (int)STATE_HANDLE.compareAndExchange(this, expect, update);
++        return (int)((long)STATE_HANDLE.compareAndExchange(this, (long)expect, (long)update));
 +    }
 +
 +    int getStateVolatile() {
-+        return (int)STATE_HANDLE.getVolatile(this);
++        return (int)((long)STATE_HANDLE.getVolatile(this));
 +    }
 +
 +    void setStateVolatile(final int state) {
-+        STATE_HANDLE.setVolatile(this, state);
++        STATE_HANDLE.setVolatile(this, (long)state);
 +    }
 +
 +    /**
@@ -1097,7 +1092,7 @@ index 000000000..3a925d23d
 +    @Override
 +    public boolean isRunning() {
 +        final int state = this.getStateVolatile();
-+        return state == ConcreteTask.RUNNING || state == ConcreteTask.RUNNING_TRYCANCEL;
++        return state == ConcreteTask.RUNNING || state == ConcreteTask.RUNNING_TRYCANCEL || state == ConcreteTask.RUNNING_ERROR;
 +    }
 +
 +    /**
