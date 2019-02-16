@@ -1,8 +1,9 @@
-From 367309865c7b987c721a717c88641b367c785532 Mon Sep 17 00:00:00 2001
+From 19478212af1a2ce321caf87dd1d7e2545ec4029f Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Tue, 18 Dec 2018 04:24:08 -0800
-Subject: [PATCH] Multi-Threaded chunk ticking
+Subject: [PATCH] Multi-threaded ticking
 
+This is the patch for vanilla side only
 ---
  .../concrete/chunk/ChunkRegionManager.java    | 124 ++++++++++++++++++
  1 file changed, 124 insertions(+)
@@ -10,7 +11,7 @@ Subject: [PATCH] Multi-Threaded chunk ticking
 
 diff --git a/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
 new file mode 100644
-index 000000000..194cce583
+index 000000000..012e6c7fd
 --- /dev/null
 +++ b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
 @@ -0,0 +1,124 @@
@@ -20,33 +21,31 @@ index 000000000..194cce583
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +import net.minecraft.server.Chunk;
 +
++import java.nio.file.Files;
 +import java.util.concurrent.locks.ReentrantLock;
 +import java.util.function.Consumer;
 +
 +public class ChunkRegionManager {
 +
-+    private final Long2ObjectOpenHashMap<ChunkRegion> regions = new Long2ObjectOpenHashMap<>(2048);
++    public final Long2ObjectOpenHashMap<ChunkRegion> regions = new Long2ObjectOpenHashMap<>(2048);
 +
-+    /**
-+     * Adds a chunk to this region manager. If {@code synchronously} is {@code true}, then the chunk's region
-+     * lock is acquired, the chunk is added, then the region's lock is released. Otherwise, the chunk add is performed
-+     * via {@link ChunkRegion#executeNonUrgentTask(Consumer)}.
-+     * <p>
-+     * This function is MT-Safe.
-+     * </p>
-+     * @param chunk The specified chunk to add.
-+     * @param synchronously Whether to add the chunk synchronously.
-+     */
-+    public void addChunk(final Chunk chunk, final boolean synchronously) {
-+
++    public static long getChunkKey(final int x, final int z) {
++        return ((long)z << 32) | (x & 0xFFFFFFFFL);
 +    }
 +
-+    /**
-+     * Adds a chunk to this region manager. This function assumes the caller already owns the region which the
-+     * specified chunk resides in. If the caller does not own the region, undefined behaviour occurs.
-+     * @param chunk The specified chunk.
-+     */
-+    public void addChunkRelaxed(final Chunk chunk) {
++    public static int getChunkX(final long key) {
++        return (int)key;
++    }
++
++    public static int getChunkZ(final long key) {
++        return (int)(key >>> 32);
++    }
++
++    public ChunkRegion acquireRegionSynchronously(final long chunk) {
++        return null;
++    }
++
++    public void acquireRegionAsynchronously(final Consumer<ChunkRegion> region) {
 +
 +    }
 +
@@ -68,6 +67,8 @@ index 000000000..194cce583
 +
 +        private final ReentrantLock lock = new ReentrantLock();
 +
++        private final Long2ObjectOpenHashMap<Chunk> chunks = new Long2ObjectOpenHashMap<>();
++
 +        /**
 +         * Tasks that need to be executed after releasing the region.
 +         */
@@ -87,7 +88,7 @@ index 000000000..194cce583
 +        }
 +
 +        public int chunkConut() {
-+            return 0;
++            return this.chunks.size();
 +        }
 +
 +        private void drainTasks() {
@@ -138,6 +139,7 @@ index 000000000..194cce583
 +
 +    }
 +}
+\ No newline at end of file
 -- 
 2.20.1
 
