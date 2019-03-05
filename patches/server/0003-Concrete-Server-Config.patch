@@ -1,0 +1,244 @@
+From a2cfe7332b001a7d8596242a1e65e2a6719570eb Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 3 Mar 2019 18:25:06 -0800
+Subject: [PATCH] Concrete Server Config
+
+---
+ .../concrete/config/ConcreteConfig.java       | 153 ++++++++++++++++++
+ .../net/minecraft/server/DedicatedServer.java |   1 +
+ src/main/java/net/minecraft/server/World.java |   3 +
+ .../org/bukkit/craftbukkit/CraftServer.java   |   2 +
+ .../java/org/bukkit/craftbukkit/Main.java     |   7 +
+ 5 files changed, 166 insertions(+)
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java
+
+diff --git a/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java
+new file mode 100644
+index 000000000..ce0340f25
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java
+@@ -0,0 +1,153 @@
++package io.github.spottedleaf.concrete.config;
++
++import io.github.spottedleaf.concurrentutil.util.Throw;
++import org.bukkit.Bukkit;
++import org.bukkit.configuration.ConfigurationSection;
++import org.bukkit.configuration.file.YamlConfiguration;
++
++import java.io.File;
++import java.lang.reflect.Method;
++import java.lang.reflect.Modifier;
++import java.util.logging.Level;
++
++public final class ConcreteConfig {
++
++    public static final String CONFIG_HEADER = "Configuration file for Concrete.";
++    public static final int CURRENT_CONFIG_VERSION = 0;
++
++    private static final Object[] EMPTY = new Object[0];
++
++    private static File configFile;
++    private static YamlConfiguration config;
++    private static int configVersion;
++
++    public static void init(final File file) {
++        ConcreteConfig.configFile = file;
++        final YamlConfiguration config = new YamlConfiguration();
++        config.options().header(CONFIG_HEADER);
++        config.options().copyDefaults(true);
++
++        if (!file.exists()) {
++            try {
++                file.createNewFile();
++            } catch (final Exception ex) {
++                Bukkit.getLogger().log(Level.SEVERE, "Failure to create concrete config", ex);
++            }
++        } else {
++            try {
++                config.load(file);
++            } catch (final Exception ex) {
++                Bukkit.getLogger().log(Level.SEVERE, "Failure to load concrete config", ex);
++                Throw.rethrow(ex); /* Rethrow, this is critical */
++                throw new RuntimeException(ex); // unreachable
++            }
++        }
++
++        ConcreteConfig.load(config);
++    }
++
++    public static void load(final YamlConfiguration config) {
++        ConcreteConfig.config = config;
++        ConcreteConfig.configVersion = ConcreteConfig.getInt("config-version-please-do-not-modify-me", CURRENT_CONFIG_VERSION);
++
++        for (final Method method : ConcreteConfig.class.getDeclaredMethods()) {
++            if (method.getReturnType() != void.class || method.getParameterCount() != 0 ||
++                    !Modifier.isPrivate(method.getModifiers()) || !Modifier.isStatic(method.getModifiers())) {
++                continue;
++            }
++
++            try {
++                method.setAccessible(true);
++                method.invoke(null, EMPTY);
++            } catch (final Exception ex) {
++                Throw.rethrow(ex);
++                throw new RuntimeException(ex); // unreachable
++            }
++        }
++
++        /* We re-save to add new options */
++        try {
++            config.save(ConcreteConfig.configFile);
++        } catch (final Exception ex) {
++            Bukkit.getLogger().log(Level.SEVERE, "Unable to save concrete config", ex);
++        }
++    }
++
++    private static boolean getBoolean(final String path, final boolean dfl) {
++        ConcreteConfig.config.addDefault(path, Boolean.valueOf(dfl));
++        return ConcreteConfig.config.getBoolean(path, dfl);
++    }
++
++    private static int getInt(final String path, final int dfl) {
++        ConcreteConfig.config.addDefault(path, Integer.valueOf(dfl));
++        return ConcreteConfig.config.getInt(path, dfl);
++    }
++
++    private static double getDouble(final String path, final double dfl) {
++        ConcreteConfig.config.addDefault(path, Double.valueOf(dfl));
++        return ConcreteConfig.config.getDouble(path, dfl);
++    }
++
++    public static final class WorldConnfig {
++
++        public final String worldName;
++        public ConfigurationSection config;
++
++        public WorldConnfig(final String worldName) {
++            this.worldName = worldName;
++            this.init();
++        }
++
++        public void init() {
++            ConfigurationSection section = ConcreteConfig.config.getConfigurationSection(this.worldName);
++            if (section == null) {
++                section = ConcreteConfig.config.createSection(this.worldName);
++            }
++            ConcreteConfig.config.set(this.worldName, section);
++
++            this.load(section);
++        }
++
++        public void load(final ConfigurationSection config) {
++            this.config = config;
++
++            for (final Method method : ConcreteConfig.WorldConnfig.class.getDeclaredMethods()) {
++                if (method.getReturnType() != void.class || method.getParameterCount() != 0 ||
++                        !Modifier.isPrivate(method.getModifiers()) || Modifier.isStatic(method.getModifiers())) {
++                    continue;
++                }
++
++                try {
++                    method.setAccessible(true);
++                    method.invoke(this, EMPTY);
++                } catch (final Exception ex) {
++                    Throw.rethrow(ex);
++                    throw new RuntimeException(ex); // unreachable
++                }
++            }
++
++            /* We re-save to add new options */
++            try {
++                ConcreteConfig.config.save(ConcreteConfig.configFile);
++            } catch (final Exception ex) {
++                Bukkit.getLogger().log(Level.SEVERE, "Unable to save concrete config", ex);
++            }
++        }
++
++        private boolean getBoolean(final String path, final boolean dfl) {
++            this.config.addDefault(path, Boolean.valueOf(dfl));
++            return this.config.getBoolean(path, dfl);
++        }
++
++        private int getInt(final String path, final int dfl) {
++            this.config.addDefault(path, Integer.valueOf(dfl));
++            return this.config.getInt(path, dfl);
++        }
++
++        private double getDouble(final String path, final double dfl) {
++            this.config.addDefault(path, Double.valueOf(dfl));
++            return this.config.getDouble(path, dfl);
++        }
++    }
++
++}
+\ No newline at end of file
+diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
+index 21a05b2b2..5509fc359 100644
+--- a/src/main/java/net/minecraft/server/DedicatedServer.java
++++ b/src/main/java/net/minecraft/server/DedicatedServer.java
+@@ -214,6 +214,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
+             com.destroystokyo.paper.PaperConfig.registerCommands();
+             com.destroystokyo.paper.VersionHistoryManager.INSTANCE.getClass(); // load version history now
+             // Paper end
++            io.github.spottedleaf.concrete.config.ConcreteConfig.init((File) options.valueOf("concrete-settings")); /* Concrete - Server Config */
+ 
+             DedicatedServer.LOGGER.info("Generating keypair");
+             this.a(MinecraftEncryption.b());
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 4d3f88431..0c6554adf 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -183,9 +183,12 @@ public abstract class World implements IEntityAccess, GeneratorAccess, IIBlockAc
+         return ((ChunkProviderServer) this.chunkProvider).chunks.get(ChunkCoordIntPair.a(x, z)); // Paper - optimize getChunkIfLoaded
+     }
+ 
++    public final io.github.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig concreteConfig; /* Concrete - Server Config */
++
+     protected World(IDataManager idatamanager, @Nullable PersistentCollection persistentcollection, WorldData worlddata, WorldProvider worldprovider, MethodProfiler methodprofiler, boolean flag, ChunkGenerator gen, org.bukkit.World.Environment env) {
+         this.spigotConfig = new org.spigotmc.SpigotWorldConfig( worlddata.getName() ); // Spigot
+         this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(worlddata.getName(), this.spigotConfig); // Paper
++        this.concreteConfig = new io.github.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig(worlddata.getName()); /* Concrete - Server Config */
+         this.chunkPacketBlockController = this.paperConfig.antiXray ? new ChunkPacketBlockControllerAntiXray(this.paperConfig) : ChunkPacketBlockController.NO_OPERATION_INSTANCE; // Paper - Anti-Xray
+         this.generator = gen;
+         this.world = new CraftWorld((WorldServer) this, gen, env);
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 464be24c1..2f60db7db 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -793,6 +793,7 @@ public final class CraftServer implements Server {
+ 
+         org.spigotmc.SpigotConfig.init((File) console.options.valueOf("spigot-settings")); // Spigot
+         com.destroystokyo.paper.PaperConfig.init((File) console.options.valueOf("paper-settings")); // Paper
++        io.github.spottedleaf.concrete.config.ConcreteConfig.init((File) console.options.valueOf("concrete-settings")); /* Concrete - Server Config */
+         for (WorldServer world : console.getWorlds()) {
+             world.worldData.setDifficulty(difficulty);
+             world.setSpawnFlags(monsters, animals);
+@@ -809,6 +810,7 @@ public final class CraftServer implements Server {
+             }
+             world.spigotConfig.init(); // Spigot
+             world.paperConfig.init(); // Paper
++            world.concreteConfig.init(); /* Concrete - Server Config */
+         }
+ 
+         Plugin[] pluginClone = pluginManager.getPlugins().clone(); // Paper
+diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
+index c9a6b5afb..94d1c3f3a 100644
+--- a/src/main/java/org/bukkit/craftbukkit/Main.java
++++ b/src/main/java/org/bukkit/craftbukkit/Main.java
+@@ -136,6 +136,13 @@ public class Main {
+                         .defaultsTo(new File("paper.yml"))
+                         .describedAs("Yml file");
+                 // Paper end
++                /* Concrete Start - Server Config */
++                acceptsAll(asList("concrete", "concrete-settings"), "File for concrete settings")
++                        .withRequiredArg()
++                        .ofType(File.class)
++                        .defaultsTo(new File("concrete.yml"))
++                        .describedAs("Yml file");
++                /* Conctete End - Server Config */
+ 
+                 // Paper start
+                 acceptsAll(asList("server-name"), "Name of the server")
+-- 
+2.21.0
+

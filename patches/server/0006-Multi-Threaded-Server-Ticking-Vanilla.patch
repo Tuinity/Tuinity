@@ -1,0 +1,160 @@
+From 8efac8cc08d0dac546f9fbf195be7ed68da5a112 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 3 Mar 2019 20:53:18 -0800
+Subject: [PATCH] Multi-Threaded Server Ticking Vanilla
+
+This patch is the vanilla server changes
+---
+ .../concrete/chunk/ChunkRegionManager.java    | 70 +++++++++++++++++++
+ .../util/TickSynchronizationPoint.java        | 40 +++++++++++
+ .../spottedleaf/concrete/util/TickThread.java | 11 +++
+ 3 files changed, 121 insertions(+)
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/TickSynchronizationPoint.java
+ create mode 100644 src/main/java/io/github/spottedleaf/concrete/util/TickThread.java
+
+diff --git a/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
+new file mode 100644
+index 000000000..c986b0256
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/chunk/ChunkRegionManager.java
+@@ -0,0 +1,70 @@
++package io.github.spottedleaf.concrete.chunk;
++
++import io.github.spottedleaf.concrete.util.TickSynchronizationPoint;
++import io.github.spottedleaf.concrete.util.TickThread;
++import io.github.spottedleaf.concurrentutil.ConcurrentUtil;
++import io.github.spottedleaf.concurrentutil.queue.ConcurrentLinkedList;
++import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
++import net.minecraft.server.Chunk;
++import net.minecraft.server.World;
++
++import java.lang.invoke.VarHandle;
++import java.util.function.Consumer;
++
++public class ChunkRegionManager {
++
++    public final Long2ObjectOpenHashMap<ChunkRegion> regions = new Long2ObjectOpenHashMap<>(2048);
++    public final World world;
++    public final TickSynchronizationPoint synchronizationPoint;
++
++    private final TickThread[] threads;
++
++    public ChunkRegionManager(final World world, final TickSynchronizationPoint synchronizationPoint, final TickThread[] threads) {
++        this.world = world;
++        this.synchronizationPoint = synchronizationPoint;
++        this.threads = threads;
++    }
++
++    public static long getChunkKey(final int x, final int z) {
++        return ((long)z << 32) | (x & 0xFFFFFFFFL);
++    }
++
++    public static int getChunkX(final long key) {
++        return (int)key;
++    }
++
++    public static int getChunkZ(final long key) {
++        return (int)(key >>> 32);
++    }
++
++    public void addChunk(final Chunk chunk) {
++        final long key = getChunkKey(chunk.locX, chunk.locZ);
++        synchronized (this.regions) {
++
++        }
++    }
++
++    public static class ChunkRegion {
++
++        public final ChunkRegionManager regionManager;
++
++        /**
++         * Tasks that need to be executed after releasing the region.
++         */
++        private final ConcurrentLinkedList<Consumer<ChunkRegion>> tasks = new ConcurrentLinkedList<>();
++
++        static final int STATUS_OK         = 0; // mergeWith = null
++        static final int STATUS_TRYMERGE   = 1; // mergeWith = target region to merge with
++        static final int STATUS_MERGED     = 2; // mergeWith = region merged with
++
++        volatile int status;
++
++        ChunkRegion mergeWith;
++
++        static final VarHandle STATUS_HANDLE = ConcurrentUtil.getVarHandle(ChunkRegion.class, "status", int.class);
++
++        public ChunkRegion(final ChunkRegionManager regionManager) {
++            this.regionManager = regionManager;
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/io/github/spottedleaf/concrete/util/TickSynchronizationPoint.java b/src/main/java/io/github/spottedleaf/concrete/util/TickSynchronizationPoint.java
+new file mode 100644
+index 000000000..f357e7f52
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/util/TickSynchronizationPoint.java
+@@ -0,0 +1,40 @@
++package io.github.spottedleaf.concrete.util;
++
++import io.github.spottedleaf.concurrentutil.misc.SynchronizationPoint;
++
++public final class TickSynchronizationPoint {
++
++    private final SynchronizationPoint lock;
++
++    public TickSynchronizationPoint(final TickThread[] threads) {
++        this.lock = new SynchronizationPoint(threads);
++    }
++
++    private static int getIdForCurrentThread() {
++        return ((TickThread)Thread.currentThread()).id;
++    }
++
++    public void start() {
++        this.lock.start(getIdForCurrentThread());
++    }
++
++    public void end() {
++        this.lock.end(getIdForCurrentThread());
++    }
++
++    public void enter() {
++        this.lock.enter(getIdForCurrentThread());
++    }
++
++    public void weakEnter() {
++        this.lock.weakEnter(getIdForCurrentThread());
++    }
++
++    public void enterAlone() {
++        this.lock.enterAlone(getIdForCurrentThread());
++    }
++
++    public void endAloneExecution() {
++        this.lock.endAloneExecution(getIdForCurrentThread());
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/io/github/spottedleaf/concrete/util/TickThread.java b/src/main/java/io/github/spottedleaf/concrete/util/TickThread.java
+new file mode 100644
+index 000000000..b53d351b2
+--- /dev/null
++++ b/src/main/java/io/github/spottedleaf/concrete/util/TickThread.java
+@@ -0,0 +1,11 @@
++package io.github.spottedleaf.concrete.util;
++
++public final class TickThread extends Thread {
++
++    public final int id; /* We don't override getId as the spec requires that it be unique (with respect to all other threads) */
++
++    public TickThread(final Runnable run, final String name, final int id) {
++        super(run, name);
++        this.id = id;
++    }
++}
+\ No newline at end of file
+-- 
+2.21.0
+

@@ -1,0 +1,83 @@
+From 98d8325d60a48aafeba2ba14d83d8fa6a86870ba Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 3 Mar 2019 20:55:07 -0800
+Subject: [PATCH] Multi-Threaded ticking CraftBukkit
+
+These are the changes to CB
+---
+ .../concrete/config/ConcreteConfig.java       | 20 +++++++++++++++++++
+ .../org/bukkit/craftbukkit/CraftServer.java   |  5 ++++-
+ src/main/java/org/spigotmc/AsyncCatcher.java  |  2 +-
+ 3 files changed, 25 insertions(+), 2 deletions(-)
+
+diff --git a/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java
+index ce0340f25..52853db62 100644
+--- a/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java
++++ b/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java
+@@ -88,6 +88,18 @@ public final class ConcreteConfig {
+         return ConcreteConfig.config.getDouble(path, dfl);
+     }
+ 
++    public static boolean tickWorldsInParallel;
++
++    /**
++     * if tickWorldsInParallel == true, then this value is used as a default only for worlds
++     */
++    public static int tickThreads;
++
++    private static void worldticking() {
++        tickWorldsInParallel = ConcreteConfig.getBoolean("tick-worlds-in-parallel", false);
++        tickThreads = ConcreteConfig.getInt("server-tick-threads", 1); // will be 4 in the future
++    }
++
+     public static final class WorldConnfig {
+ 
+         public final String worldName;
+@@ -148,6 +160,14 @@ public final class ConcreteConfig {
+             this.config.addDefault(path, Double.valueOf(dfl));
+             return this.config.getDouble(path, dfl);
+         }
++
++        /** ignored if {@link ConcreteConfig#tickWorldsInParallel} == false */
++        public int threads;
++
++        private void worldthreading() {
++            final int threads = this.getInt("tick-threads", -1);
++            this.threads = threads == -1 ? ConcreteConfig.tickThreads : threads;
++        }
+     }
+ 
+ }
+\ No newline at end of file
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index c0bf98a98..6145838cb 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -1725,7 +1725,10 @@ public final class CraftServer implements Server {
+ 
+     @Override
+     public boolean isPrimaryThread() {
+-        return Thread.currentThread().equals(console.primaryThread);
++        /* Concrete start */
++        final Thread currThread = Thread.currentThread();
++        return currThread == console.primaryThread || currThread instanceof io.github.spottedleaf.concrete.util.TickThread;
++        /* Concrete End */
+     }
+ 
+     @Override
+diff --git a/src/main/java/org/spigotmc/AsyncCatcher.java b/src/main/java/org/spigotmc/AsyncCatcher.java
+index e44c23016..c0f95ed8e 100644
+--- a/src/main/java/org/spigotmc/AsyncCatcher.java
++++ b/src/main/java/org/spigotmc/AsyncCatcher.java
+@@ -10,7 +10,7 @@ public class AsyncCatcher
+ 
+     public static void catchOp(String reason)
+     {
+-        if ( enabled && Thread.currentThread() != MinecraftServer.getServer().primaryThread )
++        if ( enabled && !org.bukkit.Bukkit.isPrimaryThread() ) /* Concrete */
+         {
+             throw new IllegalStateException( "Asynchronous " + reason + "!" );
+         }
+-- 
+2.21.0
+
