@@ -1,4 +1,4 @@
-From a2cfe7332b001a7d8596242a1e65e2a6719570eb Mon Sep 17 00:00:00 2001
+From a4d6f4e2244500b44e16ee366227a047a53cf45f Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 3 Mar 2019 18:25:06 -0800
 Subject: [PATCH] Concrete Server Config
@@ -10,17 +10,17 @@ Subject: [PATCH] Concrete Server Config
  .../org/bukkit/craftbukkit/CraftServer.java   |   2 +
  .../java/org/bukkit/craftbukkit/Main.java     |   7 +
  5 files changed, 166 insertions(+)
- create mode 100644 src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java
+ create mode 100644 src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
 
-diff --git a/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java
+diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
 new file mode 100644
-index 000000000..ce0340f25
+index 000000000..75cb933f9
 --- /dev/null
-+++ b/src/main/java/io/github/spottedleaf/concrete/config/ConcreteConfig.java
++++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
 @@ -0,0 +1,153 @@
-+package io.github.spottedleaf.concrete.config;
++package ca.spottedleaf.concrete.config;
 +
-+import io.github.spottedleaf.concurrentutil.util.Throw;
++import ca.spottedleaf.concurrentutil.util.Throw;
 +import org.bukkit.Bukkit;
 +import org.bukkit.configuration.ConfigurationSection;
 +import org.bukkit.configuration.file.YamlConfiguration;
@@ -173,43 +173,43 @@ index 000000000..ce0340f25
 +}
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index 21a05b2b2..5509fc359 100644
+index 21a05b2b2..bdc6f6948 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
 @@ -214,6 +214,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
              com.destroystokyo.paper.PaperConfig.registerCommands();
              com.destroystokyo.paper.VersionHistoryManager.INSTANCE.getClass(); // load version history now
              // Paper end
-+            io.github.spottedleaf.concrete.config.ConcreteConfig.init((File) options.valueOf("concrete-settings")); /* Concrete - Server Config */
++            ca.spottedleaf.concrete.config.ConcreteConfig.init((File) options.valueOf("concrete-settings")); /* Concrete - Server Config */
  
              DedicatedServer.LOGGER.info("Generating keypair");
              this.a(MinecraftEncryption.b());
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 4d3f88431..0c6554adf 100644
+index 4d3f88431..f7890fac9 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -183,9 +183,12 @@ public abstract class World implements IEntityAccess, GeneratorAccess, IIBlockAc
          return ((ChunkProviderServer) this.chunkProvider).chunks.get(ChunkCoordIntPair.a(x, z)); // Paper - optimize getChunkIfLoaded
      }
  
-+    public final io.github.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig concreteConfig; /* Concrete - Server Config */
++    public final ca.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig concreteConfig; /* Concrete - Server Config */
 +
      protected World(IDataManager idatamanager, @Nullable PersistentCollection persistentcollection, WorldData worlddata, WorldProvider worldprovider, MethodProfiler methodprofiler, boolean flag, ChunkGenerator gen, org.bukkit.World.Environment env) {
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig( worlddata.getName() ); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(worlddata.getName(), this.spigotConfig); // Paper
-+        this.concreteConfig = new io.github.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig(worlddata.getName()); /* Concrete - Server Config */
++        this.concreteConfig = new ca.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig(worlddata.getName()); /* Concrete - Server Config */
          this.chunkPacketBlockController = this.paperConfig.antiXray ? new ChunkPacketBlockControllerAntiXray(this.paperConfig) : ChunkPacketBlockController.NO_OPERATION_INSTANCE; // Paper - Anti-Xray
          this.generator = gen;
          this.world = new CraftWorld((WorldServer) this, gen, env);
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 464be24c1..2f60db7db 100644
+index 464be24c1..48f553f84 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -793,6 +793,7 @@ public final class CraftServer implements Server {
  
          org.spigotmc.SpigotConfig.init((File) console.options.valueOf("spigot-settings")); // Spigot
          com.destroystokyo.paper.PaperConfig.init((File) console.options.valueOf("paper-settings")); // Paper
-+        io.github.spottedleaf.concrete.config.ConcreteConfig.init((File) console.options.valueOf("concrete-settings")); /* Concrete - Server Config */
++        ca.spottedleaf.concrete.config.ConcreteConfig.init((File) console.options.valueOf("concrete-settings")); /* Concrete - Server Config */
          for (WorldServer world : console.getWorlds()) {
              world.worldData.setDifficulty(difficulty);
              world.setSpawnFlags(monsters, animals);

@@ -1,46 +1,31 @@
-From 4e3791cf8537f0319dec495b310d78edc2e00117 Mon Sep 17 00:00:00 2001
+From dc4afbd7c86bf99095baab51624379c8dac90d53 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 13 Jan 2019 12:50:34 -0800
 Subject: [PATCH] Rewrite CraftScheduler
 
 ---
- .../co/aikar/timings/MinecraftTimings.java    |   4 +
  .../concrete/scheduler/AsyncConcreteTask.java | 300 +++++++++++++
  .../scheduler/AsyncTaskScheduler.java         |  97 +++++
  .../concrete/scheduler/ConcreteScheduler.java | 402 ++++++++++++++++++
  .../concrete/scheduler/ConcreteTask.java      | 251 +++++++++++
- .../concrete/scheduler/TaskScheduler.java     | 196 +++++++++
+ .../concrete/scheduler/TaskScheduler.java     | 193 +++++++++
+ .../co/aikar/timings/MinecraftTimings.java    |   4 +
  .../net/minecraft/server/MinecraftServer.java |   2 +-
  .../org/bukkit/craftbukkit/CraftServer.java   |   4 +-
- 8 files changed, 1253 insertions(+), 3 deletions(-)
- create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
- create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
- create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
- create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java
- create mode 100644 src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
+ 8 files changed, 1250 insertions(+), 3 deletions(-)
+ create mode 100644 src/main/java/ca/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
+ create mode 100644 src/main/java/ca/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
+ create mode 100644 src/main/java/ca/spottedleaf/concrete/scheduler/ConcreteScheduler.java
+ create mode 100644 src/main/java/ca/spottedleaf/concrete/scheduler/ConcreteTask.java
+ create mode 100644 src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java
 
-diff --git a/src/main/java/co/aikar/timings/MinecraftTimings.java b/src/main/java/co/aikar/timings/MinecraftTimings.java
-index 66d02e048..3bf4eae03 100644
---- a/src/main/java/co/aikar/timings/MinecraftTimings.java
-+++ b/src/main/java/co/aikar/timings/MinecraftTimings.java
-@@ -38,6 +38,10 @@ public final class MinecraftTimings {
- 
-     public static final Timing antiXrayUpdateTimer = Timings.ofSafe("anti-xray - update");
-     public static final Timing antiXrayObfuscateTimer = Timings.ofSafe("anti-xray - obfuscate");
-+    /* Concrete start - Add timings for scheduler */
-+    public static final Timing concreteSchedulerHandlePending = Timings.ofSafe("Concrete Scheduler - Pending tasks");
-+    public static final Timing concreteSchedulerRepeatTasks = Timings.ofSafe("Concrete Scheduler - Repeat tasks");
-+    /* Concrete end - Add timings for scheduler */
- 
-     private static final Map<Class<?>, String> taskNameCache = new MapMaker().weakKeys().makeMap();
- 
-diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
+diff --git a/src/main/java/ca/spottedleaf/concrete/scheduler/AsyncConcreteTask.java b/src/main/java/ca/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
 new file mode 100644
-index 000000000..e8f4b40b0
+index 000000000..640500fc3
 --- /dev/null
-+++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
++++ b/src/main/java/ca/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
 @@ -0,0 +1,300 @@
-+package io.github.spottedleaf.concrete.scheduler;
++package ca.spottedleaf.concrete.scheduler;
 +
 +import com.destroystokyo.paper.event.server.ServerExceptionEvent;
 +import com.destroystokyo.paper.exception.ServerSchedulerException;
@@ -341,13 +326,13 @@ index 000000000..e8f4b40b0
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
+diff --git a/src/main/java/ca/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java b/src/main/java/ca/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
 new file mode 100644
-index 000000000..ef5fe39ba
+index 000000000..d3bae6c66
 --- /dev/null
-+++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
++++ b/src/main/java/ca/spottedleaf/concrete/scheduler/AsyncTaskScheduler.java
 @@ -0,0 +1,97 @@
-+package io.github.spottedleaf.concrete.scheduler;
++package ca.spottedleaf.concrete.scheduler;
 +
 +import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 +import org.bukkit.plugin.Plugin;
@@ -444,13 +429,13 @@ index 000000000..ef5fe39ba
 +        });
 +    }
 +}
-diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
+diff --git a/src/main/java/ca/spottedleaf/concrete/scheduler/ConcreteScheduler.java b/src/main/java/ca/spottedleaf/concrete/scheduler/ConcreteScheduler.java
 new file mode 100644
-index 000000000..9cb35b675
+index 000000000..8f08f5623
 --- /dev/null
-+++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteScheduler.java
++++ b/src/main/java/ca/spottedleaf/concrete/scheduler/ConcreteScheduler.java
 @@ -0,0 +1,402 @@
-+package io.github.spottedleaf.concrete.scheduler;
++package ca.spottedleaf.concrete.scheduler;
 +
 +import org.bukkit.plugin.IllegalPluginAccessException;
 +import org.bukkit.plugin.Plugin;
@@ -853,15 +838,15 @@ index 000000000..9cb35b675
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java
+diff --git a/src/main/java/ca/spottedleaf/concrete/scheduler/ConcreteTask.java b/src/main/java/ca/spottedleaf/concrete/scheduler/ConcreteTask.java
 new file mode 100644
-index 000000000..cbe44a0e1
+index 000000000..98600c777
 --- /dev/null
-+++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/ConcreteTask.java
++++ b/src/main/java/ca/spottedleaf/concrete/scheduler/ConcreteTask.java
 @@ -0,0 +1,251 @@
-+package io.github.spottedleaf.concrete.scheduler;
++package ca.spottedleaf.concrete.scheduler;
 +
-+import io.github.spottedleaf.concurrentutil.ConcurrentUtil;
++import ca.spottedleaf.concurrentutil.ConcurrentUtil;
 +import org.bukkit.plugin.Plugin;
 +import org.bukkit.scheduler.BukkitTask;
 +import org.bukkit.scheduler.BukkitWorker;
@@ -1111,21 +1096,20 @@ index 000000000..cbe44a0e1
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
+diff --git a/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java b/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java
 new file mode 100644
-index 000000000..9902fef4d
+index 000000000..7a11f0d55
 --- /dev/null
-+++ b/src/main/java/io/github/spottedleaf/concrete/scheduler/TaskScheduler.java
-@@ -0,0 +1,196 @@
-+package io.github.spottedleaf.concrete.scheduler;
++++ b/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java
+@@ -0,0 +1,193 @@
++package ca.spottedleaf.concrete.scheduler;
 +
 +import co.aikar.timings.MinecraftTimings;
 +import com.destroystokyo.paper.event.server.ServerExceptionEvent;
 +import com.destroystokyo.paper.exception.ServerSchedulerException;
-+import io.github.spottedleaf.concurrentutil.map.SingleWriterMultiReaderHashMap;
-+import io.github.spottedleaf.concurrentutil.queue.ConcurrentLinkedList;
++import ca.spottedleaf.concurrentutil.map.primitive.SingleWriterMultiReaderIntHashMap;
++import ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList;
 +import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-+import net.minecraft.server.MinecraftServer;
 +import org.bukkit.plugin.Plugin;
 +import org.bukkit.scheduler.BukkitTask;
 +
@@ -1149,7 +1133,7 @@ index 000000000..9902fef4d
 +     * allows getTask(int) to remain consistent if pending does not contain the task (as it can only read null for the
 +     * element if tasksById is published due to release).
 +     */
-+    protected final SingleWriterMultiReaderHashMap<Integer, ConcreteTask> tasksById = new SingleWriterMultiReaderHashMap<>(64);
++    protected final SingleWriterMultiReaderIntHashMap<ConcreteTask> tasksById = new SingleWriterMultiReaderIntHashMap<>(4096, 0.5f);
 +
 +    protected final ArrayDeque<ConcreteTask> repeatQueue = new ArrayDeque<>();
 +
@@ -1161,8 +1145,7 @@ index 000000000..9902fef4d
 +    }
 +
 +    public ConcreteTask getTask(final int id) {
-+        final Integer key = Integer.valueOf(id);
-+        ConcreteTask task = this.tasksById.get(key);
++        ConcreteTask task = this.tasksById.get(id);
 +        if (task != null) {
 +            return task;
 +        }
@@ -1174,7 +1157,7 @@ index 000000000..9902fef4d
 +            return task;
 +        }
 +        /* It's possible a task with the id was just moved from pending to tasksById, re-check */
-+        return this.tasksById.get(key);
++        return this.tasksById.get(id);
 +    }
 +
 +    protected ConcreteTask createTask(final int id, final Consumer<BukkitTask> task, final Plugin plugin,
@@ -1182,8 +1165,7 @@ index 000000000..9902fef4d
 +        return new ConcreteTask(id, task, plugin, period, nextRun, this);
 +    }
 +
-+    public ConcreteTask scheduleTask(final Consumer<BukkitTask> task, final Plugin plugin, long delay,
-+                                     long period) {
++    public ConcreteTask scheduleTask(final Consumer<BukkitTask> task, final Plugin plugin, long delay, long period) {
 +        if (delay < ConcreteScheduler.RUN_IMMEDIATELY) {
 +            delay = ConcreteScheduler.RUN_IMMEDIATELY;
 +        }
@@ -1235,14 +1217,14 @@ index 000000000..9902fef4d
 +                if (nextRun > currentTick) {
 +                    /* Check cancelled */
 +                    if (task.isCancelled()) {
-+                        TaskScheduler.this.tasksById.remove(Integer.valueOf(task.id));
++                        TaskScheduler.this.tasksById.remove(task.id);
 +                        return true;
 +                    }
 +                    return false;
 +                }
 +
 +                if (!TaskScheduler.executeTask(task)) {
-+                    TaskScheduler.this.tasksById.remove(Integer.valueOf(task.id));
++                    TaskScheduler.this.tasksById.remove(task.id);
 +                    return true;
 +                }
 +
@@ -1259,7 +1241,7 @@ index 000000000..9902fef4d
 +                final long nextRun = task.nextRun;
 +                if (nextRun > currentTick) {
 +                    TaskScheduler.this.repeatQueue.add(task);
-+                    TaskScheduler.this.tasksById.put(Integer.valueOf(task.id), task);
++                    TaskScheduler.this.tasksById.put(task.id, task);
 +                    return;
 +                }
 +
@@ -1274,7 +1256,7 @@ index 000000000..9902fef4d
 +                /* Note: drain is defined to only remove an element after this call succeeds, which allows this.getTask(int) */
 +                /* to work, since 'task' will always be present in either tasksById or pending */
 +                TaskScheduler.this.repeatQueue.add(task);
-+                TaskScheduler.this.tasksById.put(Integer.valueOf(task.id), task);
++                TaskScheduler.this.tasksById.put(task.id, task);
 +            });
 +        } finally {
 +            MinecraftTimings.concreteSchedulerHandlePending.stopTiming();
@@ -1314,8 +1296,23 @@ index 000000000..9902fef4d
 +    }
 +}
 \ No newline at end of file
+diff --git a/src/main/java/co/aikar/timings/MinecraftTimings.java b/src/main/java/co/aikar/timings/MinecraftTimings.java
+index 66d02e048..3bf4eae03 100644
+--- a/src/main/java/co/aikar/timings/MinecraftTimings.java
++++ b/src/main/java/co/aikar/timings/MinecraftTimings.java
+@@ -38,6 +38,10 @@ public final class MinecraftTimings {
+ 
+     public static final Timing antiXrayUpdateTimer = Timings.ofSafe("anti-xray - update");
+     public static final Timing antiXrayObfuscateTimer = Timings.ofSafe("anti-xray - obfuscate");
++    /* Concrete start - Add timings for scheduler */
++    public static final Timing concreteSchedulerHandlePending = Timings.ofSafe("Concrete Scheduler - Pending tasks");
++    public static final Timing concreteSchedulerRepeatTasks = Timings.ofSafe("Concrete Scheduler - Repeat tasks");
++    /* Concrete end - Add timings for scheduler */
+ 
+     private static final Map<Class<?>, String> taskNameCache = new MapMaker().weakKeys().makeMap();
+ 
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index d4c41bd7f..41ecd6d2b 100644
+index 0254ef6a3..d2d249e65 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
 @@ -1000,7 +1000,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
@@ -1328,7 +1325,7 @@ index d4c41bd7f..41ecd6d2b 100644
          MinecraftTimings.minecraftSchedulerTimer.startTiming(); // Paper
          this.methodProfiler.enter("jobs");
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 8d09ceef5..dce8104dd 100644
+index 48f553f84..33ff8e1d4 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -174,7 +174,7 @@ public final class CraftServer implements Server {
@@ -1336,7 +1333,7 @@ index 8d09ceef5..dce8104dd 100644
      private final Logger logger = Logger.getLogger("Minecraft");
      private final ServicesManager servicesManager = new SimpleServicesManager();
 -    private final CraftScheduler scheduler = new CraftScheduler();
-+    private final io.github.spottedleaf.concrete.scheduler.ConcreteScheduler scheduler = new io.github.spottedleaf.concrete.scheduler.ConcreteScheduler();
++    private final ca.spottedleaf.concrete.scheduler.ConcreteScheduler scheduler = new ca.spottedleaf.concrete.scheduler.ConcreteScheduler();
      private final CraftCommandMap commandMap = new CraftCommandMap(this);
      private final SimpleHelpMap helpMap = new SimpleHelpMap(this);
      private final StandardMessenger messenger = new StandardMessenger();
@@ -1345,10 +1342,10 @@ index 8d09ceef5..dce8104dd 100644
  
      @Override
 -    public CraftScheduler getScheduler() {
-+    public io.github.spottedleaf.concrete.scheduler.ConcreteScheduler getScheduler() { /* Concrete - Use concrete scheduler */
++    public ca.spottedleaf.concrete.scheduler.ConcreteScheduler getScheduler() { /* Concrete - Use concrete scheduler */
          return scheduler;
      }
  
 -- 
-2.20.1
+2.21.0
 

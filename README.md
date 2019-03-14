@@ -6,11 +6,11 @@ production server (or at all). The fork is based off of aikar's EMC framework fo
 https://github.com/starlis/empirecraft
 
 ## Contact
-[IRC](http://irc.spi.gt/iris/?channels=concrete)
+[IRC](http://irc.spi.gt/iris/?channels=concrete) | [Discord](https://discord.gg/CgDPu27)
 
 ## License
 The PATCHES-LICENSE file describes the license for api & server patches, 
-found in ./patches/api and ./patches/server.
+found in `./patches/api` and `./patches/server`.
 
 Everything else is licensed under the MIT license. 
 See https://github.com/starlis/empirecraft and https://github.com/electronicboy/byof 
@@ -24,7 +24,7 @@ your dependency you must re-build concrete.
 Concrete-API maven dependency:
 ```xml
 <dependency>
-    <groupId>io.github.spottedleaf.concrete</groupId>
+    <groupId>ca.spottedleaf.concrete</groupId>
     <artifactId>concrete-api</artifactId>
     <version>1.13.2-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
@@ -34,7 +34,7 @@ Concrete-API maven dependency:
  Concrete-Server maven dependency:
  ```xml
  <dependency>
-     <groupId>io.github.spottedleaf.concrete</groupId>
+     <groupId>ca.spottedleaf.concrete</groupId>
      <artifactId>concrete</artifactId>
      <version>1.13.2-R0.1-SNAPSHOT</version>
      <scope>provided</scope>
