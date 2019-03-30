@@ -1,4 +1,4 @@
-From d13d30f4b633f708b66730d210266622c9a03e19 Mon Sep 17 00:00:00 2001
+From 6c9f64848318e368d735881e5bb1e32153cde2fe Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 13 Jan 2019 12:50:34 -0800
 Subject: [PATCH] Rewrite CraftScheduler
@@ -1098,7 +1098,7 @@ index 0000000000..98600c7773
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java b/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java
 new file mode 100644
-index 0000000000..82516bc153
+index 0000000000..bb3a28ce5a
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java
 @@ -0,0 +1,195 @@
@@ -1188,12 +1188,11 @@ index 0000000000..82516bc153
 +
 +    /** @return a boolean value indicating whether the task needs to be executed again */
 +    private static boolean executeTask(final ConcreteTask task) {
++        if (!task.trySetRunning()) {
++            return false;
++        }
 +        try {
-+            if (!task.trySetRunning()) {
-+                return false;
-+            }
 +            task.run();
-+            return task.tryFinish();
 +        } catch (final Throwable ex) {
 +            final Plugin owner = task.plugin;
 +            final String message;
@@ -1204,6 +1203,7 @@ index 0000000000..82516bc153
 +            task.tryFinishError(); /* substitutes tryFinish() */
 +            return false;
 +        }
++        return task.tryFinish();
 +    }
 +
 +    public void heartbeat(final long currentTick) {
