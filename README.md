@@ -54,6 +54,16 @@ git submodule update
 ./concrete patch
 ```
 
+Concrete uses `concurrentutil`, which is not yet published to maven
+central. You must clone https://github.com/Spottedleaf/ConcurrentUtil
+and build that project using the following commands:
+
+```
+git clone https://github.com/Spottedleaf/ConcurrentUtil.git
+cd ConcurrentUtil
+mvn clean install
+```
+
 This should initialize the repo such that you can now start modifying and creating 
 patches. The folder `Concrete-API` is the api repo and the `Concrete-Server` folder
 is the server repo and will contain the source files you will modify.

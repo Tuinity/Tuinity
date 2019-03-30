@@ -1,4 +1,4 @@
-From 13f441a14844fb8471b0110b47881d293e30c945 Mon Sep 17 00:00:00 2001
+From 6965ecf5a01ad569f3a748c7e0bcb7a92dcefb6a Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sat, 5 Jan 2019 11:48:09 -0800
 Subject: [PATCH] Use ConcurrentLinkedList instead of ConcurrentLinkedQueue
@@ -14,7 +14,7 @@ Subject: [PATCH] Use ConcurrentLinkedList instead of ConcurrentLinkedQueue
  7 files changed, 30 insertions(+), 21 deletions(-)
 
 diff --git a/src/main/java/com/destroystokyo/paper/util/PriorityQueuedExecutor.java b/src/main/java/com/destroystokyo/paper/util/PriorityQueuedExecutor.java
-index 8f18c2869..fd9ede001 100644
+index 8f18c28695..fd9ede0015 100644
 --- a/src/main/java/com/destroystokyo/paper/util/PriorityQueuedExecutor.java
 +++ b/src/main/java/com/destroystokyo/paper/util/PriorityQueuedExecutor.java
 @@ -1,5 +1,7 @@
@@ -41,7 +41,7 @@ index 8f18c2869..fd9ede001 100644
      private final RejectionHandler handler;
  
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 2bcbf8902..bcd5ac814 100644
+index f4a1939cc2..a17fce1684 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -67,7 +67,7 @@ public class Chunk implements IChunkAccess {
@@ -63,7 +63,7 @@ index 2bcbf8902..bcd5ac814 100644
          this.E = new AtomicInteger();
          this.entitySlices = (List[]) (new List[16]); // Spigot
 diff --git a/src/main/java/net/minecraft/server/ChunkRegionLoader.java b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-index 51df075b4..eddce7f0f 100644
+index dce52ac0fa..38ef2e50cf 100644
 --- a/src/main/java/net/minecraft/server/ChunkRegionLoader.java
 +++ b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
 @@ -47,7 +47,7 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
@@ -76,7 +76,7 @@ index 51df075b4..eddce7f0f 100644
  
      private static final Logger a = LogManager.getLogger();
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index bdc6f6948..9c26f3512 100644
+index bdc6f6948e..9c26f35124 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
 @@ -39,7 +39,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
@@ -89,7 +89,7 @@ index bdc6f6948..9c26f3512 100644
      public final RemoteControlCommandListener remoteControlCommandListener = new RemoteControlCommandListener(this);
      private RemoteControlListener l;
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index da88f99ce..0254ef6a3 100644
+index 2b8507a81e..3836bcab82 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
 @@ -119,7 +119,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
@@ -110,7 +110,7 @@ index da88f99ce..0254ef6a3 100644
      public int autosavePeriod;
      public File bukkitDataPackFolder;
      public CommandDispatcher vanillaCommandDispatcher;
-@@ -1007,9 +1007,11 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
+@@ -1013,9 +1013,11 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
  
          FutureTask futuretask;
  
@@ -125,7 +125,7 @@ index da88f99ce..0254ef6a3 100644
          PaperAsyncChunkProvider.processMainThreadQueue(this); // Paper
          MinecraftTimings.minecraftSchedulerTimer.stopTiming(); // Paper
  
-@@ -1022,9 +1024,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
+@@ -1028,9 +1030,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
          // CraftBukkit start
          // Run tasks that are waiting on processing
          MinecraftTimings.processQueueTimer.startTiming(); // Spigot
@@ -137,7 +137,7 @@ index da88f99ce..0254ef6a3 100644
  
          MinecraftTimings.chunkIOTickTimer.startTiming(); // Spigot
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 30f646e42..8d7d3d1d4 100644
+index 30f646e421..8d7d3d1d43 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -44,7 +44,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -150,7 +150,7 @@ index 30f646e42..8d7d3d1d4 100644
      public Channel channel;
      public SocketAddress socketAddress; public void setSpoofedRemoteAddress(SocketAddress address) { this.socketAddress = address; } // Paper - OBFHELPER
 diff --git a/src/main/java/org/bukkit/craftbukkit/util/AsynchronousExecutor.java b/src/main/java/org/bukkit/craftbukkit/util/AsynchronousExecutor.java
-index cf1258c55..e1b3cb6a2 100644
+index cf1258c559..e1b3cb6a2f 100644
 --- a/src/main/java/org/bukkit/craftbukkit/util/AsynchronousExecutor.java
 +++ b/src/main/java/org/bukkit/craftbukkit/util/AsynchronousExecutor.java
 @@ -215,7 +215,7 @@ public final class AsynchronousExecutor<P, T, C, E extends Throwable> {
