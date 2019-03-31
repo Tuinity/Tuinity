@@ -1,4 +1,4 @@
-From 6c9f64848318e368d735881e5bb1e32153cde2fe Mon Sep 17 00:00:00 2001
+From 145e57268517d94287ef508446763a5d0f7463ce Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 13 Jan 2019 12:50:34 -0800
 Subject: [PATCH] Rewrite CraftScheduler
@@ -21,7 +21,7 @@ Subject: [PATCH] Rewrite CraftScheduler
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/scheduler/AsyncConcreteTask.java b/src/main/java/ca/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
 new file mode 100644
-index 0000000000..640500fc3a
+index 0000000000..8ed22f2dee
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/scheduler/AsyncConcreteTask.java
 @@ -0,0 +1,300 @@
@@ -273,13 +273,13 @@ index 0000000000..640500fc3a
 +            try {
 +                task.accept(this);
 +            } catch (final Throwable ex) {
-+                this.tryFinishError();
 +                final Plugin owner = this.plugin;
 +                final String message = "Asynchronous task #" + this.id + " for plugin '" + owner.getDescription().getFullName() + "' generated an exception.";
 +
 +                owner.getLogger().log(Level.SEVERE, message, ex);
 +                new ServerExceptionEvent(new ServerSchedulerException(message, ex, this)).callEvent();
 +
++                this.tryFinishError();
 +                return;
 +            }
 +
@@ -1098,7 +1098,7 @@ index 0000000000..98600c7773
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java b/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java
 new file mode 100644
-index 0000000000..bb3a28ce5a
+index 0000000000..a5c11c63be
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java
 @@ -0,0 +1,195 @@
@@ -1195,8 +1195,8 @@ index 0000000000..bb3a28ce5a
 +            task.run();
 +        } catch (final Throwable ex) {
 +            final Plugin owner = task.plugin;
-+            final String message;
-+            owner.getLogger().log(Level.SEVERE, message = "Task #" + task.id + " for plugin '" + owner.getDescription().getFullName() + "' generated an exception.", ex);
++            final String message = "Task #" + task.id + " for plugin '" + owner.getDescription().getFullName() + "' generated an exception.";
++            owner.getLogger().log(Level.SEVERE, message, ex);
 +            new ServerExceptionEvent(new ServerSchedulerException(message, ex, task)).callEvent();
 +
 +            /* Cancel the task, exceptions are fatal in concrete */

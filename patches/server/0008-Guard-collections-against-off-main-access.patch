@@ -1,0 +1,480 @@
+From 281c2068fa04ee509db015413cc7457fc2a13eca Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 31 Mar 2019 13:11:25 -0700
+Subject: [PATCH] Guard collections against off-main access
+
+This way people's servers don't crash unless they know why, and as such
+can resolve the issue by nagging the appropriate developer.
+---
+ .../concrete/util/PrimaryThreadList.java      | 235 ++++++++++++++++++
+ .../concrete/util/PrimaryThreadSet.java       | 162 ++++++++++++
+ .../net/minecraft/server/EntityTracker.java   |   2 +-
+ .../net/minecraft/server/PlayerChunk.java     |   2 +-
+ .../net/minecraft/server/PlayerChunkMap.java  |  12 +-
+ 5 files changed, 406 insertions(+), 7 deletions(-)
+ create mode 100644 src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadList.java
+ create mode 100644 src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadSet.java
+
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadList.java b/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadList.java
+new file mode 100644
+index 0000000000..122a55e8a8
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadList.java
+@@ -0,0 +1,235 @@
++package ca.spottedleaf.concrete.util;
++
++import org.spigotmc.AsyncCatcher;
++
++import java.util.*;
++import java.util.function.Consumer;
++import java.util.function.IntFunction;
++import java.util.function.Predicate;
++import java.util.function.UnaryOperator;
++import java.util.stream.Stream;
++
++public class PrimaryThreadList<E> implements List<E> {
++
++    private final List<E> wrapped;
++
++    public PrimaryThreadList(final List<E> wrap) {
++        if (wrap == null) {
++            throw new NullPointerException("Wrapped list may not be null");
++        }
++
++        this.wrapped = wrap;
++    }
++
++    private void check() {
++        AsyncCatcher.catchOp("collection access");
++    }
++
++    @Override
++    public boolean add(final E element) {
++        this.check();
++        return this.wrapped.add(element);
++    }
++
++    @Override
++    public void add(final int index, final E element) {
++        this.check();
++        this.wrapped.add(index, element);
++    }
++
++    @Override
++    public boolean addAll(final Collection<? extends E> collection) {
++        this.check();
++        return this.wrapped.addAll(collection);
++    }
++
++    @Override
++    public boolean addAll(final int index, final Collection<? extends E> collection) {
++        this.check();
++        return this.wrapped.addAll(index, collection);
++    }
++
++    @Override
++    public E set(final int index, final E element) {
++        this.check();
++        return this.wrapped.set(index, element);
++    }
++
++    @Override
++    public boolean remove(final Object element) {
++        this.check();
++        return this.wrapped.remove(element);
++    }
++
++    @Override
++    public E remove(final int index) {
++        this.check();
++        return this.wrapped.remove(index);
++    }
++
++    @Override
++    public boolean removeIf(final Predicate<? super E> filter) {
++        this.check();
++        return this.wrapped.removeIf(filter);
++    }
++
++    @Override
++    public boolean removeAll(final Collection<?> collection) {
++        this.check();
++        return this.wrapped.removeAll(collection);
++    }
++
++    @Override
++    public boolean retainAll(final Collection<?> collection) {
++        this.check();
++        return this.wrapped.retainAll(collection);
++    }
++
++    @Override
++    public void replaceAll(final UnaryOperator<E> operator) {
++        this.check();
++        this.wrapped.replaceAll(operator);
++    }
++
++    @Override
++    public void sort(final Comparator<? super E> comparator) {
++        this.check();
++        this.wrapped.sort(comparator);
++    }
++
++    @Override
++    public void clear() {
++        this.check();
++        this.wrapped.clear();
++    }
++
++    @Override
++    public int size() {
++        this.check();
++        return this.wrapped.size();
++    }
++
++    @Override
++    public boolean isEmpty() {
++        this.check();
++        return this.wrapped.isEmpty();
++    }
++
++    @Override
++    public E get(final int index) {
++        this.check();
++        return this.wrapped.get(index);
++    }
++
++    @Override
++    public boolean containsAll(final Collection<?> collection) {
++        this.check();
++        return this.wrapped.containsAll(collection);
++    }
++
++    @Override
++    public boolean contains(final Object object) {
++        this.check();
++        return this.wrapped.contains(object);
++    }
++
++    @Override
++    public int indexOf(final Object object) {
++        this.check();
++        return this.wrapped.indexOf(object);
++    }
++
++    @Override
++    public int lastIndexOf(final Object object) {
++        this.check();
++        return this.wrapped.lastIndexOf(object);
++    }
++
++    @Override
++    public void forEach(final Consumer<? super E> action) {
++        this.check();
++        this.wrapped.forEach(action);
++    }
++
++    @Override
++    public <T> T[] toArray(final T[] array) {
++        this.check();
++        return this.wrapped.toArray(array);
++    }
++
++    @Override
++    public <T> T[] toArray(final IntFunction<T[]> generator) {
++        this.check();
++        return this.wrapped.toArray(generator);
++    }
++
++    @Override
++    public Object[] toArray() {
++        this.check();
++        return this.wrapped.toArray();
++    }
++
++    @Override
++    public Iterator<E> iterator() {
++        this.check();
++        return this.wrapped.iterator();
++    }
++
++    @Override
++    public ListIterator<E> listIterator() {
++        this.check();
++        return this.wrapped.listIterator();
++    }
++
++    @Override
++    public ListIterator<E> listIterator(final int index) {
++        this.check();
++        return this.wrapped.listIterator(index);
++    }
++
++    @Override
++    public List<E> subList(final int fromIndex, final int toIndex) {
++        this.check();
++        return new PrimaryThreadList<>(this.wrapped.subList(fromIndex, toIndex));
++    }
++
++    @Override
++    public Stream<E> stream() {
++        this.check();
++        return this.wrapped.stream();
++    }
++
++    @Override
++    public Stream<E> parallelStream() {
++        this.check();
++        return this.wrapped.parallelStream();
++    }
++
++    @Override
++    public Spliterator<E> spliterator() {
++        this.check();
++        return this.wrapped.spliterator();
++    }
++
++    @Override
++    public String toString() {
++        this.check();
++        return this.wrapped.toString();
++    }
++
++    @Override
++    public int hashCode() {
++        this.check();
++        return this.wrapped.hashCode();
++    }
++
++    @Override
++    public boolean equals(final Object object) {
++        this.check();
++        return this.wrapped.equals(object);
++    }
++
++    public static <E> PrimaryThreadList<E> of(final List<E> list) {
++        return new PrimaryThreadList<>(list);
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadSet.java b/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadSet.java
+new file mode 100644
+index 0000000000..8b6c9cb6c0
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadSet.java
+@@ -0,0 +1,162 @@
++package ca.spottedleaf.concrete.util;
++
++import org.spigotmc.AsyncCatcher;
++
++import java.util.*;
++import java.util.function.Consumer;
++import java.util.function.IntFunction;
++import java.util.function.Predicate;
++import java.util.stream.Stream;
++
++public class PrimaryThreadSet<E> implements Set<E> {
++
++    private final Set<E> wrapped;
++
++    public PrimaryThreadSet(final Set<E> wrap) {
++        if (wrap == null) {
++            throw new NullPointerException("Wrapped list may not be null");
++        }
++
++        this.wrapped = wrap;
++    }
++
++    private void check() {
++        AsyncCatcher.catchOp("collection access");
++    }
++
++    @Override
++    public boolean add(final E element) {
++        this.check();
++        return this.wrapped.add(element);
++    }
++
++    @Override
++    public boolean addAll(final Collection<? extends E> collection) {
++        this.check();
++        return this.wrapped.addAll(collection);
++    }
++
++    @Override
++    public boolean remove(final Object element) {
++        this.check();
++        return this.wrapped.remove(element);
++    }
++
++    @Override
++    public boolean removeIf(final Predicate<? super E> filter) {
++        this.check();
++        return this.wrapped.removeIf(filter);
++    }
++
++    @Override
++    public boolean removeAll(final Collection<?> collection) {
++        this.check();
++        return this.wrapped.removeAll(collection);
++    }
++
++    @Override
++    public boolean retainAll(final Collection<?> collection) {
++        this.check();
++        return this.wrapped.retainAll(collection);
++    }
++
++    @Override
++    public void clear() {
++        this.check();
++        this.wrapped.clear();
++    }
++
++    @Override
++    public int size() {
++        this.check();
++        return this.wrapped.size();
++    }
++
++    @Override
++    public boolean isEmpty() {
++        this.check();
++        return this.wrapped.isEmpty();
++    }
++
++    @Override
++    public boolean containsAll(final Collection<?> collection) {
++        this.check();
++        return this.wrapped.containsAll(collection);
++    }
++
++    @Override
++    public boolean contains(final Object object) {
++        this.check();
++        return this.wrapped.contains(object);
++    }
++
++    @Override
++    public void forEach(final Consumer<? super E> action) {
++        this.check();
++        this.wrapped.forEach(action);
++    }
++
++    @Override
++    public <T> T[] toArray(final T[] array) {
++        this.check();
++        return this.wrapped.toArray(array);
++    }
++
++    @Override
++    public <T> T[] toArray(final IntFunction<T[]> generator) {
++        this.check();
++        return this.wrapped.toArray(generator);
++    }
++
++    @Override
++    public Object[] toArray() {
++        this.check();
++        return this.wrapped.toArray();
++    }
++
++    @Override
++    public Iterator<E> iterator() {
++        this.check();
++        return this.wrapped.iterator();
++    }
++
++    @Override
++    public Stream<E> stream() {
++        this.check();
++        return this.wrapped.stream();
++    }
++
++    @Override
++    public Stream<E> parallelStream() {
++        this.check();
++        return this.wrapped.parallelStream();
++    }
++
++    @Override
++    public Spliterator<E> spliterator() {
++        this.check();
++        return this.wrapped.spliterator();
++    }
++
++    @Override
++    public String toString() {
++        this.check();
++        return this.wrapped.toString();
++    }
++
++    @Override
++    public int hashCode() {
++        this.check();
++        return this.wrapped.hashCode();
++    }
++
++    @Override
++    public boolean equals(final Object object) {
++        this.check();
++        return this.wrapped.equals(object);
++    }
++
++    public static <E> PrimaryThreadSet<E> of(final Set<E> list) {
++        return new PrimaryThreadSet<>(list);
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/EntityTracker.java b/src/main/java/net/minecraft/server/EntityTracker.java
+index 3854ae9769..dfb63da054 100644
+--- a/src/main/java/net/minecraft/server/EntityTracker.java
++++ b/src/main/java/net/minecraft/server/EntityTracker.java
+@@ -12,7 +12,7 @@ public class EntityTracker {
+ 
+     private static final Logger a = LogManager.getLogger();
+     private final WorldServer world;
+-    private final Set<EntityTrackerEntry> c = Sets.newHashSet();
++    private final Set<EntityTrackerEntry> c = ca.spottedleaf.concrete.util.PrimaryThreadSet.of(Sets.newHashSet()); /* Concrete - Guard against async access */
+     public final IntHashMap<EntityTrackerEntry> trackedEntities = new IntHashMap<>();
+     private int trackingDistance;
+ 
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index ac5d158093..93c6e225f9 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -12,7 +12,7 @@ public class PlayerChunk {
+ 
+     private static final Logger a = LogManager.getLogger();
+     private final PlayerChunkMap playerChunkMap;
+-    public final List<EntityPlayer> players = Lists.newArrayList();
++    public final List<EntityPlayer> players = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newArrayList()); /* Concrete - Guard against async access */
+     private final ChunkCoordIntPair location;
+     private final short[] dirtyBlocks = new short[64];
+     @Nullable
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index b7dda8e282..62c5e27c95 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -27,12 +27,14 @@ public class PlayerChunkMap {
+         return entityplayer != null && (!entityplayer.isSpectator() || entityplayer.getWorldServer().getGameRules().getBoolean("spectatorsGenerateChunks"));
+     }; static final Predicate<EntityPlayer> CAN_GEN_CHUNKS = b; // Paper - OBFHELPER
+     private final WorldServer world;
+-    private final List<EntityPlayer> managedPlayers = Lists.newArrayList();
++    private final List<EntityPlayer> managedPlayers = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newArrayList()); /* Concrete - Guard against async access */
+     private final Long2ObjectMap<PlayerChunk> e = new Long2ObjectOpenHashMap(4096); Long2ObjectMap<PlayerChunk> getChunks() { return e; } // Paper - OBFHELPER
+-    private final Set<PlayerChunk> f = Sets.newHashSet();
+-    private final List<PlayerChunk> g = Lists.newLinkedList();
+-    private final List<PlayerChunk> h = Lists.newLinkedList();
+-    private final List<PlayerChunk> i = Lists.newArrayList();
++    /* Concrete start - Guard against async access */
++    private final Set<PlayerChunk> f = ca.spottedleaf.concrete.util.PrimaryThreadSet.of(Sets.newHashSet());
++    private final List<PlayerChunk> g = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newLinkedList());
++    private final List<PlayerChunk> h = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newLinkedList());
++    private final List<PlayerChunk> i = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newArrayList());
++    /* Concrete end - Guard against async access */
+     private int j;public int getViewDistance() { return j; } // Paper OBFHELPER
+     private long k;
+     private boolean l = true;
+-- 
+2.21.0
+
