@@ -1,4 +1,4 @@
-From 281c2068fa04ee509db015413cc7457fc2a13eca Mon Sep 17 00:00:00 2001
+From 9dcc6cbd636373419222dd77fb21012fc1101de7 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 31 Mar 2019 13:11:25 -0700
 Subject: [PATCH] Guard collections against off-main access
@@ -6,21 +6,21 @@ Subject: [PATCH] Guard collections against off-main access
 This way people's servers don't crash unless they know why, and as such
 can resolve the issue by nagging the appropriate developer.
 ---
- .../concrete/util/PrimaryThreadList.java      | 235 ++++++++++++++++++
- .../concrete/util/PrimaryThreadSet.java       | 162 ++++++++++++
+ .../concrete/util/PrimaryThreadList.java      | 241 +++++++++++++++
+ .../concrete/util/PrimaryThreadSet.java       | 282 ++++++++++++++++++
  .../net/minecraft/server/EntityTracker.java   |   2 +-
  .../net/minecraft/server/PlayerChunk.java     |   2 +-
  .../net/minecraft/server/PlayerChunkMap.java  |  12 +-
- 5 files changed, 406 insertions(+), 7 deletions(-)
+ 5 files changed, 532 insertions(+), 7 deletions(-)
  create mode 100644 src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadList.java
  create mode 100644 src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadSet.java
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadList.java b/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadList.java
 new file mode 100644
-index 0000000000..122a55e8a8
+index 0000000000..9340182f22
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadList.java
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,241 @@
 +package ca.spottedleaf.concrete.util;
 +
 +import org.spigotmc.AsyncCatcher;
@@ -34,7 +34,7 @@ index 0000000000..122a55e8a8
 +
 +public class PrimaryThreadList<E> implements List<E> {
 +
-+    private final List<E> wrapped;
++    protected final List<E> wrapped;
 +
 +    public PrimaryThreadList(final List<E> wrap) {
 +        if (wrap == null) {
@@ -44,7 +44,7 @@ index 0000000000..122a55e8a8
 +        this.wrapped = wrap;
 +    }
 +
-+    private void check() {
++    protected void check() {
 +        AsyncCatcher.catchOp("collection access");
 +    }
 +
@@ -252,17 +252,23 @@ index 0000000000..122a55e8a8
 +        return this.wrapped.equals(object);
 +    }
 +
++    public static class RandomAccessPrimaryThreadList<E> extends PrimaryThreadList<E> implements RandomAccess {
++        public RandomAccessPrimaryThreadList(final List<E> wrap) {
++            super(wrap);
++        }
++    }
++
 +    public static <E> PrimaryThreadList<E> of(final List<E> list) {
-+        return new PrimaryThreadList<>(list);
++        return list instanceof RandomAccess ? new RandomAccessPrimaryThreadList<>(list) : new PrimaryThreadList<>(list);
 +    }
 +}
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadSet.java b/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadSet.java
 new file mode 100644
-index 0000000000..8b6c9cb6c0
+index 0000000000..bafbe1b3a1
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadSet.java
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,282 @@
 +package ca.spottedleaf.concrete.util;
 +
 +import org.spigotmc.AsyncCatcher;
@@ -275,7 +281,7 @@ index 0000000000..8b6c9cb6c0
 +
 +public class PrimaryThreadSet<E> implements Set<E> {
 +
-+    private final Set<E> wrapped;
++    protected final Set<E> wrapped;
 +
 +    public PrimaryThreadSet(final Set<E> wrap) {
 +        if (wrap == null) {
@@ -285,7 +291,7 @@ index 0000000000..8b6c9cb6c0
 +        this.wrapped = wrap;
 +    }
 +
-+    private void check() {
++    protected void check() {
 +        AsyncCatcher.catchOp("collection access");
 +    }
 +
@@ -421,8 +427,128 @@ index 0000000000..8b6c9cb6c0
 +        return this.wrapped.equals(object);
 +    }
 +
-+    public static <E> PrimaryThreadSet<E> of(final Set<E> list) {
-+        return new PrimaryThreadSet<>(list);
++    public static class SortedPrimaryThreadSet<E> extends PrimaryThreadSet<E> implements SortedSet<E> {
++
++        public SortedPrimaryThreadSet(final SortedSet<E> set) {
++            super(set);
++        }
++
++        @Override
++        public Comparator<? super E> comparator() {
++            return ((SortedSet<E>)this.wrapped).comparator();
++        }
++
++        @Override
++        public E first() {
++            this.check();
++            return ((SortedSet<E>)this.wrapped).first();
++        }
++
++        @Override
++        public E last() {
++            this.check();
++            return ((SortedSet<E>)this.wrapped).last();
++        }
++
++        @Override
++        public SortedSet<E> headSet(final E toElement) {
++            this.check();
++            return ((SortedSet<E>)this.wrapped).headSet(toElement);
++        }
++
++        @Override
++        public SortedSet<E> subSet(final E fromElement, final E toElement) {
++            this.check();
++            return ((SortedSet<E>)this.wrapped).subSet(fromElement, toElement);
++        }
++
++        @Override
++        public SortedSet<E> tailSet(final E fromElement) {
++            this.check();
++            return ((SortedSet<E>)this.wrapped).tailSet(fromElement);
++        }
++    }
++
++    public static class NavigablePrimaryThreadSet<E> extends SortedPrimaryThreadSet<E> implements NavigableSet<E> {
++
++        public NavigablePrimaryThreadSet(final NavigableSet<E> set) {
++            super(set);
++        }
++
++        @Override
++        public E ceiling(final E element) {
++            this.check();
++            return ((NavigableSet<E>)this.wrapped).ceiling(element);
++        }
++
++        @Override
++        public E floor(final E element) {
++            this.check();
++            return ((NavigableSet<E>)this.wrapped).floor(element);
++        }
++
++        @Override
++        public E higher(final E element) {
++            this.check();
++            return ((NavigableSet<E>)this.wrapped).higher(element);
++        }
++
++        @Override
++        public E lower(final E element) {
++            this.check();
++            return ((NavigableSet<E>)this.wrapped).lower(element);
++        }
++
++        @Override
++        public E pollFirst() {
++            this.check();
++            return ((NavigableSet<E>)this.wrapped).pollFirst();
++        }
++
++        @Override
++        public E pollLast() {
++            this.check();
++            return ((NavigableSet<E>)this.wrapped).pollLast();
++        }
++
++        @Override
++        public Iterator<E> descendingIterator() {
++            this.check();
++            return ((NavigableSet<E>)this.wrapped).descendingIterator();
++        }
++
++        @Override
++        public final NavigableSet<E> descendingSet() {
++            this.check();
++            return new NavigablePrimaryThreadSet<>(((NavigableSet<E>)this.wrapped).descendingSet());
++        }
++
++        @Override
++        public NavigableSet<E> headSet(final E toElement, final boolean inclusive) {
++            this.check();
++            return new NavigablePrimaryThreadSet<>(((NavigableSet<E>)this.wrapped).headSet(toElement, inclusive));
++        }
++
++        @Override
++        public NavigableSet<E> subSet(final E fromElement, final boolean fromInclusive, final E toElement, final boolean toInclusive) {
++            this.check();
++            return new NavigablePrimaryThreadSet<>(((NavigableSet<E>)this.wrapped).subSet(fromElement, fromInclusive, toElement, toInclusive));
++        }
++
++        @Override
++        public NavigableSet<E> tailSet(final E fromElement, final boolean inclusive) {
++            this.check();
++            return new NavigablePrimaryThreadSet<>(((NavigableSet<E>)this.wrapped).tailSet(fromElement, inclusive));
++        }
++    }
++
++    public static <E> PrimaryThreadSet<E> of(final Set<E> set) {
++        if (set instanceof NavigableSet) {
++            return new NavigablePrimaryThreadSet<>((NavigableSet<E>)set);
++        } else if (set instanceof SortedSet) {
++            return new SortedPrimaryThreadSet<>((SortedSet<E>)set);
++        }
++        return new PrimaryThreadSet<>(set);
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/EntityTracker.java b/src/main/java/net/minecraft/server/EntityTracker.java
