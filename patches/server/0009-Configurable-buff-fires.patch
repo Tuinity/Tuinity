@@ -1,0 +1,81 @@
+From df3d77eb17168ba930df2012fede57925bb4324b Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Thu, 11 Apr 2019 14:39:35 -0700
+Subject: [PATCH] Configurable buff fires
+
+---
+ .../ca/spottedleaf/concrete/config/ConcreteConfig.java |  9 +++++++++
+ src/main/java/net/minecraft/server/BlockFire.java      | 10 +++++-----
+ 2 files changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+index d2942e46bc..be6e35ed30 100644
+--- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
++++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+@@ -100,6 +100,15 @@ public final class ConcreteConfig {
+         tickThreads = ConcreteConfig.getInt("server-tick-threads", 1); // will be 4 in the future
+     }
+ 
++    /**
++     * Whether or not to buff fire to be almost unstoppable.
++     */
++    public static boolean buffFire;
++
++    private static void bufffire() {
++        buffFire = ConcreteConfig.getBoolean("buff-fire", false);
++    }
++
+     public static final class WorldConnfig {
+ 
+         public final String worldName;
+diff --git a/src/main/java/net/minecraft/server/BlockFire.java b/src/main/java/net/minecraft/server/BlockFire.java
+index 0fbcd352c8..d57bc877fb 100644
+--- a/src/main/java/net/minecraft/server/BlockFire.java
++++ b/src/main/java/net/minecraft/server/BlockFire.java
+@@ -99,7 +99,7 @@ public class BlockFire extends Block {
+     }
+ 
+     public int a(IWorldReader iworldreader) {
+-        return 30;
++        return ca.spottedleaf.concrete.config.ConcreteConfig.buffFire ? 5 : 30;
+     }
+ 
+     public void a(IBlockData iblockdata, World world, BlockPosition blockposition, Random random) {
+@@ -110,14 +110,14 @@ public class BlockFire extends Block {
+ 
+             Block block = world.getType(blockposition.down()).getBlock();
+             boolean flag = world.worldProvider instanceof WorldProviderTheEnd && block == Blocks.BEDROCK || block == Blocks.NETHERRACK || block == Blocks.MAGMA_BLOCK;
+-            int i = (Integer) iblockdata.get(BlockFire.AGE);
++            int i = ca.spottedleaf.concrete.config.ConcreteConfig.buffFire ? 0 : (Integer) iblockdata.get(BlockFire.AGE); /* Concrete - buff fire */
+ 
+             if (!flag && world.isRaining() && this.a(world, blockposition) && random.nextFloat() < 0.2F + (float) i * 0.03F) {
+                 fireExtinguished(world, blockposition); // CraftBukkit - extinguished by rain
+             } else {
+                 int j = Math.min(15, i + random.nextInt(3) / 2);
+ 
+-                if (i != j) {
++                if (!ca.spottedleaf.concrete.config.ConcreteConfig.buffFire && i != j) { /* Concrete - buff fire */
+                     iblockdata = (IBlockData) iblockdata.set(BlockFire.AGE, j);
+                     world.setTypeAndData(blockposition, iblockdata, 4);
+                 }
+@@ -173,7 +173,7 @@ public class BlockFire extends Block {
+                                     }
+ 
+                                     if (i2 > 0 && random.nextInt(k1) <= i2 && (!world.isRaining() || !this.a(world, (BlockPosition) blockposition_mutableblockposition))) {
+-                                        int j2 = Math.min(15, i + random.nextInt(5) / 4);
++                                        int j2 = ca.spottedleaf.concrete.config.ConcreteConfig.buffFire ? 0 : Math.min(15, i + random.nextInt(5) / 4); /* Concrete - buff fire */
+ 
+                                         // CraftBukkit start - Call to stop spread of fire
+                                         if (world.getType(blockposition_mutableblockposition) != Blocks.FIRE) {
+@@ -230,7 +230,7 @@ public class BlockFire extends Block {
+             // CraftBukkit end
+ 
+             if (random.nextInt(j + 10) < 5 && !world.isRainingAt(blockposition)) {
+-                int l = Math.min(j + random.nextInt(5) / 4, 15);
++                int l = ca.spottedleaf.concrete.config.ConcreteConfig.buffFire ? 0 : Math.min(j + random.nextInt(5) / 4, 15);
+ 
+                 world.setTypeAndData(blockposition, (IBlockData) this.a((IBlockAccess) world, blockposition).set(BlockFire.AGE, l), 3);
+             } else {
+-- 
+2.21.0
+
