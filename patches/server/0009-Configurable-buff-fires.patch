@@ -1,35 +1,46 @@
-From df3d77eb17168ba930df2012fede57925bb4324b Mon Sep 17 00:00:00 2001
+From 57a50eb33ba02c08052612aabd0f506d91878a0e Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Thu, 11 Apr 2019 14:39:35 -0700
 Subject: [PATCH] Configurable buff fires
 
 ---
- .../ca/spottedleaf/concrete/config/ConcreteConfig.java |  9 +++++++++
- src/main/java/net/minecraft/server/BlockFire.java      | 10 +++++-----
- 2 files changed, 14 insertions(+), 5 deletions(-)
+ .../concrete/config/ConcreteConfig.java       | 13 ++++++++++
+ .../java/net/minecraft/server/BlockFire.java  | 24 +++++++++++++++----
+ 2 files changed, 32 insertions(+), 5 deletions(-)
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-index d2942e46bc..be6e35ed30 100644
+index d2942e46bc..deedc73ea9 100644
 --- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
 +++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-@@ -100,6 +100,15 @@ public final class ConcreteConfig {
+@@ -1,6 +1,7 @@
+ package ca.spottedleaf.concrete.config;
+ 
+ import ca.spottedleaf.concurrentutil.util.Throw;
++import net.minecraft.server.BlockFire;
+ import org.bukkit.Bukkit;
+ import org.bukkit.configuration.ConfigurationSection;
+ import org.bukkit.configuration.file.YamlConfiguration;
+@@ -100,6 +101,18 @@ public final class ConcreteConfig {
          tickThreads = ConcreteConfig.getInt("server-tick-threads", 1); // will be 4 in the future
      }
  
 +    /**
-+     * Whether or not to buff fire to be almost unstoppable.
++     * Whether or not to buff fire to be actually unstoppable.
 +     */
 +    public static boolean buffFire;
++    public static boolean unstoppablefire;
 +
 +    private static void bufffire() {
 +        buffFire = ConcreteConfig.getBoolean("buff-fire", false);
++        unstoppablefire = ConcreteConfig.getBoolean("unstoppable-fire", false);
++        BlockFire.configinit();
 +    }
 +
      public static final class WorldConnfig {
  
          public final String worldName;
 diff --git a/src/main/java/net/minecraft/server/BlockFire.java b/src/main/java/net/minecraft/server/BlockFire.java
-index 0fbcd352c8..d57bc877fb 100644
+index 0fbcd352c8..1e101a1c61 100644
 --- a/src/main/java/net/minecraft/server/BlockFire.java
 +++ b/src/main/java/net/minecraft/server/BlockFire.java
 @@ -99,7 +99,7 @@ public class BlockFire extends Block {
@@ -37,7 +48,7 @@ index 0fbcd352c8..d57bc877fb 100644
  
      public int a(IWorldReader iworldreader) {
 -        return 30;
-+        return ca.spottedleaf.concrete.config.ConcreteConfig.buffFire ? 5 : 30;
++        return (ca.spottedleaf.concrete.config.ConcreteConfig.buffFire ? (ca.spottedleaf.concrete.config.ConcreteConfig.unstoppablefire ? 1 : 15) : 30); /* Concrete - buff fire */
      }
  
      public void a(IBlockData iblockdata, World world, BlockPosition blockposition, Random random) {
@@ -72,10 +83,31 @@ index 0fbcd352c8..d57bc877fb 100644
  
              if (random.nextInt(j + 10) < 5 && !world.isRainingAt(blockposition)) {
 -                int l = Math.min(j + random.nextInt(5) / 4, 15);
-+                int l = ca.spottedleaf.concrete.config.ConcreteConfig.buffFire ? 0 : Math.min(j + random.nextInt(5) / 4, 15);
++                int l = ca.spottedleaf.concrete.config.ConcreteConfig.buffFire ? 0 : Math.min(j + random.nextInt(5) / 4, 15); /* Concrete - buff fire */
  
                  world.setTypeAndData(blockposition, (IBlockData) this.a((IBlockAccess) world, blockposition).set(BlockFire.AGE, l), 3);
              } else {
+@@ -449,6 +449,20 @@ public class BlockFire extends Block {
+         blockfire.a(Blocks.DRIED_KELP_BLOCK, 30, 60);
+     }
+ 
++    /* Concrete start - buff fire */
++    public static void configinit() {
++        BlockFire blockfire = (BlockFire)Blocks.FIRE;
++        if (ca.spottedleaf.concrete.config.ConcreteConfig.unstoppablefire) {
++            for (final Block block : (Iterable<Block>) IRegistry.BLOCK) {
++                if (block == Blocks.FIRE || block == Blocks.AIR || block == Blocks.VOID_AIR || block == Blocks.CAVE_AIR) {
++                    continue;
++                }
++                blockfire.a(block, 100, 100);
++            }
++        }
++    }
++    /* Concrete end - buff fire */
++
+     // CraftBukkit start
+     private void fireExtinguished(GeneratorAccess world, BlockPosition position) {
+         if (!CraftEventFactory.callBlockFadeEvent(world, position, Blocks.AIR.getBlockData()).isCancelled()) {
 -- 
 2.21.0
 
