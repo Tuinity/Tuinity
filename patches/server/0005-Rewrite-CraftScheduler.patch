@@ -1,4 +1,4 @@
-From c335e3fa2865914e2a9d1d034cb4422d393b7e17 Mon Sep 17 00:00:00 2001
+From 82cf0d12956e01f14d7c960d8c9416183027f4e5 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 13 Jan 2019 12:50:34 -0800
 Subject: [PATCH] Rewrite CraftScheduler
@@ -1306,10 +1306,10 @@ index 0000000000..a6a3a6d777
 +}
 \ No newline at end of file
 diff --git a/src/main/java/co/aikar/timings/MinecraftTimings.java b/src/main/java/co/aikar/timings/MinecraftTimings.java
-index 7a2a27cdb4..bdd030de4a 100644
+index 3f9fb6f906..a64268ae48 100644
 --- a/src/main/java/co/aikar/timings/MinecraftTimings.java
 +++ b/src/main/java/co/aikar/timings/MinecraftTimings.java
-@@ -38,6 +38,10 @@ public final class MinecraftTimings {
+@@ -39,6 +39,10 @@ public final class MinecraftTimings {
  
      public static final Timing antiXrayUpdateTimer = Timings.ofSafe("anti-xray - update");
      public static final Timing antiXrayObfuscateTimer = Timings.ofSafe("anti-xray - obfuscate");
@@ -1321,23 +1321,23 @@ index 7a2a27cdb4..bdd030de4a 100644
      private static final Map<Class<?>, String> taskNameCache = new MapMaker().weakKeys().makeMap();
  
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index b5cf2aa447..c5285d8a6a 100644
+index 72a0b737d9..e9bf5e35c7 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -1007,7 +1007,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
+@@ -1108,7 +1108,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
  
-     public void b(BooleanSupplier booleansupplier) {
-         MinecraftTimings.bukkitSchedulerTimer.startTiming(); // Paper
+     protected void b(BooleanSupplier booleansupplier) {
+         MinecraftTimings.bukkitSchedulerTimer.startTiming(); // Spigot // Paper
 -        this.server.getScheduler().mainThreadHeartbeat(this.ticks); // CraftBukkit
 +        this.server.getScheduler().heartbeat(this.ticks); // CraftBukkit /* Concrete - Rewrite CraftScheduler */
-         MinecraftTimings.bukkitSchedulerTimer.stopTiming(); // Paper
-         MinecraftTimings.minecraftSchedulerTimer.startTiming(); // Paper
-         this.methodProfiler.enter("jobs");
+         MinecraftTimings.bukkitSchedulerTimer.stopTiming(); // Spigot // Paper
+         this.methodProfiler.enter("commandFunctions");
+         MinecraftTimings.commandFunctionsTimer.startTiming(); // Spigot // Paper
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index cd9040c630..1c2ef68ca2 100644
+index 8fb67f2fe0..e2d9bd408a 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-@@ -174,7 +174,7 @@ public final class CraftServer implements Server {
+@@ -205,7 +205,7 @@ public final class CraftServer implements Server {
      private final String bukkitVersion = Versioning.getBukkitVersion();
      private final Logger logger = Logger.getLogger("Minecraft");
      private final ServicesManager servicesManager = new SimpleServicesManager();
@@ -1346,7 +1346,7 @@ index cd9040c630..1c2ef68ca2 100644
      private final CraftCommandMap commandMap = new CraftCommandMap(this);
      private final SimpleHelpMap helpMap = new SimpleHelpMap(this);
      private final StandardMessenger messenger = new StandardMessenger();
-@@ -663,7 +663,7 @@ public final class CraftServer implements Server {
+@@ -665,7 +665,7 @@ public final class CraftServer implements Server {
      }
  
      @Override

@@ -1,4 +1,4 @@
-From 9dcc6cbd636373419222dd77fb21012fc1101de7 Mon Sep 17 00:00:00 2001
+From 7f734f3c9cf0519382f08e079cb6d1cd3197721b Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 31 Mar 2019 13:11:25 -0700
 Subject: [PATCH] Guard collections against off-main access
@@ -8,10 +8,7 @@ can resolve the issue by nagging the appropriate developer.
 ---
  .../concrete/util/PrimaryThreadList.java      | 241 +++++++++++++++
  .../concrete/util/PrimaryThreadSet.java       | 282 ++++++++++++++++++
- .../net/minecraft/server/EntityTracker.java   |   2 +-
- .../net/minecraft/server/PlayerChunk.java     |   2 +-
- .../net/minecraft/server/PlayerChunkMap.java  |  12 +-
- 5 files changed, 532 insertions(+), 7 deletions(-)
+ 2 files changed, 523 insertions(+)
  create mode 100644 src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadList.java
  create mode 100644 src/main/java/ca/spottedleaf/concrete/util/PrimaryThreadSet.java
 
@@ -551,56 +548,6 @@ index 0000000000..bafbe1b3a1
 +        return new PrimaryThreadSet<>(set);
 +    }
 +}
-diff --git a/src/main/java/net/minecraft/server/EntityTracker.java b/src/main/java/net/minecraft/server/EntityTracker.java
-index 3854ae9769..dfb63da054 100644
---- a/src/main/java/net/minecraft/server/EntityTracker.java
-+++ b/src/main/java/net/minecraft/server/EntityTracker.java
-@@ -12,7 +12,7 @@ public class EntityTracker {
- 
-     private static final Logger a = LogManager.getLogger();
-     private final WorldServer world;
--    private final Set<EntityTrackerEntry> c = Sets.newHashSet();
-+    private final Set<EntityTrackerEntry> c = ca.spottedleaf.concrete.util.PrimaryThreadSet.of(Sets.newHashSet()); /* Concrete - Guard against async access */
-     public final IntHashMap<EntityTrackerEntry> trackedEntities = new IntHashMap<>();
-     private int trackingDistance;
- 
-diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index ac5d158093..93c6e225f9 100644
---- a/src/main/java/net/minecraft/server/PlayerChunk.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -12,7 +12,7 @@ public class PlayerChunk {
- 
-     private static final Logger a = LogManager.getLogger();
-     private final PlayerChunkMap playerChunkMap;
--    public final List<EntityPlayer> players = Lists.newArrayList();
-+    public final List<EntityPlayer> players = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newArrayList()); /* Concrete - Guard against async access */
-     private final ChunkCoordIntPair location;
-     private final short[] dirtyBlocks = new short[64];
-     @Nullable
-diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index b7dda8e282..62c5e27c95 100644
---- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -27,12 +27,14 @@ public class PlayerChunkMap {
-         return entityplayer != null && (!entityplayer.isSpectator() || entityplayer.getWorldServer().getGameRules().getBoolean("spectatorsGenerateChunks"));
-     }; static final Predicate<EntityPlayer> CAN_GEN_CHUNKS = b; // Paper - OBFHELPER
-     private final WorldServer world;
--    private final List<EntityPlayer> managedPlayers = Lists.newArrayList();
-+    private final List<EntityPlayer> managedPlayers = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newArrayList()); /* Concrete - Guard against async access */
-     private final Long2ObjectMap<PlayerChunk> e = new Long2ObjectOpenHashMap(4096); Long2ObjectMap<PlayerChunk> getChunks() { return e; } // Paper - OBFHELPER
--    private final Set<PlayerChunk> f = Sets.newHashSet();
--    private final List<PlayerChunk> g = Lists.newLinkedList();
--    private final List<PlayerChunk> h = Lists.newLinkedList();
--    private final List<PlayerChunk> i = Lists.newArrayList();
-+    /* Concrete start - Guard against async access */
-+    private final Set<PlayerChunk> f = ca.spottedleaf.concrete.util.PrimaryThreadSet.of(Sets.newHashSet());
-+    private final List<PlayerChunk> g = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newLinkedList());
-+    private final List<PlayerChunk> h = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newLinkedList());
-+    private final List<PlayerChunk> i = ca.spottedleaf.concrete.util.PrimaryThreadList.of(Lists.newArrayList());
-+    /* Concrete end - Guard against async access */
-     private int j;public int getViewDistance() { return j; } // Paper OBFHELPER
-     private long k;
-     private boolean l = true;
 -- 
 2.21.0
 

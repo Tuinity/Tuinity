@@ -1,131 +1,41 @@
-From b914baae8100c5c5fe2c1b9e09da8bbb8940ca6e Mon Sep 17 00:00:00 2001
+From 767a7edae05c35525642daa8b1e985432d5537f6 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sat, 5 Jan 2019 11:48:09 -0800
 Subject: [PATCH] Use ConcurrentLinkedList instead of ConcurrentLinkedQueue
 
 ---
- .../paper/util/PriorityQueuedExecutor.java       | 10 +++++++---
- src/main/java/net/minecraft/server/Chunk.java    |  4 ++--
- .../net/minecraft/server/ChunkRegionLoader.java  |  2 +-
- .../net/minecraft/server/DedicatedServer.java    |  2 +-
- .../net/minecraft/server/MinecraftServer.java    | 16 ++++++++--------
- .../net/minecraft/server/NetworkManager.java     |  2 +-
- .../craftbukkit/util/AsynchronousExecutor.java   | 15 ++++++++++-----
- 7 files changed, 30 insertions(+), 21 deletions(-)
+ src/main/java/net/minecraft/server/DedicatedServer.java | 2 +-
+ src/main/java/net/minecraft/server/MinecraftServer.java | 6 ++----
+ src/main/java/net/minecraft/server/NetworkManager.java  | 2 +-
+ 3 files changed, 4 insertions(+), 6 deletions(-)
 
-diff --git a/src/main/java/com/destroystokyo/paper/util/PriorityQueuedExecutor.java b/src/main/java/com/destroystokyo/paper/util/PriorityQueuedExecutor.java
-index 8f18c28695..fd9ede0015 100644
---- a/src/main/java/com/destroystokyo/paper/util/PriorityQueuedExecutor.java
-+++ b/src/main/java/com/destroystokyo/paper/util/PriorityQueuedExecutor.java
-@@ -1,5 +1,7 @@
- package com.destroystokyo.paper.util;
- 
-+import ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList; /* Concrete - Use a better queue */
-+
- import javax.annotation.Nonnull;
- import java.util.ArrayList;
- import java.util.List;
-@@ -26,9 +28,11 @@ import java.util.function.Supplier;
- @SuppressWarnings({"WeakerAccess", "UnusedReturnValue", "unused"})
- public class PriorityQueuedExecutor extends AbstractExecutorService {
- 
--    private final ConcurrentLinkedQueue<Runnable> urgent = new ConcurrentLinkedQueue<>();
--    private final ConcurrentLinkedQueue<Runnable> high = new ConcurrentLinkedQueue<>();
--    private final ConcurrentLinkedQueue<Runnable> normal = new ConcurrentLinkedQueue<>();
-+    /* Concrete start - Use a better queue */
-+    private final ConcurrentLinkedList<Runnable> urgent = new ConcurrentLinkedList<>();
-+    private final ConcurrentLinkedList<Runnable> high = new ConcurrentLinkedList<>();
-+    private final ConcurrentLinkedList<Runnable> normal = new ConcurrentLinkedList<>();
-+    /* Concrete end - Use a better queue */
-     private final List<Thread> threads = new ArrayList<>();
-     private final RejectionHandler handler;
- 
-diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 46804203fe..5c123268a5 100644
---- a/src/main/java/net/minecraft/server/Chunk.java
-+++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -67,7 +67,7 @@ public class Chunk implements IChunkAccess {
-     private int y;
-     private long z;
-     private int A;
--    private final ConcurrentLinkedQueue<BlockPosition> B;
-+    private final java.util.ArrayDeque<BlockPosition> B; /* Concrete - Use a better queue */
-     private ChunkStatus C;
-     private int D;
-     private final AtomicInteger E;
-@@ -145,7 +145,7 @@ public class Chunk implements IChunkAccess {
-         this.q = Maps.newHashMap();
-         this.r = new ShortList[16];
-         this.A = 4096;
--        this.B = Queues.newConcurrentLinkedQueue();
-+        this.B = new java.util.ArrayDeque<>(); /* Concrete - Use a better queue */
-         this.C = ChunkStatus.EMPTY;
-         this.E = new AtomicInteger();
-         this.entitySlices = (List[]) (new List[16]); // Spigot
-diff --git a/src/main/java/net/minecraft/server/ChunkRegionLoader.java b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-index dce52ac0fa..38ef2e50cf 100644
---- a/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-+++ b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-@@ -47,7 +47,7 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
-             this.compoundSupplier = compoundSupplier;
-         }
-     }
--    final private ConcurrentLinkedQueue<QueuedChunk> queue = new ConcurrentLinkedQueue<>();
-+    private final ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<QueuedChunk> queue = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); /* Concrete - Use a better queue */
-     // Paper end
- 
-     private static final Logger a = LogManager.getLogger();
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index bdc6f6948e..9c26f35124 100644
+index 69934a6bd5..433efc6e36 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
-@@ -39,7 +39,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
+@@ -41,7 +41,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
  
      private static final Logger LOGGER = LogManager.getLogger();
-     private static final Pattern h = Pattern.compile("^[a-fA-F0-9]{40}$");
+     private static final Pattern j = Pattern.compile("^[a-fA-F0-9]{40}$");
 -    private final java.util.Queue<ServerCommand> serverCommandQueue = new java.util.concurrent.ConcurrentLinkedQueue<ServerCommand>(); // Paper - use a proper queue
 +    private final java.util.Queue<ServerCommand> serverCommandQueue = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); // Paper - use a proper queue /* Concrete - Use a better queue */
-     private RemoteStatusListener j;
-     public final RemoteControlCommandListener remoteControlCommandListener = new RemoteControlCommandListener(this);
-     private RemoteControlListener l;
+     private RemoteStatusListener l;
+     public final RemoteControlCommandListener remoteControlCommandListener;
+     private RemoteControlListener remoteControlListener;
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index a5fd51faf3..b5cf2aa447 100644
+index cc6ddfcc0e..72a0b737d9 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -119,7 +119,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
-     private final GameProfileRepository W;
-     private final UserCache X;
-     private long Y;
--    protected final Queue<FutureTask<?>> f = Queues.newConcurrentLinkedQueue();
-+    protected final ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<FutureTask<?>> f = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); /* Concrete - Use CLL */
-     private Thread serverThread;
-     private long nextTick = SystemUtils.getMonotonicMillis();
-     private final IReloadableResourceManager ac;
-@@ -146,7 +146,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
+@@ -154,7 +154,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+     public org.bukkit.command.RemoteConsoleCommandSender remoteConsole;
+     //public ConsoleReader reader; // Paper
      public static int currentTick = 0; // Paper - Further improve tick loop
-     public boolean serverAutoSave = false; // Paper
-     public final Thread primaryThread;
 -    public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
-+    public ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<Runnable> processQueue = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); /* Concrete - Use CLL */
++    public final ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<Runnable> processQueue = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); /* Concrete - Use CLL */
      public int autosavePeriod;
      public File bukkitDataPackFolder;
      public CommandDispatcher vanillaCommandDispatcher;
-@@ -1014,9 +1014,11 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
- 
-         FutureTask futuretask;
- 
--        while ((futuretask = (FutureTask) this.f.poll()) != null) {
--            SystemUtils.a(futuretask, MinecraftServer.LOGGER);
--        }
-+        /* Concrete - Use CLL drain */
-+        this.f.drain((final FutureTask<?> task) -> {
-+            SystemUtils.a(task, MinecraftServer.LOGGER);
-+        });
-+        /* Concrete end */
-         PaperAsyncChunkProvider.processMainThreadQueue(this); // Paper
-         MinecraftTimings.minecraftSchedulerTimer.stopTiming(); // Paper
- 
-@@ -1029,9 +1031,7 @@ public abstract class MinecraftServer implements IAsyncTaskHandler, IMojangStati
+@@ -1119,9 +1119,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          // CraftBukkit start
          // Run tasks that are waiting on processing
          MinecraftTimings.processQueueTimer.startTiming(); // Spigot
@@ -135,12 +45,12 @@ index a5fd51faf3..b5cf2aa447 100644
 +        processQueue.drain(Runnable::run); /* Concrete - Use efficient drain method */
          MinecraftTimings.processQueueTimer.stopTiming(); // Spigot
  
-         MinecraftTimings.chunkIOTickTimer.startTiming(); // Spigot
+         MinecraftTimings.timeUpdateTimer.startTiming(); // Spigot // Paper
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 30f646e421..8d7d3d1d43 100644
+index 4766f7b773..6ff5f5a9f1 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
-@@ -44,7 +44,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -43,7 +43,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
          return new DefaultEventLoopGroup(0, (new ThreadFactoryBuilder()).setNameFormat("Netty Local Client IO #%d").setDaemon(true).build());
      });
      private final EnumProtocolDirection h;
@@ -149,39 +59,6 @@ index 30f646e421..8d7d3d1d43 100644
      private final ReentrantReadWriteLock j = new ReentrantReadWriteLock();
      public Channel channel;
      public SocketAddress socketAddress; public void setSpoofedRemoteAddress(SocketAddress address) { this.socketAddress = address; } // Paper - OBFHELPER
-diff --git a/src/main/java/org/bukkit/craftbukkit/util/AsynchronousExecutor.java b/src/main/java/org/bukkit/craftbukkit/util/AsynchronousExecutor.java
-index cf1258c559..e1b3cb6a2f 100644
---- a/src/main/java/org/bukkit/craftbukkit/util/AsynchronousExecutor.java
-+++ b/src/main/java/org/bukkit/craftbukkit/util/AsynchronousExecutor.java
-@@ -215,7 +215,7 @@ public final class AsynchronousExecutor<P, T, C, E extends Throwable> {
-     }
- 
-     final CallBackProvider<P, T, C, E> provider;
--    final Queue<Task> finished = new ConcurrentLinkedQueue<Task>();
-+    final ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<Task> finished = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); /* Concrete - Use a better queue */
-     final Map<P, Task> tasks = new HashMap<P, Task>();
-     final ThreadPoolExecutor pool;
- 
-@@ -342,10 +342,15 @@ public final class AsynchronousExecutor<P, T, C, E extends Throwable> {
-      * This is the 'heartbeat' that should be called synchronously to finish any pending tasks
-      */
-     public void finishActive() throws E {
--        final Queue<Task> finished = this.finished;
--        while (!finished.isEmpty()) {
--            finished.poll().finish();
--        }
-+        /* Concrete start - Use a better queue */
-+        this.finished.drain((final Task task) -> {
-+            try {
-+                task.finish();
-+            } catch (Throwable throwable) {
-+                com.destroystokyo.paper.util.SneakyThrow.sneaky(throwable);
-+            }
-+        });
-+        /* Concrete end - Use a better queue */
-     }
- 
-     public void setActiveThreads(final int coreSize) {
 -- 
 2.21.0
 
