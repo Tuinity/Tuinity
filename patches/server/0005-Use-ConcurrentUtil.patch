@@ -1,14 +1,15 @@
-From 58224f29c04a464b9c36b4ad5bbd7a8cf19b6059 Mon Sep 17 00:00:00 2001
+From 98ded48617bf8f1eb2ec084c9e58c69408fdf450 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sat, 5 Jan 2019 11:48:09 -0800
-Subject: [PATCH] Use ConcurrentLinkedList instead of ConcurrentLinkedQueue
+Subject: [PATCH] Use ConcurrentUtil
 
 ---
  src/main/java/net/minecraft/server/DedicatedServer.java   | 2 +-
  src/main/java/net/minecraft/server/IAsyncTaskHandler.java | 2 +-
  src/main/java/net/minecraft/server/MinecraftServer.java   | 6 ++----
  src/main/java/net/minecraft/server/NetworkManager.java    | 2 +-
- 4 files changed, 5 insertions(+), 7 deletions(-)
+ src/main/java/net/minecraft/server/UserCache.java         | 4 ++--
+ 5 files changed, 7 insertions(+), 9 deletions(-)
 
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
 index 69934a6bd5..433efc6e36 100644
@@ -73,6 +74,21 @@ index ba23d28335..f2dd87b7bc 100644
      private final ReentrantReadWriteLock j = new ReentrantReadWriteLock();
      public Channel channel;
      public SocketAddress socketAddress; public void setSpoofedRemoteAddress(SocketAddress address) { this.socketAddress = address; } // Paper - OBFHELPER
+diff --git a/src/main/java/net/minecraft/server/UserCache.java b/src/main/java/net/minecraft/server/UserCache.java
+index 1d4bf64b1b..b39dbb1a90 100644
+--- a/src/main/java/net/minecraft/server/UserCache.java
++++ b/src/main/java/net/minecraft/server/UserCache.java
+@@ -43,8 +43,8 @@ public class UserCache {
+ 
+     public static final SimpleDateFormat a = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z");
+     private static boolean c;
+-    private final Map<String, UserCache.UserCacheEntry> d = new java.util.concurrent.ConcurrentHashMap<>();private final Map<String, UserCache.UserCacheEntry> nameCache = d; // Paper - OBFHELPER // Paper
+-    private final Map<UUID, UserCache.UserCacheEntry> e = new java.util.concurrent.ConcurrentHashMap<>(); // Paper
++    private final Map<String, UserCache.UserCacheEntry> d = new ca.spottedleaf.concurrentutil.map.SingleWriterMultiReaderHashMap<>();private final Map<String, UserCache.UserCacheEntry> nameCache = d; // Paper - OBFHELPER // Paper /* Concrete - Use concurrentutil */
++    private final Map<UUID, UserCache.UserCacheEntry> e = new ca.spottedleaf.concurrentutil.map.SingleWriterMultiReaderHashMap<>(); // Paper /* Concrete - Use concurrentutil */
+     private final Deque<GameProfile> f = new java.util.concurrent.LinkedBlockingDeque<GameProfile>(); // CraftBukkit
+     private final GameProfileRepository g;
+     protected final Gson b;
 -- 
 2.21.0
 
