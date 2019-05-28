@@ -26,7 +26,7 @@ Concrete-API maven dependency:
 <dependency>
     <groupId>ca.spottedleaf.concrete</groupId>
     <artifactId>concrete-api</artifactId>
-    <version>1.14.1-R0.1-SNAPSHOT</version>
+    <version>1.14.2-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
  </dependency>
  ```
@@ -36,7 +36,7 @@ Concrete-API maven dependency:
  <dependency>
      <groupId>ca.spottedleaf.concrete</groupId>
      <artifactId>concrete</artifactId>
-     <version>1.14.1-R0.1-SNAPSHOT</version>
+     <version>1.14.2-R0.1-SNAPSHOT</version>
      <scope>provided</scope>
   </dependency>
   ```
