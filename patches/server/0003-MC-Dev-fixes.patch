@@ -1,0 +1,60 @@
+From f3002fc9b83875bfa8e9d704d441c5f9a90ae23c Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Wed, 19 Jun 2019 13:21:17 -0700
+Subject: [PATCH] MC-Dev fixes
+
+---
+ src/main/java/net/minecraft/server/RegionFileSection.java | 6 +++---
+ src/main/java/net/minecraft/server/VillagePlace.java      | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/main/java/net/minecraft/server/RegionFileSection.java b/src/main/java/net/minecraft/server/RegionFileSection.java
+index a343a7b31..aabfcd04e 100644
+--- a/src/main/java/net/minecraft/server/RegionFileSection.java
++++ b/src/main/java/net/minecraft/server/RegionFileSection.java
+@@ -82,9 +82,9 @@ public class RegionFileSection<R extends MinecraftSerializable> extends RegionFi
+         Optional<R> optional = this.d(i);
+ 
+         if (optional.isPresent()) {
+-            return (MinecraftSerializable) optional.get();
++            return optional.get(); /* Concrete - decompile fix */
+         } else {
+-            R r0 = (MinecraftSerializable) this.f.apply(() -> {
++            R r0 = this.f.apply(() -> { /* Concrete - decompile fix */
+                 this.a(i);
+             });
+ 
+@@ -123,7 +123,7 @@ public class RegionFileSection<R extends MinecraftSerializable> extends RegionFi
+             for (int l = 0; l < 16; ++l) {
+                 long i1 = SectionPosition.a(chunkcoordintpair, l).v();
+                 Optional<R> optional = optionaldynamic.get(Integer.toString(l)).get().map((dynamic2) -> {
+-                    return (MinecraftSerializable) this.e.apply(() -> {
++                    return this.e.apply(() -> { /* Concrete - decompile fix */
+                         this.a(i1);
+                     }, dynamic2);
+                 });
+diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
+index 7bc473e1e..51e0971a0 100644
+--- a/src/main/java/net/minecraft/server/VillagePlace.java
++++ b/src/main/java/net/minecraft/server/VillagePlace.java
+@@ -164,7 +164,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+     }
+ 
+     private static boolean a(ChunkSection chunksection) {
+-        Stream stream = VillagePlaceType.e();
++        Stream<IBlockData> stream = VillagePlaceType.e(); /* Concrete - decompile fix */
+ 
+         chunksection.getClass();
+         return stream.anyMatch(chunksection::a);
+@@ -222,7 +222,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+ 
+         private final Predicate<? super VillagePlaceRecord> d;
+ 
+-        private Occupancy(Predicate predicate) {
++        private Occupancy(Predicate<? super VillagePlaceRecord> predicate) { /* Concrete - decompile fix */
+             this.d = predicate;
+         }
+ 
+-- 
+2.22.0
+
