@@ -1,4 +1,4 @@
-From b8985cd570b9a691cd5dfad911c728fb9b5ef1d1 Mon Sep 17 00:00:00 2001
+From 419e7a79e89ccefa8c69cdbdfe3843c4123417e9 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Thu, 23 May 2019 15:32:45 -0700
 Subject: [PATCH] Rewrite Mojang's Chunk system
@@ -6,13 +6,13 @@ Subject: [PATCH] Rewrite Mojang's Chunk system
 WIP
 ---
  .../concrete/chunk/ChunkHolder.java           |  60 ++
- .../concrete/chunk/PrioritizedTaskQueue.java  | 275 ++++++++
- .../chunk/io/ConcreteFileIOThread.java        | 642 ++++++++++++++++++
+ .../concrete/chunk/PrioritizedTaskQueue.java  | 278 +++++++
+ .../chunk/io/ConcreteFileIOThread.java        | 681 ++++++++++++++++++
  .../chunk/management/ChunkGenerateTask.java   |  15 +
  .../chunk/management/ChunkLoadTask.java       |  61 ++
  .../chunk/management/ChunkTaskHandler.java    |  75 ++
- .../management/ConcreteChunkManager.java      | 114 ++++
- .../ticket/ConcreteChunkTicket.java           | 158 +++++
+ .../management/ConcreteChunkManager.java      | 114 +++
+ .../ticket/ConcreteChunkTicket.java           | 158 ++++
  .../ticket/ConcreteTicketManager.java         | 258 +++++++
  .../ca/spottedleaf/concrete/util/Util.java    |  49 ++
  .../minecraft/server/ChunkRegionLoader.java   |   5 +
@@ -21,7 +21,7 @@ WIP
  .../net/minecraft/server/RegionFileCache.java |   4 +-
  .../minecraft/server/RegionFileSection.java   |  31 +
  .../net/minecraft/server/WorldServer.java     |  32 +
- 16 files changed, 1842 insertions(+), 4 deletions(-)
+ 16 files changed, 1884 insertions(+), 4 deletions(-)
  create mode 100644 src/main/java/ca/spottedleaf/concrete/chunk/ChunkHolder.java
  create mode 100644 src/main/java/ca/spottedleaf/concrete/chunk/PrioritizedTaskQueue.java
  create mode 100644 src/main/java/ca/spottedleaf/concrete/chunk/io/ConcreteFileIOThread.java
@@ -101,10 +101,10 @@ index 000000000..9d269a43c
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/chunk/PrioritizedTaskQueue.java b/src/main/java/ca/spottedleaf/concrete/chunk/PrioritizedTaskQueue.java
 new file mode 100644
-index 000000000..d1d705dac
+index 000000000..ab739656d
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/chunk/PrioritizedTaskQueue.java
-@@ -0,0 +1,275 @@
+@@ -0,0 +1,278 @@
 +package ca.spottedleaf.concrete.chunk;
 +
 +import ca.spottedleaf.concrete.util.Util;
@@ -162,6 +162,13 @@ index 000000000..d1d705dac
 +        for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
 +            this.queues[i] = new ConcurrentLinkedList<>();
 +        }
++    }
++
++    /**
++     * Returns whether the specified priority is valid
++     */
++    public static boolean validPriority(final int priority) {
++        return priority >= 0 && priority < TOTAL_PRIORITIES;
 +    }
 +
 +    /**
@@ -229,7 +236,7 @@ index 000000000..d1d705dac
 +        }
 +
 +        protected PrioritizedTask(final int priority) {
-+            if (priority <= PrioritizedTaskQueue.COMPLETING_PRIORITY || priority > PrioritizedTaskQueue.TOTAL_PRIORITIES) {
++            if (!PrioritizedTaskQueue.validPriority(priority)) {
 +                throw new IllegalArgumentException("Invalid priority " + priority);
 +            }
 +            this.setPriorityPlain(priority);
@@ -244,10 +251,6 @@ index 000000000..d1d705dac
 +        }
 +
 +        final int tryComplete(final int minPriority) {
-+            if (minPriority < 0 || minPriority >= PrioritizedTaskQueue.TOTAL_PRIORITIES) {
-+                throw new IllegalStateException("Invalid priority");
-+            }
-+
 +            for (int curr = this.getPriorityVolatile(), failures = 0;;) {
 +                if (curr == COMPLETING_PRIORITY) {
 +                    return COMPLETING_PRIORITY;
@@ -283,8 +286,8 @@ index 000000000..d1d705dac
 +         * @return {@code true} if successful, {@code false} otherwise.
 +         */
 +        public boolean raisePriority(final int priority) {
-+            if (priority < 0 || priority >= PrioritizedTaskQueue.TOTAL_PRIORITIES) {
-+                throw new IllegalStateException("Invalid priority");
++            if (!PrioritizedTaskQueue.validPriority(priority)) {
++                throw new IllegalArgumentException("Invalid priority");
 +            }
 +
 +            final PrioritizedTaskQueue queue = this.queue;
@@ -321,8 +324,8 @@ index 000000000..d1d705dac
 +         * @return {@code true} if successful, {@code false} if this task is completing or has completed.
 +         */
 +        public boolean updatePriority(final int priority) {
-+            if (priority < 0 || priority >= PrioritizedTaskQueue.TOTAL_PRIORITIES) {
-+                throw new IllegalStateException("Invalid priority");
++            if (!PrioritizedTaskQueue.validPriority(priority)) {
++                throw new IllegalArgumentException("Invalid priority");
 +            }
 +
 +            final PrioritizedTaskQueue queue = this.queue;
@@ -363,29 +366,29 @@ index 000000000..d1d705dac
 +
 +        /* priority */
 +
-+        private final int getPriorityVolatile() {
++        protected final int getPriorityVolatile() {
 +            return (int)PRIORITY_HANDLE.getVolatile(this);
 +        }
 +
-+        private final void setPriorityPlain(final int value) {
++        protected final void setPriorityPlain(final int value) {
 +            PRIORITY_HANDLE.set(this, value);
 +        }
 +
-+        private final int compareAndExchangePriorityVolatile(final int expect, final int update) {
++        protected final int compareAndExchangePriorityVolatile(final int expect, final int update) {
 +            return (int)PRIORITY_HANDLE.compareAndExchange(this, expect, update);
 +        }
 +
-+        private final int exchangePriorityVolatile(final int value) {
++        protected final int exchangePriorityVolatile(final int value) {
 +            return (int)PRIORITY_HANDLE.getAndSet(this, value);
 +        }
 +    }
 +}
 diff --git a/src/main/java/ca/spottedleaf/concrete/chunk/io/ConcreteFileIOThread.java b/src/main/java/ca/spottedleaf/concrete/chunk/io/ConcreteFileIOThread.java
 new file mode 100644
-index 000000000..31b48f583
+index 000000000..86d277568
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/chunk/io/ConcreteFileIOThread.java
-@@ -0,0 +1,642 @@
+@@ -0,0 +1,681 @@
 +package ca.spottedleaf.concrete.chunk.io;
 +
 +import ca.spottedleaf.concrete.chunk.PrioritizedTaskQueue;
@@ -567,6 +570,10 @@ index 000000000..31b48f583
 +     * @param priority Priority level to try to bump to
 +     */
 +    public void bumpPriority(final WorldServer world, final int chunkX, final int chunkZ, final int priority) {
++        if (!PrioritizedTaskQueue.validPriority(priority)) {
++            throw new IllegalArgumentException("Invalid priority: " + priority);
++        }
++
 +        final Long key = Long.valueOf(Util.getCoordinateKey(chunkX, chunkZ));
 +
 +        final ChunkDataTask poiTask = world.poiDataController.tasks.get(key);
@@ -604,6 +611,9 @@ index 000000000..31b48f583
 +    public void scheduleSave(final WorldServer world, final int chunkX, final int chunkZ,
 +                                                             final NBTTagCompound poiData, final NBTTagCompound chunkData,
 +                                                             final int priority) throws IllegalArgumentException {
++        if (!PrioritizedTaskQueue.validPriority(priority)) {
++            throw new IllegalArgumentException("Invalid priority: " + priority);
++        }
 +        final long writeCounter = this.writeCounter.getAndIncrement();
 +
 +        if (poiData != null) {
@@ -634,11 +644,18 @@ index 000000000..31b48f583
 +                taskRunning.inProgressWrite = new ChunkDataController.InProgressWrite();
 +            }
 +
++            boolean reschedule = taskRunning.inProgressWrite.writeCounter == -1L;
++
 +            // synchronize for readers
 +            //noinspection SynchronizationOnLocalVariableOrMethodParameter
 +            synchronized (taskRunning) {
 +                taskRunning.inProgressWrite.data = data;
 +                taskRunning.inProgressWrite.writeCounter = writeCounter;
++            }
++
++            if (reschedule) {
++                // We need to reschedule this task since the previous one is not currently scheduled since it failed
++                taskRunning.reschedule(priority);
 +            }
 +
 +            return taskRunning;
@@ -690,6 +707,10 @@ index 000000000..31b48f583
 +    public void loadChunkDataAsync(final WorldServer world, final int chunkX, final int chunkZ,
 +                                                                   final int priority, final Consumer<ChunkData> onComplete,
 +                                                                   final boolean readPoiData, final boolean readChunkData) {
++        if (!PrioritizedTaskQueue.validPriority(priority)) {
++            throw new IllegalArgumentException("Invalid priority: " + priority);
++        }
++
 +        if (!(readPoiData | readChunkData)) {
 +            throw new IllegalArgumentException("Must read chunk data or poi data");
 +        }
@@ -940,6 +961,13 @@ index 000000000..31b48f583
 +         *
 +         */
 +
++        void reschedule(final int priority) {
++            // priority is checked before this stage
++            this.queue = null;
++            this.setPriorityPlain(priority);
++            ConcreteFileIOThread.Holder.INSTANCE.queue.add(this);
++        }
++
 +        @Override
 +        public void run() {
 +            ChunkDataController.InProgressRead read = this.inProgressRead;
@@ -998,6 +1026,8 @@ index 000000000..31b48f583
 +                    data = write.data;
 +                }
 +
++                boolean failedWrite = false;
++
 +                try {
 +                    this.taskController.writeData(this.x, this.z, data);
 +                } catch (final Throwable thr) {
@@ -1005,7 +1035,11 @@ index 000000000..31b48f583
 +                        throw (ThreadDeath)thr;
 +                    }
 +                    LOGGER.fatal("Failed to write chunk data for (" + this.x + "," + this.z + ")", thr);
++                    failedWrite = true;
 +                }
++
++                boolean finalFailWrite = failedWrite;
++                boolean[] returnFailWrite = new boolean[] { false };
 +
 +                ChunkDataTask inMap = this.taskController.tasks.compute(chunkKey, (final Long keyInMap, final ChunkDataTask valueInMap) -> {
 +                    if (valueInMap == null) {
@@ -1014,11 +1048,19 @@ index 000000000..31b48f583
 +                    if (valueInMap != ChunkDataTask.this) {
 +                        throw new IllegalStateException("Chunk task mismatch, report this");
 +                    }
++                    if (finalFailWrite) {
++                        if (valueInMap.inProgressWrite.writeCounter == writeCounter) {
++                            valueInMap.inProgressWrite.writeCounter = -1L;
++                            returnFailWrite[0] = true;
++                        }
++                        return valueInMap;
++                    }
 +                    return valueInMap.inProgressWrite.writeCounter == writeCounter ? null : valueInMap;
 +                });
 +
-+                if (inMap == null) {
++                if (inMap == null || returnFailWrite[0]) {
 +                    // write counter matched, so we wrote the most up-to-date pending data, we're done here
++                    // or we failed to write and successfully set the write counter to -1
 +                    break;
 +                }
 +
