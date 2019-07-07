@@ -1,4 +1,4 @@
-From 0a418e25f4d9a963df18e431e7ccac569ed582a4 Mon Sep 17 00:00:00 2001
+From b8985cd570b9a691cd5dfad911c728fb9b5ef1d1 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Thu, 23 May 2019 15:32:45 -0700
 Subject: [PATCH] Rewrite Mojang's Chunk system
@@ -6,22 +6,22 @@ Subject: [PATCH] Rewrite Mojang's Chunk system
 WIP
 ---
  .../concrete/chunk/ChunkHolder.java           |  60 ++
- .../concrete/chunk/PrioritizedTaskQueue.java  | 272 ++++++++
- .../chunk/io/ConcreteFileIOThread.java        | 604 ++++++++++++++++++
+ .../concrete/chunk/PrioritizedTaskQueue.java  | 275 ++++++++
+ .../chunk/io/ConcreteFileIOThread.java        | 642 ++++++++++++++++++
  .../chunk/management/ChunkGenerateTask.java   |  15 +
  .../chunk/management/ChunkLoadTask.java       |  61 ++
- .../chunk/management/ChunkTaskHandler.java    |  75 +++
+ .../chunk/management/ChunkTaskHandler.java    |  75 ++
  .../management/ConcreteChunkManager.java      | 114 ++++
  .../ticket/ConcreteChunkTicket.java           | 158 +++++
- .../ticket/ConcreteTicketManager.java         | 258 ++++++++
+ .../ticket/ConcreteTicketManager.java         | 258 +++++++
  .../ca/spottedleaf/concrete/util/Util.java    |  49 ++
  .../minecraft/server/ChunkRegionLoader.java   |   5 +
  .../net/minecraft/server/MinecraftServer.java |   3 +-
  .../java/net/minecraft/server/RegionFile.java |  64 +-
  .../net/minecraft/server/RegionFileCache.java |   4 +-
  .../minecraft/server/RegionFileSection.java   |  31 +
- .../net/minecraft/server/WorldServer.java     |   8 +
- 16 files changed, 1777 insertions(+), 4 deletions(-)
+ .../net/minecraft/server/WorldServer.java     |  32 +
+ 16 files changed, 1842 insertions(+), 4 deletions(-)
  create mode 100644 src/main/java/ca/spottedleaf/concrete/chunk/ChunkHolder.java
  create mode 100644 src/main/java/ca/spottedleaf/concrete/chunk/PrioritizedTaskQueue.java
  create mode 100644 src/main/java/ca/spottedleaf/concrete/chunk/io/ConcreteFileIOThread.java
@@ -101,10 +101,10 @@ index 000000000..9d269a43c
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/chunk/PrioritizedTaskQueue.java b/src/main/java/ca/spottedleaf/concrete/chunk/PrioritizedTaskQueue.java
 new file mode 100644
-index 000000000..de4230175
+index 000000000..d1d705dac
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/chunk/PrioritizedTaskQueue.java
-@@ -0,0 +1,272 @@
+@@ -0,0 +1,275 @@
 +package ca.spottedleaf.concrete.chunk;
 +
 +import ca.spottedleaf.concrete.util.Util;
@@ -218,17 +218,20 @@ index 000000000..de4230175
 +
 +    public abstract static class PrioritizedTask {
 +
-+        private PrioritizedTaskQueue queue;
++        protected PrioritizedTaskQueue queue;
 +
-+        private volatile int priority;
++        protected volatile int priority;
 +
-+        private static final VarHandle PRIORITY_HANDLE = ConcurrentUtil.getVarHandle(PrioritizedTask.class, "priority", int.class);
++        protected static final VarHandle PRIORITY_HANDLE = ConcurrentUtil.getVarHandle(PrioritizedTask.class, "priority", int.class);
 +
 +        protected PrioritizedTask() {
 +            this(PrioritizedTaskQueue.NORMAL_PRIORITY);
 +        }
 +
 +        protected PrioritizedTask(final int priority) {
++            if (priority <= PrioritizedTaskQueue.COMPLETING_PRIORITY || priority > PrioritizedTaskQueue.TOTAL_PRIORITIES) {
++                throw new IllegalArgumentException("Invalid priority " + priority);
++            }
 +            this.setPriorityPlain(priority);
 +        }
 +
@@ -379,10 +382,10 @@ index 000000000..de4230175
 +}
 diff --git a/src/main/java/ca/spottedleaf/concrete/chunk/io/ConcreteFileIOThread.java b/src/main/java/ca/spottedleaf/concrete/chunk/io/ConcreteFileIOThread.java
 new file mode 100644
-index 000000000..20244c249
+index 000000000..31b48f583
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/chunk/io/ConcreteFileIOThread.java
-@@ -0,0 +1,604 @@
+@@ -0,0 +1,642 @@
 +package ca.spottedleaf.concrete.chunk.io;
 +
 +import ca.spottedleaf.concrete.chunk.PrioritizedTaskQueue;
@@ -394,7 +397,10 @@ index 000000000..20244c249
 +import net.minecraft.server.*;
 +import org.apache.logging.log4j.Logger;
 +
++import java.io.IOException;
++import java.lang.invoke.VarHandle;
 +import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.ConcurrentHashMap;
 +import java.util.concurrent.atomic.AtomicBoolean;
 +import java.util.concurrent.atomic.AtomicLong;
 +import java.util.concurrent.locks.LockSupport;
@@ -408,10 +414,12 @@ index 000000000..20244c249
 + * </p>
 + *
 + * <p>
-+ *     All functions provided are MT-Safe, however certain ordering constraints are made for loading and unloading chunks,
-+ *     however they are NOT enforced:
++ *     All functions provided are MT-Safe, however certain ordering constraints are (but not enforced):
 + *     <li>
 + *         Chunk saves may not occur for unloaded chunks.
++ *     </li>
++ *     <li>
++ *         Tasks must be scheduled on the main thread.
 + *     </li>
 + * </p>
 + *
@@ -518,7 +526,7 @@ index 000000000..20244c249
 +                if (throwable instanceof ThreadDeath) {
 +                    throw (ThreadDeath)throwable;
 +                }
-+                LOGGER.fatal("Exception thrown from runnable task in IO thread" + Util.genericToString(task), throwable);
++                LOGGER.fatal("Exception thrown from prioritized runnable task in IO thread: " + Util.genericToString(task), throwable);
 +            }
 +        }
 +
@@ -531,6 +539,45 @@ index 000000000..20244c249
 +        //noinspection NonAtomicOperationOnVolatileField
 +        ++this.flushCounter;
 +        this.flushQueue.drain(LockSupport::unpark, shutdown);
++    }
++
++    /*
++     *
++     * IO thread will perform reads before writes
++     *
++     * How reads/writes are scheduled:
++     *
++     * If read in progress while scheduling write, ignore read and schedule write
++     * If read in progress while scheduling read (no write in progress), chain the read task
++     *
++     *
++     * If write in progress while scheduling read, use the pending write data and ret immediately
++     * If write in progress while scheduling write (ignore read in progress), overwrite the write in progress data
++     *
++     * This allows the reads and writes to act as if they occur synchronously to the thread scheduling them, however
++     * it fails to properly propagate write failures
++     *
++     */
++
++    /**
++     * Attempts to bump the priority of all IO tasks for the given chunk coordinates.
++     * @param world Chunk's world
++     * @param chunkX Chunk's x coordinate
++     * @param chunkZ Chunk's z coordinate
++     * @param priority Priority level to try to bump to
++     */
++    public void bumpPriority(final WorldServer world, final int chunkX, final int chunkZ, final int priority) {
++        final Long key = Long.valueOf(Util.getCoordinateKey(chunkX, chunkZ));
++
++        final ChunkDataTask poiTask = world.poiDataController.tasks.get(key);
++        final ChunkDataTask chunkTask = world.chunkDataController.tasks.get(key);
++
++        if (poiTask != null) {
++            poiTask.raisePriority(priority);
++        }
++        if (chunkTask != null) {
++            chunkTask.raisePriority(priority);
++        }
 +    }
 +
 +    /**
@@ -551,47 +598,51 @@ index 000000000..20244c249
 +     * @param poiData Chunk point of interest data. If {@code null}, then no poi data is saved.
 +     * @param chunkData Chunk data. If {@code null}, then no chunk data is saved.
 +     * @param priority Priority level for this task. See {@link PrioritizedTaskQueue}
-+     * @return The {@link PrioritizedTaskQueue.PrioritizedTask} associated with this task
 +     * @throws IllegalArgumentException If both {@code poiData} and {@code chunkData} are {@code null}.
++     * @throws IllegalStateException If the file io thread has shutdown.
 +     */
-+    public PrioritizedTaskQueue.PrioritizedTask scheduleSave(final WorldServer world, final int chunkX, final int chunkZ,
++    public void scheduleSave(final WorldServer world, final int chunkX, final int chunkZ,
 +                                                             final NBTTagCompound poiData, final NBTTagCompound chunkData,
 +                                                             final int priority) throws IllegalArgumentException {
-+        if (poiData == null && chunkData == null) {
-+            throw new IllegalArgumentException("poi and chunk data must not both be null");
++        final long writeCounter = this.writeCounter.getAndIncrement();
++
++        if (poiData != null) {
++            this.scheduleWrite(world.poiDataController, world, chunkX, chunkZ, poiData, priority, writeCounter);
 +        }
-+        final long chunkKey = Util.getCoordinateKey(chunkX, chunkZ);
++        if (chunkData != null) {
++            this.scheduleWrite(world.chunkDataController, world, chunkX, chunkZ, chunkData, priority, writeCounter);
++        }
++    }
 +
-+        final long writeCounter = this.writeCounter.getAndAdd(2);
++    private void scheduleWrite(final ChunkDataController dataController, final WorldServer world,
++                               final int chunkX, final int chunkZ, final NBTTagCompound data, final int priority, final long writeCounter) {
++        dataController.tasks.compute(Long.valueOf(Util.getCoordinateKey(chunkX, chunkZ)), (final Long keyInMap, final ChunkDataTask taskRunning) -> {
++            if (taskRunning == null) {
++                // no task is scheduled
 +
-+        final long poiWriteCounter = poiData == null ? -1L : writeCounter;
-+        final long chunkWriteCounter = chunkData == null ? -1L : writeCounter + 1;
++                // create task
++                final ChunkDataTask newTask = new ChunkDataTask(priority, world, chunkX, chunkZ, dataController);
++                newTask.inProgressWrite = new ChunkDataController.InProgressWrite();
++                newTask.inProgressWrite.writeCounter = writeCounter;
++                newTask.inProgressWrite.data = data;
 +
-+        final ChunkData data = new ChunkData(poiData, chunkData);
-+
-+        // we push our data to the in progress writes
-+        // we do this to prevent ordering issues for following reads and writes (reads will read the cached data,
-+        // and writes will not overwrite later data)
-+        world.inProgressWrites.compute(Long.valueOf(chunkKey), (final Long keyInMap, final InProgressWrite write) -> {
-+            if (write == null) {
-+                return new InProgressWrite(new ChunkData(poiData, chunkData), poiWriteCounter, chunkWriteCounter);
-+            } else {
-+                synchronized (write) {
-+                    if (poiWriteCounter != -1L) {
-+                        write.writeCounterPoiData = poiWriteCounter;
-+                    } else if (chunkWriteCounter != -1L) {
-+                        write.writeCounterChunkData = chunkWriteCounter;
-+                    }
-+                    write.data.merge(poiData, chunkData);
-+                    return write;
-+                }
++                ConcreteFileIOThread.this.queue.add(newTask); // schedule
++                return newTask;
 +            }
++
++            if (taskRunning.inProgressWrite == null) {
++                taskRunning.inProgressWrite = new ChunkDataController.InProgressWrite();
++            }
++
++            // synchronize for readers
++            //noinspection SynchronizationOnLocalVariableOrMethodParameter
++            synchronized (taskRunning) {
++                taskRunning.inProgressWrite.data = data;
++                taskRunning.inProgressWrite.writeCounter = writeCounter;
++            }
++
++            return taskRunning;
 +        });
-+
-+        final SaveChunkTask ret = new SaveChunkTask(priority, world, chunkX, chunkZ, data, poiWriteCounter, chunkWriteCounter);
-+
-+        this.queueTask(ret);
-+        return ret;
 +    }
 +
 +    /**
@@ -610,7 +661,7 @@ index 000000000..20244c249
 +    }
 +
 +    /**
-+     * Schedules a save to be executed asynchronously.
++     * Schedules a load to be executed asynchronously.
 +     * <p>
 +     *     Impl notes:
 +     * </p>
@@ -623,7 +674,8 @@ index 000000000..20244c249
 +     * </li>
 +     * <li>
 +     *     The {@code onComplete} parameter may be completed during the execution of this function synchronously or it may
-+     *     be completed asynchronously on this file io thread.
++     *     be completed asynchronously on this file io thread. Interacting with the file IO thread in the completion of
++     *     data is undefined behaviour, and can cause deadlock.
 +     * </li>
 +     * @param world Chunk's world
 +     * @param chunkX Chunk's x coordinate
@@ -632,34 +684,85 @@ index 000000000..20244c249
 +     * @param onComplete Consumer to execute once this task has completed
 +     * @param readPoiData Whether to read point of interest data. If {@code false}, the {@code NBTTagCompound} will be {@code null}.
 +     * @param readChunkData Whether to read chunk data. If {@code false}, the {@code NBTTagCompound} will be {@code null}.
-+     * @return The {@link PrioritizedTaskQueue.PrioritizedTask} associated with this task
++     * @return The {@link PrioritizedTaskQueue.PrioritizedTask} associated with this task. Note that this task does not support
++     *                                                          cancellation.
 +     */
-+    public PrioritizedTaskQueue.PrioritizedTask loadChunkDataAsync(final WorldServer world, final int chunkX, final int chunkZ,
++    public void loadChunkDataAsync(final WorldServer world, final int chunkX, final int chunkZ,
 +                                                                   final int priority, final Consumer<ChunkData> onComplete,
 +                                                                   final boolean readPoiData, final boolean readChunkData) {
 +        if (!(readPoiData | readChunkData)) {
-+            throw new IllegalArgumentException("Must read either poi data and/or chunk data");
++            throw new IllegalArgumentException("Must read chunk data or poi data");
 +        }
-+        final ReadChunkTask ret = new ReadChunkTask(priority, world, chunkX, chunkZ, onComplete, readPoiData, readChunkData);
 +
-+        final InProgressWrite writeInProgress = world.inProgressWrites.get(Long.valueOf(Util.getCoordinateKey(chunkX, chunkZ)));
-+        if (writeInProgress != null) {
-+            synchronized (writeInProgress) {
-+                final NBTTagCompound poiData = writeInProgress.data.poiData;
-+                final NBTTagCompound chunkData = writeInProgress.data.chunkData;
++        final ChunkData complete = new ChunkData();
 +
-+                if (!(readPoiData && poiData == null) && !(readChunkData && chunkData == null)) {
-+                    ret.cancel();
-+                    onComplete.accept(new ChunkData(poiData, chunkData));
++        final boolean[] requireCompletion = new boolean[] { readPoiData, readChunkData };
 +
-+                    return ret;
++        if (readPoiData) {
++            this.scheduleRead(world.poiDataController, world, chunkX, chunkZ, (final NBTTagCompound poiData) -> {
++                complete.poiData = poiData;
++
++                final boolean finished;
++
++                // avoid a race condition where the file io thread completes and we complete synchronously
++                synchronized (requireCompletion) {
++                    requireCompletion[0] = false; // 0 -> poi data
++                    finished = !requireCompletion[1]; // 1 -> chunk data
 +                }
-+                // fall through to queue if the current cached data isn't enough
-+            }
++
++                if (finished) {
++                    onComplete.accept(complete);
++                }
++            }, priority);
 +        }
 +
-+        this.queueTask(ret);
-+        return ret;
++        if (readChunkData) {
++            this.scheduleRead(world.chunkDataController, world, chunkX, chunkZ, (final NBTTagCompound chunkData) -> {
++                complete.chunkData = chunkData;
++
++                final boolean finished;
++
++                // avoid a race condition where the file io thread completes and we complete synchronously
++                synchronized (requireCompletion) {
++                    requireCompletion[1] = false; // 1 -> chunk data
++                    finished = !requireCompletion[0]; // 0 -> poi data
++                }
++
++                if (finished) {
++                    onComplete.accept(complete);
++                }
++            }, priority);
++        }
++
++    }
++
++    // Note: the onComplete may be called asynchronously or synchronously here.
++    private void scheduleRead(final ChunkDataController dataController, final WorldServer world,
++                                       final int chunkX, final int chunkZ, final Consumer<NBTTagCompound> onComplete, final int priority) {
++        dataController.tasks.compute(Long.valueOf(Util.getCoordinateKey(chunkX, chunkZ)), (final Long keyInMap, final ChunkDataTask running) -> {
++            if (running == null) {
++                // not scheduled
++
++                // set up task
++                final ChunkDataTask newTask = new ChunkDataTask(priority, world, chunkX, chunkZ, dataController);
++                newTask.inProgressRead = new ChunkDataController.InProgressRead();
++                newTask.inProgressRead.readFuture.thenAccept(onComplete);
++
++                ConcreteFileIOThread.this.queue.add(newTask); // schedule task
++                return newTask;
++            }
++
++            if (running.inProgressWrite == null) {
++                // chain to the read future
++                running.inProgressRead.readFuture.thenAccept(onComplete);
++                return running;
++            }
++
++            // at this stage we have to use the in progress write's data to avoid an order issue
++            // we don't synchronize since all writes to data occur in the compute() call
++            onComplete.accept(running.inProgressWrite.data);
++            return running;
++        });
 +    }
 +
 +    /**
@@ -748,224 +851,7 @@ index 000000000..20244c249
 +        return ret;
 +    }
 +
-+    // we do not do any optimizing around chaining read tasks looking at the same chunk data since the chunk management will
-+    // not try to double load a chunk.
-+    static final class ReadChunkTask extends PrioritizedTaskQueue.PrioritizedTask implements Runnable {
-+
-+        private final int chunkX;
-+        private final int chunkZ;
-+        private final WorldServer world;
-+
-+        private final Consumer<ChunkData> onComplete;
-+
-+        private final boolean readPoiData;
-+        private final boolean readChunkData;
-+
-+        public ReadChunkTask(final int priority, final WorldServer world, final int chunkX, final int chunkZ, final Consumer<ChunkData> onComplete,
-+                             final boolean readPoiData, final boolean readChunkData) {
-+            super(priority);
-+            this.world = world;
-+            this.chunkX = chunkX;
-+            this.chunkZ = chunkZ;
-+            this.onComplete = onComplete;
-+            this.readPoiData = readPoiData;
-+            this.readChunkData = readChunkData;
-+        }
-+
-+        @Override
-+        public void run() {
-+            final long chunkKey = Util.getCoordinateKey(this.chunkX, this.chunkZ);
-+            final ChunkCoordIntPair chunkPos = new ChunkCoordIntPair(this.chunkX, this.chunkZ);
-+
-+            NBTTagCompound poiData = null;
-+            NBTTagCompound chunkData = null;
-+
-+            final ConcreteFileIOThread.InProgressWrite writeInProgress = this.world.inProgressWrites.get(Long.valueOf(chunkKey));
-+
-+            if (writeInProgress != null) {
-+                synchronized (writeInProgress) {
-+                    poiData = writeInProgress.data.poiData;
-+                    chunkData = writeInProgress.data.chunkData;
-+                }
-+                // fall through to null checks
-+            }
-+
-+            // TODO this mess of trycatch is serious cancer
-+
-+            try {
-+                if (poiData == null && this.readPoiData) {
-+                    poiData = this.world.villagePlaceData.read(chunkPos);
-+                }
-+                if (chunkData == null && this.readChunkData) {
-+                    chunkData = this.world.regionFileCache.read(chunkPos);
-+                }
-+                final ChunkData complete = new ChunkData(poiData, chunkData);
-+                try {
-+                    this.onComplete.accept(complete);
-+                } catch (final Throwable throwable) {
-+                    if (throwable instanceof ThreadDeath) {
-+                        throw (ThreadDeath)throwable;
-+                    }
-+                    LOGGER.fatal("Failed to complete chunk data for chunk (" + this.chunkX + "," + this.chunkZ + "):", throwable);
-+                    MinecraftServer.getServer().scheduleOnMain(() -> {
-+                        new ServerExceptionEvent(new ServerException(throwable)).callEvent(); // TODO async?
-+                    });
-+                }
-+            } catch (final Throwable throwable) {
-+                try {
-+                    this.onComplete.accept(null);
-+                } catch (final Throwable thr2) {
-+                    if (thr2 instanceof ThreadDeath) {
-+                        throw (ThreadDeath)thr2;
-+                    }
-+                    LOGGER.fatal("Failed to complete chunk data for chunk (" + this.chunkX + "," + this.chunkZ + "):", thr2);
-+                    MinecraftServer.getServer().scheduleOnMain(() -> {
-+                        new ServerExceptionEvent(new ServerException(thr2)).callEvent(); // TODO async?
-+                    });
-+                    // fall through to report the other exception
-+                }
-+                if (throwable instanceof ThreadDeath) {
-+                    throw (ThreadDeath)throwable;
-+                }
-+                LOGGER.fatal("Failed to read chunk data for chunk (" + this.chunkX + "," + this.chunkZ + "):", throwable);
-+                MinecraftServer.getServer().scheduleOnMain(() -> {
-+                    new ServerExceptionEvent(new ServerException(throwable)).callEvent(); // TODO async?
-+                });
-+            }
-+        }
-+    }
-+
-+    static final class SaveChunkTask extends PrioritizedTaskQueue.PrioritizedTask implements Runnable {
-+
-+        private final int chunkX;
-+        private final int chunkZ;
-+        private final WorldServer world;
-+
-+        private final ChunkData data;
-+
-+        private final long expectedPoiCounter;
-+        private final long expectedChunkCounter;
-+
-+        public SaveChunkTask(final int priority, final WorldServer world, final int chunkX, final int chunkZ,
-+                             final ChunkData data, final long poiWriteCounter, final long chunkWriteCounter) {
-+            super(priority);
-+            this.world = world;
-+            this.chunkX = chunkX;
-+            this.chunkZ = chunkZ;
-+            this.data = data;
-+            this.expectedPoiCounter = poiWriteCounter;
-+            this.expectedChunkCounter = chunkWriteCounter;
-+        }
-+
-+        @Override
-+        public void run() {
-+            final Long boxedChunkKey = Long.valueOf(Util.getCoordinateKey(this.chunkX, this.chunkZ));
-+            final ConcreteFileIOThread.InProgressWrite writeInProgress;
-+
-+            NBTTagCompound poiData = this.data.poiData;
-+            NBTTagCompound chunkData = this.data.chunkData;
-+
-+            if ((writeInProgress = this.world.inProgressWrites.get(boxedChunkKey)) == null) {
-+                // return here, a write has already completed with more-up-to-date data
-+                return;
-+            }
-+
-+            // this can be replaced with atomic reads of the write counters
-+            synchronized (writeInProgress) {
-+                if (writeInProgress.writeCounterPoiData != this.expectedPoiCounter) {
-+                    poiData = null; // invalidate write, we've been overwritten
-+                }
-+                if (writeInProgress.writeCounterChunkData != this.expectedChunkCounter) {
-+                    chunkData = null; // invalidate write, we've been overwritten
-+                }
-+            }
-+
-+            try {
-+                this.world.checkSession();
-+            } catch (ExceptionWorldConflict exceptionworldconflict) {
-+                LOGGER.error("Couldn't save chunk; already in use by another instance of Minecraft?", exceptionworldconflict);
-+                MinecraftServer.getServer().scheduleOnMain(() -> {
-+                    com.destroystokyo.paper.exception.ServerInternalException.reportInternalException(exceptionworldconflict); // Paper // TODO async?
-+                });
-+            }
-+
-+            final ChunkCoordIntPair chunkPos = new ChunkCoordIntPair(this.chunkX, this.chunkZ);
-+
-+            try {
-+                if (poiData != null) {
-+                    this.world.villagePlaceData.write(chunkPos, poiData);
-+                }
-+                if (chunkData != null) {
-+                    this.world.regionFileCache.write(chunkPos, chunkData);
-+                }
-+            } catch (final Exception ex) {
-+                LOGGER.fatal("Failed to write chunk data for (" + this.chunkX + "," + this.chunkZ + ")! Keeping data loaded", ex);
-+                MinecraftServer.getServer().scheduleOnMain(() -> {
-+                    new ServerExceptionEvent(new ServerException(ex)).callEvent(); // TODO async?
-+                });
-+                return; // refuse to unload the nbt compound to avoid data loss
-+            }
-+
-+            // we need to remove our data if possible to prevent a memory leak.
-+            // we can't remove it if a task queued for later will.
-+            this.world.inProgressWrites.compute(boxedChunkKey, (final Long keyInMap, final ConcreteFileIOThread.InProgressWrite write) -> {
-+                if (write == null) {
-+                    LOGGER.fatal("Concurrent write completed, please report this", new Throwable());
-+                    return null;
-+                }
-+                synchronized (write) {
-+                    return write.checkAndInvalidate(SaveChunkTask.this.expectedPoiCounter, SaveChunkTask.this.expectedChunkCounter) ? null : write;
-+                }
-+            });
-+        }
-+    }
-+
-+    public static final class ChunkData {
-+
-+        public NBTTagCompound poiData;
-+        public NBTTagCompound chunkData;
-+
-+        public ChunkData(final NBTTagCompound poiData, final NBTTagCompound chunkData) {
-+            this.poiData = poiData;
-+            this.chunkData = chunkData;
-+        }
-+
-+        public void merge(final NBTTagCompound newPoiData, final NBTTagCompound newChunkData) {
-+            if (newPoiData != null) {
-+                this.poiData = newPoiData;
-+            } else if (newChunkData != null) {
-+                this.chunkData = newChunkData;
-+            }
-+        }
-+    }
-+
-+    public static final class InProgressWrite {
-+        protected long writeCounterPoiData;
-+        protected long writeCounterChunkData;
-+
-+        protected final ChunkData data;
-+
-+        public InProgressWrite(final ChunkData data, final long writeCounterPoiData,
-+                               final long writeCounterChunkData) {
-+            this.writeCounterPoiData = writeCounterPoiData;
-+            this.writeCounterChunkData = writeCounterChunkData;
-+            this.data = data;
-+        }
-+
-+        public boolean checkAndInvalidate(final long poiCounter, final long chunkCounter) {
-+            if (this.writeCounterPoiData == poiCounter) {
-+                this.writeCounterPoiData = -1L;
-+                this.data.poiData = null;
-+            }
-+            if (this.writeCounterChunkData == chunkCounter) {
-+                this.writeCounterChunkData = -1L;
-+                this.data.chunkData = null;
-+            }
-+            return (this.writeCounterPoiData & this.writeCounterChunkData) == -1L;
-+        }
-+    }
-+
-+    public static class GeneralTask extends PrioritizedTaskQueue.PrioritizedTask implements Runnable {
++    static final class GeneralTask extends PrioritizedTaskQueue.PrioritizedTask implements Runnable {
 +
 +        private final Runnable run;
 +
@@ -983,6 +869,161 @@ index 000000000..20244c249
 +                    throw (ThreadDeath)throwable;
 +                }
 +                LOGGER.fatal("Failed to execute general task on IO thread " + Util.genericToString(this.run), throwable);
++            }
++        }
++    }
++
++    public static final class ChunkData {
++
++        public NBTTagCompound poiData;
++        public NBTTagCompound chunkData;
++
++        public ChunkData() {}
++
++        public ChunkData(final NBTTagCompound poiData, final NBTTagCompound chunkData) {
++            this.poiData = poiData;
++            this.chunkData = chunkData;
++        }
++    }
++
++    public static abstract class ChunkDataController {
++
++        // ConcurrentHashMap synchronizes per chain, so reduce the chance of task's hashes colliding.
++        public final ConcurrentHashMap<Long, ChunkDataTask> tasks = new ConcurrentHashMap<>(64, 0.5f);
++
++        public abstract void writeData(final int x, final int z, final NBTTagCompound compound) throws IOException;
++        public abstract NBTTagCompound readData(final int x, final int z) throws IOException;
++
++        public static final class InProgressWrite {
++            public long writeCounter;
++            public NBTTagCompound data;
++        }
++
++        public static final class InProgressRead {
++            public final CompletableFuture<NBTTagCompound> readFuture = new CompletableFuture<>();
++        }
++    }
++
++    public static final class ChunkDataTask extends PrioritizedTaskQueue.PrioritizedTask implements Runnable {
++
++        public ChunkDataController.InProgressWrite inProgressWrite;
++        public ChunkDataController.InProgressRead inProgressRead;
++
++        private final WorldServer world;
++        private final int x;
++        private final int z;
++        private final ChunkDataController taskController;
++
++        public ChunkDataTask(final int priority, final WorldServer world, final int x, final int z, final ChunkDataController taskController) {
++            super(priority);
++            this.world = world;
++            this.x = x;
++            this.z = z;
++            this.taskController = taskController;
++        }
++
++        /*
++         *
++         * IO thread will perform reads before writes
++         *
++         * How reads/writes are scheduled:
++         *
++         * If read in progress while scheduling write, ignore read and schedule write
++         * If read in progress while scheduling read (no write in progress), chain the read task
++         *
++         *
++         * If write in progress while scheduling read, use the pending write data and ret immediately
++         * If write in progress while scheduling write (ignore read in progress), overwrite the write in progress data
++         *
++         * This allows the reads and writes to act as if they occur synchronously to the thread scheduling them, however
++         * it fails to properly propagate write failures
++         *
++         */
++
++        @Override
++        public void run() {
++            ChunkDataController.InProgressRead read = this.inProgressRead;
++            if (read != null) {
++                NBTTagCompound compound = null;
++                try {
++                    compound = this.taskController.readData(this.x, this.z);
++                } catch (final Throwable thr) {
++                    if (thr instanceof ThreadDeath) {
++                        throw (ThreadDeath)thr;
++                    }
++                    LOGGER.fatal("Failed to read chunk data for (" + this.x + "," + this.z + ")", thr);
++                }
++                read.readFuture.complete(compound);
++            }
++
++            final Long chunkKey = Long.valueOf(Util.getCoordinateKey(this.x, this.z));
++
++            ChunkDataController.InProgressWrite write = this.inProgressWrite;
++
++            if (write == null) {
++                // IntelliJ warns this is invalid, however it does not consider that writes to the task map & the inProgress field can occur concurrently.
++                ChunkDataTask inMap = this.taskController.tasks.compute(chunkKey, (final Long keyInMap, final ChunkDataTask valueInMap) -> {
++                    if (valueInMap == null) {
++                        throw new IllegalStateException("Write completed concurrently, report this");
++                    }
++                    if (valueInMap != ChunkDataTask.this) {
++                        throw new IllegalStateException("Chunk task mismatch, report this");
++                    }
++                    return valueInMap.inProgressWrite == null ? null : valueInMap;
++                });
++
++                if (inMap == null) {
++                    return; // set the task value to null, indicating we're done
++                }
++
++                // not null, which means there was a concurrent write
++                write = this.inProgressWrite;
++            }
++
++            // check if another process is writing
++            try {
++                this.world.checkSession();
++            } catch (ExceptionWorldConflict exceptionworldconflict) {
++                LOGGER.error("Couldn't save chunk; already in use by another instance of Minecraft?", exceptionworldconflict);
++                return;
++            }
++
++            for (;;) {
++                final long writeCounter;
++                final NBTTagCompound data;
++
++                //noinspection SynchronizationOnLocalVariableOrMethodParameter
++                synchronized (write) {
++                    writeCounter = write.writeCounter;
++                    data = write.data;
++                }
++
++                try {
++                    this.taskController.writeData(this.x, this.z, data);
++                } catch (final Throwable thr) {
++                    if (thr instanceof ThreadDeath) {
++                        throw (ThreadDeath)thr;
++                    }
++                    LOGGER.fatal("Failed to write chunk data for (" + this.x + "," + this.z + ")", thr);
++                }
++
++                ChunkDataTask inMap = this.taskController.tasks.compute(chunkKey, (final Long keyInMap, final ChunkDataTask valueInMap) -> {
++                    if (valueInMap == null) {
++                        throw new IllegalStateException("Write completed concurrently, report this");
++                    }
++                    if (valueInMap != ChunkDataTask.this) {
++                        throw new IllegalStateException("Chunk task mismatch, report this");
++                    }
++                    return valueInMap.inProgressWrite.writeCounter == writeCounter ? null : valueInMap;
++                });
++
++                if (inMap == null) {
++                    // write counter matched, so we wrote the most up-to-date pending data, we're done here
++                    break;
++                }
++
++                // fetch & write new data
++                continue;
 +            }
 +        }
 +    }
@@ -1981,10 +2022,26 @@ index aabfcd04e..080070475 100644
 +
  }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index ccc129525..cbedcefa7 100644
+index ccc129525..9b5c1d779 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -74,6 +74,14 @@ public class WorldServer extends World {
+@@ -1,5 +1,6 @@
+ package net.minecraft.server;
+ 
++import ca.spottedleaf.concrete.chunk.io.ConcreteFileIOThread;
+ import co.aikar.timings.TimingHistory;
+ import co.aikar.timings.Timings;
+ 
+@@ -17,6 +18,8 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
+ import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+ import it.unimi.dsi.fastutil.objects.ObjectIterator;
+ import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
++
++import java.io.IOException;
+ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Map;
+@@ -74,6 +77,35 @@ public class WorldServer extends World {
      private static Throwable getAddToWorldStackTrace(Entity entity) {
          return new Throwable(entity + " Added to world at " + new java.util.Date());
      }
@@ -1994,7 +2051,28 @@ index ccc129525..cbedcefa7 100644
 +    public final Object persistentStructureLegacyLock = new Object();
 +    public PersistentStructureLegacy persistentStructureLegacy;
 +
-+    public final java.util.concurrent.ConcurrentHashMap<Long, ca.spottedleaf.concrete.chunk.io.ConcreteFileIOThread.InProgressWrite> inProgressWrites = new java.util.concurrent.ConcurrentHashMap<>(64, 0.5f);
++    public final ca.spottedleaf.concrete.chunk.io.ConcreteFileIOThread.ChunkDataController poiDataController = new ca.spottedleaf.concrete.chunk.io.ConcreteFileIOThread.ChunkDataController() {
++        @Override
++        public void writeData(int x, int z, NBTTagCompound compound) throws IOException {
++            WorldServer.this.villagePlaceData.write(new ChunkCoordIntPair(x, z), compound);
++        }
++
++        @Override
++        public NBTTagCompound readData(int x, int z) throws IOException {
++            return WorldServer.this.villagePlaceData.read(new ChunkCoordIntPair(x, z));
++        }
++    };
++    public final ca.spottedleaf.concrete.chunk.io.ConcreteFileIOThread.ChunkDataController chunkDataController = new ca.spottedleaf.concrete.chunk.io.ConcreteFileIOThread.ChunkDataController() {
++        @Override
++        public void writeData(int x, int z, NBTTagCompound compound) throws IOException {
++            WorldServer.this.regionFileCache.write(new ChunkCoordIntPair(x, z), compound);
++        }
++
++        @Override
++        public NBTTagCompound readData(int x, int z) throws IOException {
++            return WorldServer.this.regionFileCache.read(new ChunkCoordIntPair(x, z));
++        }
++    };
 +    /* Concrete end - File io thread */
  
      // Add env and gen to constructor
