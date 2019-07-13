@@ -1,4 +1,4 @@
-From e0c005cd9ce4ae79d07ac0262114ea7335e3a371 Mon Sep 17 00:00:00 2001
+From bb0122b476d075862589e89ce2fd17d2602a5001 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 3 Mar 2019 18:25:06 -0800
 Subject: [PATCH] Concrete Server Config
@@ -185,28 +185,28 @@ index c1473330f..1fdb3b3b8 100644
          this.setSpawnAnimals(dedicatedserverproperties.spawnAnimals);
          this.setSpawnNPCs(dedicatedserverproperties.spawnNpcs);
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index a7a35d6a6..69854b66d 100644
+index ee6474b18..cb4a096ad 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -94,6 +94,8 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
- 
+@@ -97,6 +97,8 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
      public final com.destroystokyo.paper.PaperWorldConfig paperConfig; // Paper
+     public final ChunkPacketBlockController chunkPacketBlockController; // Paper - Anti-Xray
  
 +    public final ca.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig concreteConfig; /* Concrete - Server Config */
 +
      public final co.aikar.timings.WorldTimingsHandler timings; // Paper
      public static BlockPosition lastPhysicsProblem; // Spigot
      private org.spigotmc.TickLimiter entityLimiter;
-@@ -134,6 +136,7 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
-     protected World(WorldData worlddata, DimensionManager dimensionmanager, BiFunction<World, WorldProvider, IChunkProvider> bifunction, GameProfilerFiller gameprofilerfiller, boolean flag, org.bukkit.generator.ChunkGenerator gen, org.bukkit.World.Environment env) {
+@@ -138,6 +140,7 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig( worlddata.getName() ); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(worlddata.getName(), this.spigotConfig); // Paper
+         this.chunkPacketBlockController = this.paperConfig.antiXray ? new ChunkPacketBlockControllerAntiXray(this.paperConfig) : ChunkPacketBlockController.NO_OPERATION_INSTANCE; // Paper - Anti-Xray
 +        this.concreteConfig = new ca.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig(worlddata.getName()); /* Concrete - Server Config */
          this.generator = gen;
          this.world = new CraftWorld((WorldServer) this, gen, env);
          this.ticksPerAnimalSpawns = this.getServer().getTicksPerAnimalSpawns(); // CraftBukkit
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 51bd94858..3226c72a3 100644
+index 30a6cdccd..821f15189 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -793,6 +793,7 @@ public final class CraftServer implements Server {
@@ -226,7 +226,7 @@ index 51bd94858..3226c72a3 100644
  
          Plugin[] pluginClone = pluginManager.getPlugins().clone(); // Paper
 diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
-index 405ea5c46..e86e95a7f 100644
+index 1fa81904d..504980eb7 100644
 --- a/src/main/java/org/bukkit/craftbukkit/Main.java
 +++ b/src/main/java/org/bukkit/craftbukkit/Main.java
 @@ -136,6 +136,13 @@ public class Main {
