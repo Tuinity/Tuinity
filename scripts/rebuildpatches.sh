@@ -31,7 +31,7 @@ function savePatches {
         rm $basedir/patches/$2/*.patch
     fi
 
-    git format-patch --quiet -N -o $basedir/patches/$2 upstream/upstream
+    git format-patch --zero-commit --full-index --no-signature --no-stat --quiet -N -o $basedir/patches/$2 upstream/upstream
     cd $basedir
     git add -A $basedir/patches/$2
     cleanupPatches $basedir/patches/$2/
