@@ -5,7 +5,7 @@ Subject: [PATCH] Use ConcurrentUtil
 
 
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index 1fdb3b3b8d0d7dabe18421ada1fb10bd25ed1095..2aef7643eae34cbd8b9ee3738fd604c08709697f 100644
+index 7fd9d6aa735617ce267e88b90b42eb5c879d7516..fb45b8ada658e18da013864a49653a2e4bb8e868 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
 @@ -43,7 +43,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
@@ -18,7 +18,7 @@ index 1fdb3b3b8d0d7dabe18421ada1fb10bd25ed1095..2aef7643eae34cbd8b9ee3738fd604c0
      public final RemoteControlCommandListener remoteControlCommandListener;
      private RemoteControlListener remoteControlListener;
 diff --git a/src/main/java/net/minecraft/server/IAsyncTaskHandler.java b/src/main/java/net/minecraft/server/IAsyncTaskHandler.java
-index c0d5112444315a0cc1c7a00860877315b51a1fea..0dc9a84bc74dae28a918834c48455b49368b6388 100644
+index d521d25cf521ce2ba9f293441b6bbd2fe9890f83..9f19d33dca41e3aafab277f523aef0f9cf0d53a6 100644
 --- a/src/main/java/net/minecraft/server/IAsyncTaskHandler.java
 +++ b/src/main/java/net/minecraft/server/IAsyncTaskHandler.java
 @@ -13,7 +13,7 @@ public abstract class IAsyncTaskHandler<R extends Runnable> implements Mailbox<R
@@ -31,10 +31,10 @@ index c0d5112444315a0cc1c7a00860877315b51a1fea..0dc9a84bc74dae28a918834c48455b49
  
      protected IAsyncTaskHandler(String s) {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index d200af0e686bf583e2fd8af3f681d619e683e51e..098e5d6f8fd4a12bcf300045e3d78562187a1951 100644
+index c230fa13d314633ba08417411e3f7d7ec61336cc..b7a24feecfae9766cfe6573e4dedc261fbe11243 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -153,7 +153,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -163,7 +163,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
      public org.bukkit.command.RemoteConsoleCommandSender remoteConsole;
      //public ConsoleReader reader; // Paper
      public static int currentTick = 0; // Paper - Further improve tick loop
@@ -43,7 +43,7 @@ index d200af0e686bf583e2fd8af3f681d619e683e51e..098e5d6f8fd4a12bcf300045e3d78562
      public int autosavePeriod;
      public boolean serverAutoSave = false; // Paper
      public File bukkitDataPackFolder;
-@@ -1141,9 +1141,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1156,9 +1156,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          // CraftBukkit start
          // Run tasks that are waiting on processing
          MinecraftTimings.processQueueTimer.startTiming(); // Spigot
@@ -55,18 +55,18 @@ index d200af0e686bf583e2fd8af3f681d619e683e51e..098e5d6f8fd4a12bcf300045e3d78562
  
          MinecraftTimings.timeUpdateTimer.startTiming(); // Spigot // Paper
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 8dcaaf8676fe1e76d7c330e86d94ce52a4151d86..16f0d7f4027cba6583aa216b4e793a1d5dbbb502 100644
+index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..2993926371e594e2178c02f222e92331dcedf9c7 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
-@@ -43,7 +43,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -42,7 +42,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
          return new DefaultEventLoopGroup(0, (new ThreadFactoryBuilder()).setNameFormat("Netty Local Client IO #%d").setDaemon(true).build());
      });
      private final EnumProtocolDirection h;
--    private final Queue<NetworkManager.QueuedPacket> packetQueue = Queues.newConcurrentLinkedQueue();  private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER
-+    private final Queue<NetworkManager.QueuedPacket> packetQueue = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>();  private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER /* Concrete - Use CLL */
-     private final ReentrantReadWriteLock j = new ReentrantReadWriteLock();
+-    private final Queue<NetworkManager.QueuedPacket> packetQueue = Queues.newConcurrentLinkedQueue(); private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER
++    private final Queue<NetworkManager.QueuedPacket> packetQueue = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER /* Concrete - Use CLL */
      public Channel channel;
      public SocketAddress socketAddress; public void setSpoofedRemoteAddress(SocketAddress address) { this.socketAddress = address; } // Paper - OBFHELPER
+     // Spigot Start
 diff --git a/src/main/java/net/minecraft/server/UserCache.java b/src/main/java/net/minecraft/server/UserCache.java
 index 1d4bf64b1bf0a852dd881a4248c2fcca52ea74a6..b39dbb1a9049e67215f2984d23b5d2e4bd6c0b9c 100644
 --- a/src/main/java/net/minecraft/server/UserCache.java
