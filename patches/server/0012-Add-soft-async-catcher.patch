@@ -1,0 +1,203 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sat, 17 Aug 2019 18:06:04 -0700
+Subject: [PATCH] Add soft async catcher
+
+Must be enabled via -Dconcrete.strict-thread-checks=true
+
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/TickThread.java b/src/main/java/ca/spottedleaf/concrete/util/TickThread.java
+index d13b521702f31d91f8b19f59f7dfc8f3f76d65b4..15c2bc9c23bcd9874df3b14a613d120bd2add3b8 100644
+--- a/src/main/java/ca/spottedleaf/concrete/util/TickThread.java
++++ b/src/main/java/ca/spottedleaf/concrete/util/TickThread.java
+@@ -1,11 +1,29 @@
+ package ca.spottedleaf.concrete.util;
+ 
++import org.bukkit.Bukkit;
++
+ public final class TickThread extends Thread {
+ 
++    public static final boolean STRICT_THREAD_CHECKS = Boolean.getBoolean("concrete.strict-thread-checks");
++
+     public final int id; /* We don't override getId as the spec requires that it be unique (with respect to all other threads) */
+ 
+     public TickThread(final Runnable run, final String name, final int id) {
+         super(run, name);
+         this.id = id;
+     }
++
++    public static void softEnsureTickThread(final String reason) {
++        if (!STRICT_THREAD_CHECKS) {
++            return;
++        }
++        ensureTickThread(reason);
++    }
++
++
++    public static void ensureTickThread(final String reason) {
++        if (!Bukkit.isPrimaryThread()) {
++            throw new IllegalStateException(reason);
++        }
++    }
+ }
+\ No newline at end of file
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index 67dc837f4325db11dedf05259549dfeb9f651c5b..0e4fbf9b0a966e2234063f84e74b75452a677675 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -394,6 +394,7 @@ public class Chunk implements IChunkAccess {
+ 
+     @Override
+     public void a(Entity entity) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async addEntity call"); /* Concrete */
+         this.q = true;
+         int i = MathHelper.floor(entity.locX / 16.0D);
+         int j = MathHelper.floor(entity.locZ / 16.0D);
+@@ -462,6 +463,7 @@ public class Chunk implements IChunkAccess {
+     }
+ 
+     public void a(Entity entity, int i) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async removeEntity call"); /* Concrete */
+         if (i < 0) {
+             i = 0;
+         }
+@@ -683,6 +685,7 @@ public class Chunk implements IChunkAccess {
+     }
+ 
+     public void a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<Entity> list, @Nullable Predicate<? super Entity> predicate) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async getEntities call"); /* Concrete */
+         int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
+         int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
+ 
+@@ -722,6 +725,7 @@ public class Chunk implements IChunkAccess {
+     }
+ 
+     public void a(@Nullable EntityTypes<?> entitytypes, AxisAlignedBB axisalignedbb, List<Entity> list, Predicate<? super Entity> predicate) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async getEntities call"); /* Concrete */
+         int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
+         int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
+ 
+@@ -753,6 +757,7 @@ public class Chunk implements IChunkAccess {
+     }
+ 
+     public <T extends Entity> void a(Class<? extends T> oclass, AxisAlignedBB axisalignedbb, List<T> list, @Nullable Predicate<? super T> predicate) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async getEntities call"); /* Concrete */
+         int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
+         int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
+ 
+diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
+index 63a688725e2e9b52145db63c7b6d67790d51be2e..851bb2f01b1f59cf9d3fbd78c36d155b17efa1ab 100644
+--- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
++++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
+@@ -56,6 +56,7 @@ public abstract class ChunkMapDistance {
+     }
+ 
+     protected void purgeTickets() {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async purge tickets"); /* Concrete */
+         ++this.currentTick;
+         ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
+ 
+@@ -141,6 +142,7 @@ public abstract class ChunkMapDistance {
+     }
+ 
+     private boolean addTicket(long i, Ticket<?> ticket) { // CraftBukkit - void -> boolean
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async ticket add"); /* Concrete */
+         ObjectSortedSet<Ticket<?>> objectsortedset = this.e(i);
+         ObjectBidirectionalIterator<Ticket<?>> objectbidirectionaliterator = objectsortedset.iterator();
+         int j;
+@@ -164,6 +166,7 @@ public abstract class ChunkMapDistance {
+     }
+ 
+     private boolean removeTicket(long i, Ticket<?> ticket) { // CraftBukkit - void -> boolean
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async ticket remove"); /* Concrete */
+         ObjectSortedSet<Ticket<?>> objectsortedset = this.e(i);
+ 
+         boolean removed = false; // CraftBukkit
+@@ -212,6 +215,7 @@ public abstract class ChunkMapDistance {
+     }
+ 
+     private ObjectSortedSet<Ticket<?>> e(long i) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async tickets compute"); /* Concrete */
+         return (ObjectSortedSet) this.tickets.computeIfAbsent(i, (j) -> {
+             return new ObjectAVLTreeSet();
+         });
+@@ -229,6 +233,7 @@ public abstract class ChunkMapDistance {
+     }
+ 
+     public void a(SectionPosition sectionposition, EntityPlayer entityplayer) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async player add"); /* Concrete */
+         long i = sectionposition.u().pair();
+ 
+         ((ObjectSet) this.c.computeIfAbsent(i, (j) -> {
+@@ -239,6 +244,7 @@ public abstract class ChunkMapDistance {
+     }
+ 
+     public void b(SectionPosition sectionposition, EntityPlayer entityplayer) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async player remove"); /* Concrete */
+         long i = sectionposition.u().pair();
+         ObjectSet<EntityPlayer> objectset = (ObjectSet) this.c.get(i);
+ 
+@@ -284,6 +290,7 @@ public abstract class ChunkMapDistance {
+ 
+     // CraftBukkit start
+     public <T> void removeAllTicketsFor(TicketType<T> ticketType, int ticketLevel, T ticketIdentifier) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async ticket remove"); /* Concrete */
+         Ticket<T> target = new Ticket<>(ticketType, ticketLevel, ticketIdentifier, this.currentTick);
+ 
+         for (java.util.Iterator<ObjectSortedSet<Ticket<?>>> iterator = this.tickets.values().iterator(); iterator.hasNext();) {
+diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
+index 460c687d3e9158731dd5cf8b23ac813c41de5817..fbac08c379659e2f38cb790d76f5428e8c92545f 100644
+--- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
++++ b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
+@@ -71,6 +71,7 @@ public class EntityTrackerEntry {
+     }
+ 
+     public void a() {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Tracker update"); /* Concrete */
+         List<Entity> list = this.tracker.getPassengers();
+ 
+         if (!list.equals(this.p)) {
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index fd0d2b6e677864aa8d8af39b3028db7a00be6c77..5c8f1cbececb17daa059742bf4c2ded2a4ed785d 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -259,6 +259,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+     @Nullable
+     private PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Chunk holder update"); /* Concrete */
+         if (k > PlayerChunkMap.GOLDEN_TICKET && j > PlayerChunkMap.GOLDEN_TICKET) {
+             return playerchunk;
+         } else {
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 0e043d40f21cb4d9261d11819c1403a9feb32487..ca2b7ef420557b85e5ad7bb8dbaf278d9953b57c 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -384,6 +384,7 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+ 
+     @Override
+     public boolean setTypeAndData(BlockPosition blockposition, IBlockData iblockdata, int i) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async set type call"); /* Concrete */
+         // CraftBukkit start - tree generation
+         if (this.captureTreeGeneration) {
+             CraftBlockState blockstate = null;
+@@ -488,6 +489,7 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+ 
+     // CraftBukkit start - Split off from above in order to directly send client and physic updates
+     public void notifyAndUpdatePhysics(BlockPosition blockposition, Chunk chunk, IBlockData oldBlock, IBlockData newBlock, IBlockData actualBlock, int i) {
++        ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Async notify and update"); /* Concrete */
+         IBlockData iblockdata = newBlock;
+         IBlockData iblockdata1 = oldBlock;
+         IBlockData iblockdata2 = actualBlock;
+diff --git a/src/main/java/org/spigotmc/AsyncCatcher.java b/src/main/java/org/spigotmc/AsyncCatcher.java
+index c0f95ed8ec90349e639af32eb227d602efcc26c2..8365443e7367ac490518fc57aac7ca8bf91aa614 100644
+--- a/src/main/java/org/spigotmc/AsyncCatcher.java
++++ b/src/main/java/org/spigotmc/AsyncCatcher.java
+@@ -10,7 +10,7 @@ public class AsyncCatcher
+ 
+     public static void catchOp(String reason)
+     {
+-        if ( enabled && !org.bukkit.Bukkit.isPrimaryThread() ) /* Concrete */
++        if ( ( enabled || ca.spottedleaf.concrete.util.TickThread.STRICT_THREAD_CHECKS ) && !org.bukkit.Bukkit.isPrimaryThread() ) /* Concrete */
+         {
+             throw new IllegalStateException( "Asynchronous " + reason + "!" );
+         }
