@@ -1084,7 +1084,7 @@ index 0000000000000000000000000000000000000000..db413558f91d4b50bca68422a25819ab
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java b/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..5f1b4ed317601626056ef8938deaaa74484aae62
+index 0000000000000000000000000000000000000000..72bbe4d3da7e61188a3d5bbe92b513aca2dc350e
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/scheduler/TaskScheduler.java
 @@ -0,0 +1,200 @@
@@ -1094,7 +1094,7 @@ index 0000000000000000000000000000000000000000..5f1b4ed317601626056ef8938deaaa74
 +import co.aikar.timings.MinecraftTimings;
 +import com.destroystokyo.paper.event.server.ServerExceptionEvent;
 +import com.destroystokyo.paper.exception.ServerSchedulerException;
-+import ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList;
++import ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue;
 +import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 +import org.bukkit.plugin.Plugin;
 +import org.bukkit.scheduler.BukkitTask;
@@ -1110,7 +1110,7 @@ index 0000000000000000000000000000000000000000..5f1b4ed317601626056ef8938deaaa74
 +
 +    protected final AtomicInteger idGenerator;
 +
-+    protected final ConcurrentLinkedList<ConcreteTask> pending = new ConcurrentLinkedList<>();
++    protected final MultiThreadedQueue<ConcreteTask> pending = new MultiThreadedQueue<>();
 +
 +    /*
 +     * Important note:
@@ -1305,10 +1305,10 @@ index c2d26141812c4d52b3e5fa223ec9d823ac504bc1..b638f137aeac94b37680d63a299020a5
      private static final Map<Class<?>, String> taskNameCache = new MapMaker().weakKeys().makeMap();
  
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 7cbd502dd2e1428fe656cf17d62d199914be55c1..711dd9d1c753d1903b31043bb6a6f1699acb5cd6 100644
+index 74cc372718a1ef6143c77ecabcbe76a1484026f3..da48a6f7298334920058cc27db55c34b19334573 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -1144,7 +1144,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1145,7 +1145,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
  
      protected void b(BooleanSupplier booleansupplier) {
          MinecraftTimings.bukkitSchedulerTimer.startTiming(); // Spigot // Paper

@@ -5,7 +5,7 @@ Subject: [PATCH] Use ConcurrentUtil
 
 
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index 6c27fdbaf155fa2795a1d3a4c63fe06aad3bc046..495a21dd36f07a11effe91f0fce9e8353da2421a 100644
+index 6c27fdbaf155fa2795a1d3a4c63fe06aad3bc046..155e33a06566e10361a5bec17463cf53f1ebc0a3 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
 @@ -43,7 +43,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
@@ -13,12 +13,12 @@ index 6c27fdbaf155fa2795a1d3a4c63fe06aad3bc046..495a21dd36f07a11effe91f0fce9e835
      private static final Logger LOGGER = LogManager.getLogger();
      private static final Pattern i = Pattern.compile("^[a-fA-F0-9]{40}$");
 -    private final java.util.Queue<ServerCommand> serverCommandQueue = new java.util.concurrent.ConcurrentLinkedQueue<ServerCommand>(); // Paper - use a proper queue
-+    private final java.util.Queue<ServerCommand> serverCommandQueue = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); // Paper - use a proper queue /* Concrete - Use a better queue */
++    private final java.util.Queue<ServerCommand> serverCommandQueue = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); // Paper - use a proper queue /* Concrete - Use a better queue */
      private RemoteStatusListener remoteStatusListener;
      public final RemoteControlCommandListener remoteControlCommandListener;
      private RemoteControlListener remoteControlListener;
 diff --git a/src/main/java/net/minecraft/server/IAsyncTaskHandler.java b/src/main/java/net/minecraft/server/IAsyncTaskHandler.java
-index 84024e6ba40be642a7e15fb089428c7e09e42256..461086e13b7442c4b93651973e78c64b904b8e19 100644
+index 84024e6ba40be642a7e15fb089428c7e09e42256..9eb000fa915a7d32d0e5f524ab8645c84bd667d1 100644
 --- a/src/main/java/net/minecraft/server/IAsyncTaskHandler.java
 +++ b/src/main/java/net/minecraft/server/IAsyncTaskHandler.java
 @@ -13,7 +13,7 @@ public abstract class IAsyncTaskHandler<R extends Runnable> implements Mailbox<R
@@ -26,12 +26,12 @@ index 84024e6ba40be642a7e15fb089428c7e09e42256..461086e13b7442c4b93651973e78c64b
      private final String b;
      private static final Logger LOGGER = LogManager.getLogger();
 -    private final Queue<R> d = Queues.newConcurrentLinkedQueue();
-+    private final ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<R> d = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); /* Concrete - Use a better queue */
++    private final ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<R> d = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); /* Concrete - Use a better queue */
      private int e;
  
      protected IAsyncTaskHandler(String s) {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index af94636f3d5c499bfb5fd89c2c6915d579accf30..a441b387801c01e77e8117446043428766d5b31b 100644
+index af94636f3d5c499bfb5fd89c2c6915d579accf30..74cc372718a1ef6143c77ecabcbe76a1484026f3 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
 @@ -163,7 +163,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
@@ -39,7 +39,7 @@ index af94636f3d5c499bfb5fd89c2c6915d579accf30..a441b387801c01e77e81174460434287
      //public ConsoleReader reader; // Paper
      public static int currentTick = 0; // Paper - Further improve tick loop
 -    public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
-+    public final ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<Runnable> processQueue = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); /* Concrete - Use CLL */
++    public final ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<Runnable> processQueue = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); /* Concrete - Use CLL */
      public int autosavePeriod;
      public boolean serverAutoSave = false; // Paper
      public File bukkitDataPackFolder;
@@ -55,7 +55,7 @@ index af94636f3d5c499bfb5fd89c2c6915d579accf30..a441b387801c01e77e81174460434287
  
          MinecraftTimings.timeUpdateTimer.startTiming(); // Spigot // Paper
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..2993926371e594e2178c02f222e92331dcedf9c7 100644
+index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..0490675ac9f01097f428fde5e4d457bc552adb5e 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -42,7 +42,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -63,7 +63,7 @@ index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..2993926371e594e2178c02f222e92331
      });
      private final EnumProtocolDirection h;
 -    private final Queue<NetworkManager.QueuedPacket> packetQueue = Queues.newConcurrentLinkedQueue(); private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER
-+    private final Queue<NetworkManager.QueuedPacket> packetQueue = new ca.spottedleaf.concurrentutil.queue.ConcurrentLinkedList<>(); private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER /* Concrete - Use CLL */
++    private final Queue<NetworkManager.QueuedPacket> packetQueue = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER /* Concrete - Use CLL */
      public Channel channel;
      public SocketAddress socketAddress; public void setSpoofedRemoteAddress(SocketAddress address) { this.socketAddress = address; } // Paper - OBFHELPER
      // Spigot Start
