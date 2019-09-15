@@ -44,6 +44,26 @@ function import {
     fi
 }
 
+function importLibrary {
+    group=$1
+    lib=$2
+    prefix=$3
+    shift 3
+    for file in "$@"; do
+        file="$prefix/$file"
+        target="$basedir/Paper/Paper-Server/src/main/java/$file"
+        targetdir=$(dirname "$target")
+        mkdir -p "${targetdir}"
+        base="$workdir/Minecraft/$minecraftversion/libraries/${group}/${lib}/$file"
+        if [ ! -f "$base" ]; then
+            echo "Missing $base"
+            exit 1
+        fi
+        export MODLOG="$MODLOG  Imported $file from $lib\n";
+        sed 's/\r$//' "$base" > "$target" || exit 1
+    done
+}
+
 (
     cd Paper/Paper-Server/
     lastlog=$(git log -1 --oneline)
@@ -78,10 +98,21 @@ done
 
 # import Foo
 
+########################################################
+########################################################
+########################################################
+#              LIBRARY IMPORTS
+# These must always be mapped manually, no automatic stuff
+#
+#             # group    # lib          # prefix               # many files
+
+importLibrary com.mojang datafixerupper com/mojang/datafixers/util Either.java
+
 ################
 (
     cd Paper/Paper-Server/
     rm -rf nms-patches
     git add src -A
     echo -e "Concrete-Extra mc-dev Imports\n\n$MODLOG" | git commit src -F -
+    exit 0
 )
