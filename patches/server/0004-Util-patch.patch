@@ -6,10 +6,10 @@ Subject: [PATCH] Util patch
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/Util.java b/src/main/java/ca/spottedleaf/concrete/util/Util.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..6ab28556d7a43a41330a0c02f510037f800cdfb1
+index 0000000000000000000000000000000000000000..9f24e62c428ee3373de733453172af4268329cd2
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/Util.java
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,28 @@
 +package ca.spottedleaf.concrete.util;
 +
 +import org.bukkit.Bukkit;
@@ -33,13 +33,17 @@ index 0000000000000000000000000000000000000000..6ab28556d7a43a41330a0c02f510037f
 +    public static int getCoordinateZ(final long key) {
 +        return (int)(key >>> 32);
 +    }
++
++    public static int getChunkCoordinate(final double coordinate) {
++        return (int)Math.floor(coordinate) >> 4;
++    }
 +}
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java b/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091e72a8f08
+index 0000000000000000000000000000000000000000..6280a512e3dedb790418b25f0b2294573523af68
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java
-@@ -0,0 +1,309 @@
+@@ -0,0 +1,316 @@
 +package ca.spottedleaf.concrete.util.map;
 +
 +import ca.spottedleaf.concrete.util.Util;
@@ -103,7 +107,7 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +        final long newPos = Util.getCoordinateKey(chunkX, chunkZ);
 +        if (oldDistance == -1) {
 +            this.objectToLastCoordinate.put(object, newPos);
-+            this.addObject(object, chunkX, chunkZ, viewDistance);
++            this.addObject(object, chunkX, chunkZ, Integer.MIN_VALUE, Integer.MIN_VALUE, viewDistance);
 +        } else {
 +            this.updateObject(object, this.objectToLastCoordinate.put(object, newPos), newPos, oldDistance, viewDistance);
 +        }
@@ -118,7 +122,10 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +            return false;
 +        }
 +
-+        this.removeObject(object, Util.getCoordinateX(position), Util.getCoordinateZ(position), viewDistance);
++        final int currentX = Util.getCoordinateX(position);
++        final int currentZ = Util.getCoordinateZ(position);
++
++        this.removeObject(object, currentX, currentZ, currentX, currentZ, viewDistance);
 +        //this.validate(object, -1);
 +        return true;
 +    }
@@ -169,7 +176,8 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +        }
 +    }
 +
-+    protected final void addObjectTo(final E object, final int chunkX, final int chunkZ) {
++    protected final void addObjectTo(final E object, final int chunkX, final int chunkZ, final int currChunkX,
++                                     final int currChunkZ, final int prevChunkX, final int prevChunkZ) {
 +        final long key = Util.getCoordinateKey(chunkX, chunkZ);
 +
 +        PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> current = this.areaMap.putIfAbsent(key, this.getEmptySetFor(object));
@@ -186,11 +194,12 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +        }
 +
 +        if (this.addCallback != null) {
-+            this.addCallback.accept(object, chunkX, chunkZ, current);
++            this.addCallback.accept(object, chunkX, chunkZ, currChunkX, currChunkZ, prevChunkX, prevChunkZ, current);
 +        }
 +    }
 +
-+    protected final void removeObjectFrom(final E object, final int chunkX, final int chunkZ) {
++    protected final void removeObjectFrom(final E object, final int chunkX, final int chunkZ, final int currChunkX,
++                                          final int currChunkZ, final int prevChunkX, final int prevChunkZ) {
 +        final long key = Util.getCoordinateKey(chunkX, chunkZ);
 +
 +        PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> current = this.areaMap.get(key);
@@ -212,40 +221,40 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +        }
 +
 +        if (this.removeCallback != null) {
-+            this.removeCallback.accept(object, chunkX, chunkZ, next);
++            this.removeCallback.accept(object, chunkX, chunkZ, currChunkX, currChunkZ, prevChunkX, prevChunkZ, next);
 +        }
 +    }
 +
-+    protected final void addForRectangle(final E object, final int minX, final int maxX, final int minZ, final int maxZ,
-+                                         final int right, final int up) {
++    protected final void addForRectangle(final E object, final int toX, final int toZ, final int fromX, final int fromZ,
++                                         final int minX, final int maxX, final int minZ, final int maxZ, final int right, final int up) {
 +        for (int currX = minX; currX != maxX; currX += right) {
 +            for (int currZ = minZ; currZ != maxZ; currZ += up) {
-+                this.addObjectTo(object, currX, currZ);
++                this.addObjectTo(object, currX, currZ, toX, toZ, fromX, fromZ);
 +            }
 +        }
 +    }
 +
-+    protected final void removeForRectangle(final E object, final int minX, final int maxX, final int minZ, final int maxZ,
-+                                            final int right, final int up) {
++    protected final void removeForRectangle(final E object, final int toX, final int toZ, final int fromX, final int fromZ,
++                                            final int minX, final int maxX, final int minZ, final int maxZ, final int right, final int up) {
 +        for (int currX = minX; currX != maxX; currX += right) {
 +            for (int currZ = minZ; currZ != maxZ; currZ += up) {
-+                this.removeObjectFrom(object, currX, currZ);
++                this.removeObjectFrom(object, currX, currZ, toX, toZ, fromX, fromZ);
 +            }
 +        }
 +    }
 +
-+    private void addObject(final E object, final int chunkX, final int chunkZ, final int viewDistance) {
++    private void addObject(final E object, final int chunkX, final int chunkZ, final int prevChunkX, final int prevChunkZ, final int viewDistance) {
 +        for (int xoff = -viewDistance; xoff <= viewDistance; ++xoff) {
 +            for (int zoff = -viewDistance; zoff <= viewDistance; ++zoff) {
-+                this.addObjectTo(object, chunkX + xoff, chunkZ + zoff);
++                this.addObjectTo(object, chunkX + xoff, chunkZ + zoff, chunkX, chunkZ, prevChunkX, prevChunkZ);
 +            }
 +        }
 +    }
 +
-+    private void removeObject(final E object, final int chunkX, final int chunkZ, final int viewDistance) {
++    private void removeObject(final E object, final int chunkX, final int chunkZ, final int currentChunkX, final int currentChunkZ, final int viewDistance) {
 +        for (int xoff = -viewDistance; xoff <= viewDistance; ++xoff) {
 +            for (int zoff = -viewDistance; zoff <= viewDistance; ++zoff) {
-+                this.removeObjectFrom(object, chunkX + xoff, chunkZ + zoff);
++                this.removeObjectFrom(object, chunkX + xoff, chunkZ + zoff, currentChunkX, currentChunkZ, chunkX, chunkZ);
 +            }
 +        }
 +    }
@@ -269,8 +278,8 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +
 +        if (Math.max(totalX, totalZ) > (2 * oldViewDistance) || oldViewDistance != newViewDistance) {
 +            // teleported?
-+            this.removeObject(object, fromX, fromZ, oldViewDistance);
-+            this.addObject(object, toX, toZ, newViewDistance);
++            this.removeObject(object, fromX, fromZ, fromX, fromZ, oldViewDistance);
++            this.addObject(object, toX, toZ, fromX, fromZ, newViewDistance);
 +            return;
 +        }
 +
@@ -305,7 +314,7 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +            maxZ = fromZ + (oldViewDistance * up) + up; // exclusive
 +            minZ = toZ - (oldViewDistance * up); // inclusive
 +
-+            this.addForRectangle(object, minX, maxX, minZ, maxZ, right, up);
++            this.addForRectangle(object, toX, toZ, fromX, fromZ, minX, maxX, minZ, maxZ, right, up);
 +        }
 +
 +        if (dz != 0) {
@@ -316,7 +325,7 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +            maxZ = toZ + (oldViewDistance * up) + up; // exclusive
 +            minZ = fromZ + (oldViewDistance * up) + up; // inclusive
 +
-+            this.addForRectangle(object, minX, maxX, minZ, maxZ, right, up);
++            this.addForRectangle(object, toX, toZ, fromX, fromZ, minX, maxX, minZ, maxZ, right, up);
 +        }
 +
 +        if (dx != 0) {
@@ -327,7 +336,7 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +            maxZ = fromZ + (oldViewDistance * up) + up; // exclusive
 +            minZ = toZ - (oldViewDistance * up); // inclusive
 +
-+            this.removeForRectangle(object, minX, maxX, minZ, maxZ, right, up);
++            this.removeForRectangle(object, toX, toZ, fromX, fromZ, minX, maxX, minZ, maxZ, right, up);
 +        }
 +
 +        if (dz != 0) {
@@ -338,14 +347,16 @@ index 0000000000000000000000000000000000000000..df7113f59c4f5c0a96229892d6166091
 +            maxZ = toZ - (oldViewDistance * up); // exclusive
 +            minZ = fromZ - (oldViewDistance * up); // inclusive
 +
-+            this.removeForRectangle(object, minX, maxX, minZ, maxZ, right, up);
++            this.removeForRectangle(object, toX, toZ, fromX, fromZ, minX, maxX, minZ, maxZ, right, up);
 +        }
 +    }
 +
 +    @FunctionalInterface
 +    public static interface ChangeCallback<E> {
 +
-+        void accept(final E object, final int x, final int z, final PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> newState);
++        // if there is no previous position, then prevPos = Integer.MIN_VALUE
++        void accept(final E object, final int rangeX, final int rangeZ, final int currPosX, final int currPosZ, final int prevPosX, final int prevPosZ,
++                    final PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> newState);
 +
 +    }
 +}
