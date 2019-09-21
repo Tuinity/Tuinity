@@ -40,10 +40,10 @@ index 0000000000000000000000000000000000000000..9f24e62c428ee3373de733453172af42
 +}
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java b/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..6280a512e3dedb790418b25f0b2294573523af68
+index 0000000000000000000000000000000000000000..2e98ebfa2fa2dfe3b832a394f28061e535d96655
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java
-@@ -0,0 +1,316 @@
+@@ -0,0 +1,368 @@
 +package ca.spottedleaf.concrete.util.map;
 +
 +import ca.spottedleaf.concrete.util.Util;
@@ -52,6 +52,7 @@ index 0000000000000000000000000000000000000000..6280a512e3dedb790418b25f0b229457
 +import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 +import net.minecraft.server.ChunkCoordIntPair;
++import net.minecraft.server.MinecraftServer;
 +
 +import java.util.Iterator;
 +
@@ -100,6 +101,10 @@ index 0000000000000000000000000000000000000000..6280a512e3dedb790418b25f0b229457
 +
 +    public PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> getObjectsInRange(final int chunkX, final int chunkZ) {
 +        return this.getObjectsInRange(Util.getCoordinateKey(chunkX, chunkZ));
++    }
++
++    public long getLastCoordinate(final E object) {
++        return this.objectToLastCoordinate.get(object);
 +    }
 +
 +    public void update(final E object, final int chunkX, final int chunkZ, final int viewDistance) {
@@ -180,7 +185,8 @@ index 0000000000000000000000000000000000000000..6280a512e3dedb790418b25f0b229457
 +                                     final int currChunkZ, final int prevChunkX, final int prevChunkZ) {
 +        final long key = Util.getCoordinateKey(chunkX, chunkZ);
 +
-+        PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> current = this.areaMap.putIfAbsent(key, this.getEmptySetFor(object));
++        PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> empty = this.getEmptySetFor(object);
++        PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> current = this.areaMap.putIfAbsent(key, empty);
 +
 +        if (current != null) {
 +            PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> next = this.pooledHashSets.findMapWith(current, object);
@@ -191,10 +197,19 @@ index 0000000000000000000000000000000000000000..6280a512e3dedb790418b25f0b229457
 +
 +            current = next;
 +            // fall through to callback
++        } else {
++            current = empty;
 +        }
 +
 +        if (this.addCallback != null) {
-+            this.addCallback.accept(object, chunkX, chunkZ, currChunkX, currChunkZ, prevChunkX, prevChunkZ, current);
++            try {
++                this.addCallback.accept(object, chunkX, chunkZ, currChunkX, currChunkZ, prevChunkX, prevChunkZ, current);
++            } catch (final Throwable ex) {
++                if (ex instanceof ThreadDeath) {
++                    throw (ThreadDeath)ex;
++                }
++                MinecraftServer.LOGGER.error("Add callback for map threw exception ", ex);
++            }
 +        }
 +    }
 +
@@ -221,7 +236,14 @@ index 0000000000000000000000000000000000000000..6280a512e3dedb790418b25f0b229457
 +        }
 +
 +        if (this.removeCallback != null) {
-+            this.removeCallback.accept(object, chunkX, chunkZ, currChunkX, currChunkZ, prevChunkX, prevChunkZ, next);
++            try {
++                this.removeCallback.accept(object, chunkX, chunkZ, currChunkX, currChunkZ, prevChunkX, prevChunkZ, next);
++            } catch (final Throwable ex) {
++                if (ex instanceof ThreadDeath) {
++                    throw (ThreadDeath)ex;
++                }
++                MinecraftServer.LOGGER.error("Remove callback for map threw exception ", ex);
++            }
 +        }
 +    }
 +
@@ -276,10 +298,40 @@ index 0000000000000000000000000000000000000000..6280a512e3dedb790418b25f0b229457
 +        final int totalX = Math.abs(fromX - toX);
 +        final int totalZ = Math.abs(fromZ - toZ);
 +
-+        if (Math.max(totalX, totalZ) > (2 * oldViewDistance) || oldViewDistance != newViewDistance) {
++        if (Math.max(totalX, totalZ) > (2 * newViewDistance)) {
 +            // teleported?
 +            this.removeObject(object, fromX, fromZ, fromX, fromZ, oldViewDistance);
 +            this.addObject(object, toX, toZ, fromX, fromZ, newViewDistance);
++            return;
++        }
++
++        if (oldViewDistance != newViewDistance) {
++            // remove loop
++            for (int xoff = -oldViewDistance; xoff <= oldViewDistance; ++xoff) {
++                for (int zoff = -oldViewDistance; zoff <= oldViewDistance; ++zoff) {
++                    final int currX = xoff + fromX;
++                    final int currZ = zoff + fromZ;
++
++                    // only remove if we're outside the new view distance...
++                    if (Math.max(Math.abs(currX - toX), Math.abs(currZ - toZ)) > newViewDistance) {
++                        this.removeObjectFrom(object, currX, currZ, toX, toZ, fromX, fromZ);
++                    }
++                }
++            }
++
++            // add loop
++            for (int xoff = -newViewDistance; xoff <= newViewDistance; ++xoff) {
++                for (int zoff = -newViewDistance; zoff <= newViewDistance; ++zoff) {
++                    final int currX = xoff + toX;
++                    final int currZ = zoff + toZ;
++
++                    // only add if we're outside the old view distance...
++                    if (Math.max(Math.abs(currX - fromX), Math.abs(currZ - fromZ)) > oldViewDistance) {
++                        this.addObjectTo(object, currX, currZ, toX, toZ, fromX, fromZ);
++                    }
++                }
++            }
++
 +            return;
 +        }
 +
@@ -395,10 +447,10 @@ index 0000000000000000000000000000000000000000..194764f3d87767b29eb58d579b149aa5
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/map/PooledLinkedHashSets.java b/src/main/java/ca/spottedleaf/concrete/util/map/PooledLinkedHashSets.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..ffbdf77f0c1a4a95ce46227ccd86a4a618e0d11e
+index 0000000000000000000000000000000000000000..fd270fec046a5215ff3ef8a8c4bff1b3df5a2c8b
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/map/PooledLinkedHashSets.java
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,264 @@
 +package ca.spottedleaf.concrete.util.map;
 +import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
@@ -631,6 +683,10 @@ index 0000000000000000000000000000000000000000..ffbdf77f0c1a4a95ce46227ccd86a4a6
 +            return this.set.iterator();
 +        }
 +
++        public int size() {
++            return this.set.size();
++        }
++
 +        @Override
 +        public int hashCode() {
 +            return this.hash;
@@ -690,6 +746,44 @@ index 24b4c6e6a6db0d2fe68789f437ad49f2a12a411d..e75c1eab2668ae6b13bedf02397deea7
          mobSpawn = Timings.ofSafe(name + "mobSpawn");
          doChunkUnload = Timings.ofSafe(name + "doChunkUnload");
          scheduledBlocks = Timings.ofSafe(name + "Scheduled Blocks");
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index d0606ee742983f966f5159c8070c1e52e134bd08..17d70d9f75654df4c7aa7d9671398bc017323307 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -557,11 +557,10 @@ public class ChunkProviderServer extends IChunkProvider {
+             EnumCreatureType[] aenumcreaturetype = EnumCreatureType.values();
+             // Paper start - per player mob spawning
+             int[] worldMobCount;
+-            if (this.playerChunkMap.playerMobDistanceMap != null) {
++            /* Concrete start - use view distance map */
++            if (this.world.paperConfig.perPlayerMobSpawns) {
+                 // update distance map
+-                this.world.timings.playerMobDistanceMapUpdate.startTiming();
+-                this.playerChunkMap.playerMobDistanceMap.update(this.world.players, this.playerChunkMap.viewDistance);
+-                this.world.timings.playerMobDistanceMapUpdate.stopTiming();
++                /* Concrete end - use view distance map */
+                 // re-set mob counts
+                 for (EntityPlayer player : this.world.players) {
+                     Arrays.fill(player.mobCounts, 0);
+@@ -629,9 +628,17 @@ public class ChunkProviderServer extends IChunkProvider {
+ 
+                                     if (this.world.paperConfig.perPlayerMobSpawns) {
+                                         int minDiff = Integer.MAX_VALUE;
+-                                        for (EntityPlayer entityplayer : this.playerChunkMap.playerMobDistanceMap.getPlayersInRange(chunk.getPos())) {
++                                        /* Concrete start - use view distance map */
++                                        java.lang.Iterable<EntityPlayer> players = this.playerChunkMap.playerViewDistanceMap.getObjectsInRange(chunk.getPos());
++                                        if (players != null) {
++                                        for (EntityPlayer entityplayer : players) {
++                                            if (entityplayer.isSpectator() || !entityplayer.affectsSpawning) {
++                                                continue;
++                                            }
++                                            /* Concrete end - use view distance map */
+                                             minDiff = Math.min(limit - this.playerChunkMap.getMobCountNear(entityplayer, enumcreaturetype), minDiff);
+                                         }
++                                        } /* Concrete - use view distance map */
+                                         difference = (minDiff == Integer.MAX_VALUE) ? 0 : minDiff;
+                                     }
+ 
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
 index 7801879c8785c4fcfb412eeae19d7890def874f1..a78fea826f781edd4442ec7335da59f443228bc4 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
@@ -716,9 +810,18 @@ index 7801879c8785c4fcfb412eeae19d7890def874f1..a78fea826f781edd4442ec7335da59f4
  
      // Yes, this doesn't match Vanilla, but it's the best we can do for now.
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 95ee33513563a2294d2a7f7621ab62350207516f..4e7e67482201fa1a00a3d62b50043f66f5c565e3 100644
+index 95ee33513563a2294d2a7f7621ab62350207516f..d436caea01af2f5628b6f5a5b967ed88491b9792 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -78,7 +78,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     public final Int2ObjectMap<PlayerChunkMap.EntityTracker> trackedEntities;
+     private final Queue<Runnable> A;
+     int viewDistance; // Paper - private -> package private
+-    public final com.destroystokyo.paper.util.PlayerMobDistanceMap playerMobDistanceMap; // Paper
++    //public final com.destroystokyo.paper.util.PlayerMobDistanceMap playerMobDistanceMap; // Paper /* Concrete - replaced by view distance map */
+ 
+     // CraftBukkit start - recursion-safe executor for Chunk loadCallback() and unloadCallback()
+     public final CallbackExecutor callbackExecutor = new CallbackExecutor();
 @@ -105,6 +105,35 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      };
      // CraftBukkit end
@@ -755,15 +858,36 @@ index 95ee33513563a2294d2a7f7621ab62350207516f..4e7e67482201fa1a00a3d62b50043f66
      public PlayerChunkMap(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, IAsyncTaskHandler<Runnable> iasynctaskhandler, ILightAccess ilightaccess, ChunkGenerator<?> chunkgenerator, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier, int i) {
          super(new File(worldserver.getWorldProvider().getDimensionManager().a(file), "region"), datafixer);
          this.visibleChunks = this.updatingChunks.clone();
-@@ -137,6 +166,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -136,7 +165,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         this.m = supplier;
          this.n = new VillagePlace(new File(this.x, "poi"), datafixer, this.world); // Paper
          this.setViewDistance(i);
-         this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper
+-        this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper
++        //this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper /* Concrete - use the distance map */
 +        this.playerViewDistanceMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(); /* Concrete */
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -1270,6 +1300,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -147,9 +177,17 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         int chunkZ = (int)Math.floor(entity.locZ) >> 4;
+         int index = entity.getEntityType().getEnumCreatureType().ordinal();
+ 
+-        for (EntityPlayer player : this.playerMobDistanceMap.getPlayersInRange(chunkX, chunkZ)) {
++        /* Concrete start - use view distance map */
++        Iterable<EntityPlayer> players = this.playerViewDistanceMap.getObjectsInRange(chunkX, chunkZ);
++        if (players != null) {
++        for (EntityPlayer player : players) {
++            if (player.isSpectator() || !player.affectsSpawning) {
++                continue;
++            }
++            /* Concrete end - use view distance map */
+             ++player.mobCounts[index];
+         }
++        } /* Concrete - use view distance map */
+     }
+ 
+     public int getMobCountNear(EntityPlayer entityPlayer, EnumCreatureType enumCreatureType) {
+@@ -1270,6 +1308,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public void movePlayer(EntityPlayer entityplayer) {
