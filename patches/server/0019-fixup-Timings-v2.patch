@@ -1,70 +1,73 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
-Date: Mon, 9 Sep 2019 23:16:43 -0700
+Date: Tue, 27 Aug 2019 10:12:40 -0700
 Subject: [PATCH] fixup! Timings v2
 
 
-diff --git a/src/main/java/co/aikar/timings/WorldTimingsHandler.java b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-index e75c1eab2668ae6b13bedf02397deea749951d62..83ad4894ff7f77912451eff746f1782d07e3aa8b 100644
---- a/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-+++ b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-@@ -77,6 +77,10 @@ public class WorldTimingsHandler {
+diff --git a/src/main/java/co/aikar/timings/MinecraftTimings.java b/src/main/java/co/aikar/timings/MinecraftTimings.java
+index b638f137aeac94b37680d63a299020a5b3024252..3770a1ded6e3845ca26ec8e3ab410f4c93c3ed54 100644
+--- a/src/main/java/co/aikar/timings/MinecraftTimings.java
++++ b/src/main/java/co/aikar/timings/MinecraftTimings.java
+@@ -12,6 +12,7 @@ import java.util.Map;
+ // TODO: Re-implement missing timers
+ public final class MinecraftTimings {
  
-     public final Timing playerMobDistanceMapUpdate;
- 
-+    public final Timing miscMobSpawning;
-+    public final Timing chunkRangeCheckBig;
-+    public final Timing chunkRangeCheckSmall;
-+
-     public WorldTimingsHandler(World server) {
-         String name = server.worldData.getName() +" - ";
- 
-@@ -150,6 +154,10 @@ public class WorldTimingsHandler {
-         chunkUnloadDataSave = Timings.ofSafe(name + "Chunk unload - Data Serialization");
- 
-         playerMobDistanceMapUpdate = Timings.ofSafe(name + "Per Player Mob Spawning - Distance Map Update");
-+
-+        miscMobSpawning = Timings.ofSafe(name + "Mob spawning - Misc");
-+        chunkRangeCheckBig = Timings.ofSafe(name + "Chunk Tick Range - Big");
-+        chunkRangeCheckSmall = Timings.ofSafe(name + "Chunk Tick Range - Small");
++    public static final Timing serverOversleep = Timings.ofSafe("Server Oversleep");
+     public static final Timing playerListTimer = Timings.ofSafe("Player List");
+     public static final Timing commandFunctionsTimer = Timings.ofSafe("Command Functions");
+     public static final Timing connectionTimer = Timings.ofSafe("Connection Handler");
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index da48a6f7298334920058cc27db55c34b19334573..958739cdac668dea12425844e744992533d63047 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -133,8 +133,8 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+         });
+     });
+     private long nextTick = SystemUtils.getMonotonicMillis();
+-    private long ab;
+-    private boolean ac;
++    private long ab; final long getTickOversleepMaxTime() { return this.ab; } // Paper - OBFHELPER
++    private boolean ac; final boolean hasExecutedTask() { return this.ac; } // Paper - OBFHELPER
+     private final IReloadableResourceManager ae;
+     private final ResourcePackRepository<ResourcePackLoader> resourcePackRepository;
+     @Nullable
+@@ -979,6 +979,16 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+         return this.forceTicks || this.isEntered() || SystemUtils.getMonotonicMillis() < (this.ac ? this.ab : this.nextTick);
      }
  
-     public static Timing getTickList(WorldServer worldserver, String timingsType) {
-diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 17d70d9f75654df4c7aa7d9671398bc017323307..e3a5f9afe63b33263e2a6a06841ed6f14dc31d78 100644
---- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
-+++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -586,9 +586,21 @@ public class ChunkProviderServer extends IChunkProvider {
-                     this.world.getMethodProfiler().exit();
-                     ChunkCoordIntPair chunkcoordintpair = playerchunk.i();
++    // Paper start
++    private boolean canOversleep() {
++        return this.hasExecutedTask() && SystemUtils.getMonotonicMillis() < this.getTickOversleepMaxTime();
++    }
++
++    private boolean canSleepForTickNoOversleep() {
++        return this.forceTicks || this.isEntered() || SystemUtils.getMonotonicMillis() < this.nextTick;
++    }
++    // Paper end
++
+     private void executeModerately() {
+         this.executeAll();
+         java.util.concurrent.locks.LockSupport.parkNanos("executing tasks", 1000L);
+@@ -988,7 +998,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+     protected void sleepForTick() {
+         //this.executeAll(); // Paper - move this into the tick method for timings
+         this.awaitTasks(() -> {
+-            return !this.canSleepForTick();
++            return !this.canSleepForTickNoOversleep(); // Paper - move oversleep into full server tick
+         });
+     }
  
--                    if (!this.playerChunkMap.isOutsideOfRange(chunkcoordintpair)) {
-+                    // Paper start - timings
-+                    this.world.timings.chunkRangeCheckBig.startTiming();
-+                    // note: this is just a copy of the expression in the if
-+                    boolean bigRadiusOutsideRange = !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair);
-+                    this.world.timings.chunkRangeCheckBig.stopTiming();
-+                    if (bigRadiusOutsideRange) {
-+                        // Paper end
-                         chunk.b(chunk.q() + j);
--                        if (flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair, true)) { // Spigot
-+                        // Paper start - timings
-+                        this.world.timings.chunkRangeCheckSmall.startTiming();
-+                        // note: this is just a copy of the expression in the if
-+                        boolean smallRadiusOutsideRange = flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair, true);
-+                        this.world.timings.chunkRangeCheckSmall.stopTiming();
-+                        if (smallRadiusOutsideRange) { // Spigot
-+                            // Paper end
-                             this.world.getMethodProfiler().enter("spawner");
-                             this.world.timings.mobSpawn.startTiming(); // Spigot
-                             EnumCreatureType[] aenumcreaturetype1 = aenumcreaturetype;
-@@ -663,7 +675,9 @@ public class ChunkProviderServer extends IChunkProvider {
-             });
-             this.world.getMethodProfiler().enter("customSpawners");
-             if (flag1) {
-+                try (co.aikar.timings.Timing ignored = this.world.timings.miscMobSpawning.startTiming()) { // Paper - timings
-                 this.chunkGenerator.doMobSpawning(this.world, this.allowMonsters, this.allowAnimals);
-+                } // Paper - timings
-             }
+@@ -1067,6 +1077,13 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
  
-             this.world.getMethodProfiler().exit();
+     protected void a(BooleanSupplier booleansupplier) {
+         co.aikar.timings.TimingsManager.FULL_SERVER_TICK.startTiming(); // Paper
++        // Paper start - move oversleep into full server tick
++        MinecraftTimings.serverOversleep.startTiming();
++        this.awaitTasks(() -> {
++            return !this.canOversleep();
++        });
++        MinecraftTimings.serverOversleep.stopTiming();
++        // Paper end
+         this.slackActivityAccountant.tickStarted(); // Spigot
+         long i = SystemUtils.getMonotonicNanos();
+         new com.destroystokyo.paper.event.server.ServerTickStartEvent(this.ticks+1).callEvent(); // Paper
