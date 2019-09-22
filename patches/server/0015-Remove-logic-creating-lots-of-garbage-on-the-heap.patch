@@ -20,6 +20,15 @@ return value from a function. use int[] instead since the JIT does
 not choke on that apparently (confirmed via memory profiling)
 - Randomly ticking a block would allocate a BlockPosition, replace
 with mutable pos
+- Entity iteration for ticking would use a non-fast iterator, thus
+creating lots of garbage entries.
+
+- Replace how the chunk map and light data is updated
+   Before the underlying maps were copy on write, however this obviously
+   will not scale well at all for large player counts. The replacement is
+   a system which will queue updates to a map locked by a seqlock.
+   Intentionally, the constructors/fields were clobbered, breaking
+   the ABI.
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedObjectAVLTreeSet.java b/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedObjectAVLTreeSet.java
 new file mode 100644
@@ -163,6 +172,19 @@ index 0000000000000000000000000000000000000000..2438dba81884f6fc5f5a83961fa27fec
 +        POOL[used = currentUsed - 1] = position;
 +    }
 +}
+diff --git a/src/main/java/com/destroystokyo/paper/PaperCommand.java b/src/main/java/com/destroystokyo/paper/PaperCommand.java
+index 132397b3f36e10d2eee266c257cecd96373015ff..662e6af3c2c77ed655b665397838b1869e55f429 100644
+--- a/src/main/java/com/destroystokyo/paper/PaperCommand.java
++++ b/src/main/java/com/destroystokyo/paper/PaperCommand.java
+@@ -215,7 +215,7 @@ public class PaperCommand extends Command {
+             int ticking = 0;
+             int entityTicking = 0;
+ 
+-            for (PlayerChunk chunk : world.getChunkProvider().playerChunkMap.updatingChunks.values()) {
++            for (PlayerChunk chunk : world.getChunkProvider().playerChunkMap.chunkMap.getUpdatingValues()) { /* Concrete - replace chunk map */
+                 if (chunk.getFullChunkIfCached() == null) {
+                     continue;
+                 }
 diff --git a/src/main/java/com/mojang/datafixers/util/Either.java b/src/main/java/com/mojang/datafixers/util/Either.java
 index a90adac7bd7ebd423f480e9ae0f44cb9d521fa4f..19763d89e5b2b09223b6a44fa11a7cfa179ec116 100644
 --- a/src/main/java/com/mojang/datafixers/util/Either.java
@@ -321,6 +343,37 @@ index 851bb2f01b1f59cf9d3fbd78c36d155b17efa1ab..7c5649de63d125e699bae4c3a91ac0ae
          protected final int b;
  
          protected b(int i) {
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index 17d70d9f75654df4c7aa7d9671398bc017323307..afc7c9243f055b3bdb70f7c194c2e426d03d1b7a 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -536,6 +536,8 @@ public class ChunkProviderServer extends IChunkProvider {
+         this.clearCache();
+     }
+ 
++    private final List<PlayerChunk> chunksCopy = new java.util.ArrayList<>(8192); /* Concrete - replace chunk map */
++
+     private void tickChunks() {
+         long i = this.world.getTime();
+         long j = i - this.lastTickTime;
+@@ -573,7 +575,8 @@ public class ChunkProviderServer extends IChunkProvider {
+ 
+             this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
+             this.world.getMethodProfiler().exit();
+-            this.playerChunkMap.f().forEach((playerchunk) -> {
++            this.chunksCopy.addAll(this.playerChunkMap.chunkMap.getVisibleValues()); /* Concrete - replace chunk map */
++            this.chunksCopy.forEach((playerchunk) -> { /* Concrete - replace chunk map */
+                 Optional<Chunk> optional = ((Either) playerchunk.b().getNow(PlayerChunk.UNLOADED_CHUNK)).left();
+ 
+                 if (optional.isPresent()) {
+@@ -661,6 +664,7 @@ public class ChunkProviderServer extends IChunkProvider {
+                     }
+                 }
+             });
++            this.chunksCopy.clear(); /* Concrete - replace chunk map */
+             this.world.getMethodProfiler().enter("customSpawners");
+             if (flag1) {
+                 this.chunkGenerator.doMobSpawning(this.world, this.allowMonsters, this.allowAnimals);
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
 index a78fea826f781edd4442ec7335da59f443228bc4..ea0767b3361336a8af7791363621732fa194babd 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
@@ -449,10 +502,269 @@ index 04c70d517c47edae497ec48bbff7a9d5d5f4e8a8..fec171b378415efbb8210d457b77c499
                  }
              }
          }
+diff --git a/src/main/java/net/minecraft/server/LightEngineStorage.java b/src/main/java/net/minecraft/server/LightEngineStorage.java
+index b2c960614f52616131e573c1b3b32b2aee6e2056..65111833d51748fbec4e4f00225d7d1ee0ef1b44 100644
+--- a/src/main/java/net/minecraft/server/LightEngineStorage.java
++++ b/src/main/java/net/minecraft/server/LightEngineStorage.java
+@@ -18,8 +18,8 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+     protected final LongSet b = new LongOpenHashSet();
+     protected final LongSet c = new LongOpenHashSet();
+     protected final LongSet d = new LongOpenHashSet();
+-    protected volatile M e;
+-    protected final M f;
++    protected volatile M e; /* Concrete - diff on change, should be "visible" */
++    protected final M f; /* Concrete - diff on change, should be "updating" */
+     protected final LongSet g = new LongOpenHashSet();
+     protected final LongSet h = new LongOpenHashSet();
+     protected final Long2ObjectMap<NibbleArray> i = new Long2ObjectOpenHashMap();
+diff --git a/src/main/java/net/minecraft/server/LightEngineStorageArray.java b/src/main/java/net/minecraft/server/LightEngineStorageArray.java
+index b978723a66d001f70325df0c7521025e079d7cfa..c1211a43d7672c067fd77cb67933e957e7481a0d 100644
+--- a/src/main/java/net/minecraft/server/LightEngineStorageArray.java
++++ b/src/main/java/net/minecraft/server/LightEngineStorageArray.java
+@@ -8,10 +8,17 @@ public abstract class LightEngineStorageArray<M extends LightEngineStorageArray<
+     private final long[] b = new long[2];
+     private final NibbleArray[] c = new NibbleArray[2];
+     private boolean d;
+-    protected final Long2ObjectOpenHashMap<NibbleArray> a;
++    protected final ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Object<NibbleArray> data; /* Concrete - avoid copying light data */
++    protected final boolean isVisible; /* Concrete - avoid copying light data */
+ 
+-    protected LightEngineStorageArray(Long2ObjectOpenHashMap<NibbleArray> long2objectopenhashmap) {
+-        this.a = long2objectopenhashmap;
++    /* Concrete start - avoid copying light data */
++    protected LightEngineStorageArray(ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Object<NibbleArray> data, boolean isVisible) {
++        if (isVisible) {
++            data.performUpdatesLockMap();
++        }
++        this.data = data;
++        this.isVisible = isVisible;
++        /* Concrete end - avoid copying light data */
+         this.c();
+         this.d = true;
+     }
+@@ -19,12 +26,13 @@ public abstract class LightEngineStorageArray<M extends LightEngineStorageArray<
+     public abstract M b();
+ 
+     public void a(long i) {
+-        this.a.put(i, ((NibbleArray) this.a.get(i)).b());
++        if (this.isVisible) { throw new IllegalStateException("writing to visible data"); } /* Concrete - avoid copying light data */
++        this.data.queueUpdate(i, ((NibbleArray) this.data.getUpdating(i)).b()); /* Concrete - avoid copying light data */
+         this.c();
+     }
+ 
+     public boolean b(long i) {
+-        return this.a.containsKey(i);
++        return this.isVisible ? this.data.getVisibleAsync(i) != null : this.data.getUpdating(i) != null; /* Concrete - avoid copying light data */
+     }
+ 
+     @Nullable
+@@ -37,7 +45,7 @@ public abstract class LightEngineStorageArray<M extends LightEngineStorageArray<
+             }
+         }
+ 
+-        NibbleArray nibblearray = (NibbleArray) this.a.get(i);
++        NibbleArray nibblearray = (NibbleArray) (this.isVisible ? this.data.getVisibleAsync(i) : this.data.getUpdating(i)); /* Concrete - avoid copying light data */
+ 
+         if (nibblearray == null) {
+             return null;
+@@ -58,11 +66,13 @@ public abstract class LightEngineStorageArray<M extends LightEngineStorageArray<
+ 
+     @Nullable
+     public NibbleArray d(long i) {
+-        return (NibbleArray) this.a.remove(i);
++        if (this.isVisible) { throw new IllegalStateException("writing to visible data"); } /* Concrete - avoid copying light data */
++        return (NibbleArray) this.data.queueRemove(i); /* Concrete - avoid copying light data */
+     }
+ 
+     public void a(long i, NibbleArray nibblearray) {
+-        this.a.put(i, nibblearray);
++        if (this.isVisible) { throw new IllegalStateException("writing to visible data"); } /* Concrete - avoid copying light data */
++        this.data.queueUpdate(i, nibblearray); /* Concrete - avoid copying light data */
+     }
+ 
+     public void c() {
+diff --git a/src/main/java/net/minecraft/server/LightEngineStorageBlock.java b/src/main/java/net/minecraft/server/LightEngineStorageBlock.java
+index 0f7f4744d9f9e5174fb38ccc72248397a4b064ea..6d07cfb6b885353be772da278dc3ea1e59c3f214 100644
+--- a/src/main/java/net/minecraft/server/LightEngineStorageBlock.java
++++ b/src/main/java/net/minecraft/server/LightEngineStorageBlock.java
+@@ -5,7 +5,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+ public class LightEngineStorageBlock extends LightEngineStorage<LightEngineStorageBlock.a> {
+ 
+     protected LightEngineStorageBlock(ILightAccess ilightaccess) {
+-        super(EnumSkyBlock.BLOCK, ilightaccess, new LightEngineStorageBlock.a(new Long2ObjectOpenHashMap()));
++        super(EnumSkyBlock.BLOCK, ilightaccess, new LightEngineStorageBlock.a(new ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Object<>(), false)); /* Concrete - avoid copying light data */
+     }
+ 
+     @Override
+@@ -18,13 +18,13 @@ public class LightEngineStorageBlock extends LightEngineStorage<LightEngineStora
+ 
+     public static final class a extends LightEngineStorageArray<LightEngineStorageBlock.a> {
+ 
+-        public a(Long2ObjectOpenHashMap<NibbleArray> long2objectopenhashmap) {
+-            super(long2objectopenhashmap);
++        public a(ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Object<NibbleArray> long2objectopenhashmap, boolean isVisible) { /* Concrete - avoid copying light data */
++            super(long2objectopenhashmap, isVisible); /* Concrete - avoid copying light data */
+         }
+ 
+         @Override
+         public LightEngineStorageBlock.a b() {
+-            return new LightEngineStorageBlock.a(this.a.clone());
++            return new a(this.data, true); /* Concrete - avoid copying light data */
+         }
+     }
+ }
+diff --git a/src/main/java/net/minecraft/server/LightEngineStorageSky.java b/src/main/java/net/minecraft/server/LightEngineStorageSky.java
+index b240261bdc6c941ed4a480be7d23f2b9346da788..46dca526e04c52c26b0939227f924caf43c155b3 100644
+--- a/src/main/java/net/minecraft/server/LightEngineStorageSky.java
++++ b/src/main/java/net/minecraft/server/LightEngineStorageSky.java
+@@ -17,7 +17,7 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+     private volatile boolean p;
+ 
+     protected LightEngineStorageSky(ILightAccess ilightaccess) {
+-        super(EnumSkyBlock.SKY, ilightaccess, new LightEngineStorageSky.a(new Long2ObjectOpenHashMap(), new Long2IntOpenHashMap(), Integer.MAX_VALUE));
++        super(EnumSkyBlock.SKY, ilightaccess, new LightEngineStorageSky.a(new ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Object<>(), new ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Int(), Integer.MAX_VALUE)); /* Concrete - avoid copying light data */
+     }
+ 
+     @Override
+@@ -25,7 +25,7 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+         long j = SectionPosition.e(i);
+         int k = SectionPosition.c(j);
+         LightEngineStorageSky.a lightenginestoragesky_a = (LightEngineStorageSky.a) this.e;
+-        int l = lightenginestoragesky_a.c.get(SectionPosition.f(j));
++        int l = lightenginestoragesky_a.otherData.getVisibleAsync(SectionPosition.f(j)); /* Concrete - avoid copying light data */
+ 
+         if (l != lightenginestoragesky_a.b && k < l) {
+             NibbleArray nibblearray = this.a(lightenginestoragesky_a, j); /* Concrete - decompile fix */
+@@ -54,14 +54,14 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+ 
+         if (((LightEngineStorageSky.a) this.f).b > j) {
+             ((LightEngineStorageSky.a) this.f).b = j;
+-            ((LightEngineStorageSky.a) this.f).c.defaultReturnValue(((LightEngineStorageSky.a) this.f).b);
++            ((LightEngineStorageSky.a) this.f).otherData.queueDefaultReturnValue(((LightEngineStorageSky.a) this.f).b); /* Concrete - avoid copying light data */
+         }
+ 
+         long k = SectionPosition.f(i);
+-        int l = ((LightEngineStorageSky.a) this.f).c.get(k);
++        int l = ((LightEngineStorageSky.a) this.f).otherData.getUpdating(k); /* Concrete - avoid copying light data */
+ 
+         if (l < j + 1) {
+-            ((LightEngineStorageSky.a) this.f).c.put(k, j + 1);
++            ((LightEngineStorageSky.a) this.f).otherData.queueUpdate(k, j + 1); /* Concrete - avoid copying light data */
+             if (this.o.contains(k)) {
+                 this.q(i);
+                 if (l > ((LightEngineStorageSky.a) this.f).b) {
+@@ -101,7 +101,7 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+ 
+         int k = SectionPosition.c(i);
+ 
+-        if (((LightEngineStorageSky.a) this.f).c.get(j) == k + 1) {
++        if (((LightEngineStorageSky.a) this.f).otherData.getUpdating(j) == k + 1) { /* Concrete - avoid copying light data */
+             long l;
+ 
+             for (l = i; !this.g(l) && this.a(k); l = SectionPosition.a(l, EnumDirection.DOWN)) {
+@@ -109,12 +109,12 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+             }
+ 
+             if (this.g(l)) {
+-                ((LightEngineStorageSky.a) this.f).c.put(j, k + 1);
++                ((LightEngineStorageSky.a) this.f).otherData.queueUpdate(j, k + 1); /* Concrete - avoid copying light data */
+                 if (flag) {
+                     this.q(l);
+                 }
+             } else {
+-                ((LightEngineStorageSky.a) this.f).c.remove(j);
++                ((LightEngineStorageSky.a) this.f).otherData.queueRemove(j); /* Concrete - avoid copying light data */
+             }
+         }
+ 
+@@ -127,7 +127,7 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+     @Override
+     protected void b(long i, boolean flag) {
+         if (flag && this.o.add(i)) {
+-            int j = ((LightEngineStorageSky.a) this.f).c.get(i);
++            int j = ((LightEngineStorageSky.a) this.f).otherData.getUpdating(i); /* Concrete - avoid copying light data */
+ 
+             if (j != ((LightEngineStorageSky.a) this.f).b) {
+                 long k = SectionPosition.b(SectionPosition.b(i), j - 1, SectionPosition.d(i));
+@@ -154,7 +154,7 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+             return nibblearray;
+         } else {
+             long j = SectionPosition.a(i, EnumDirection.UP);
+-            int k = ((LightEngineStorageSky.a) this.f).c.get(SectionPosition.f(i));
++            int k = ((LightEngineStorageSky.a) this.f).otherData.getUpdating(SectionPosition.f(i)); /* Concrete - avoid copying light data */
+ 
+             if (k != ((LightEngineStorageSky.a) this.f).b && SectionPosition.c(j) < k) {
+                 NibbleArray nibblearray1;
+@@ -297,7 +297,7 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+             if (!this.o.contains(l)) {
+                 return false;
+             } else {
+-                int i1 = ((LightEngineStorageSky.a) this.f).c.get(l);
++                int i1 = ((LightEngineStorageSky.a) this.f).otherData.getUpdating(l);
+ 
+                 return SectionPosition.c(i1) == j + 16;
+             }
+@@ -306,7 +306,7 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+ 
+     protected boolean n(long i) {
+         long j = SectionPosition.f(i);
+-        int k = ((LightEngineStorageSky.a) this.f).c.get(j);
++        int k = ((LightEngineStorageSky.a) this.f).otherData.getUpdating(j); /* Concrete - avoid copying light data */
+ 
+         return k == ((LightEngineStorageSky.a) this.f).b || SectionPosition.c(i) >= k;
+     }
+@@ -320,18 +320,20 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
+     public static final class a extends LightEngineStorageArray<LightEngineStorageSky.a> {
+ 
+         private int b;
+-        private final Long2IntOpenHashMap c;
++        private final ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Int otherData; /* Concrete - avoid copying light data */
+ 
+-        public a(Long2ObjectOpenHashMap<NibbleArray> long2objectopenhashmap, Long2IntOpenHashMap long2intopenhashmap, int i) {
+-            super(long2objectopenhashmap);
+-            this.c = long2intopenhashmap;
+-            long2intopenhashmap.defaultReturnValue(i);
++        /* Concrete start - avoid copying light data */
++        public a(ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Object<NibbleArray> data, ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Int otherData, int i) {
++            super(data, false);
++            this.otherData = otherData;
++            /* Concrete end - avoid copying light data */
+             this.b = i;
+         }
+ 
+         @Override
+         public LightEngineStorageSky.a b() {
+-            return new LightEngineStorageSky.a(this.a.clone(), this.c.clone(), this.b);
++            this.otherData.performUpdatesLockMap(); /* Concrete - avoid copying light data */
++            return new LightEngineStorageSky.a(this.data, this.otherData, this.b); /* Concrete - avoid copying light data */
+         }
+     }
+ }
 diff --git a/src/main/java/net/minecraft/server/MCUtil.java b/src/main/java/net/minecraft/server/MCUtil.java
-index 14f8b610422fcda13818e3a54ce538a6902746de..1872a62e04aff372120df2e5cc969970d52c19cc 100644
+index 14f8b610422fcda13818e3a54ce538a6902746de..3bd80572a4b94ee5cfd32055d2fffb745061e521 100644
 --- a/src/main/java/net/minecraft/server/MCUtil.java
 +++ b/src/main/java/net/minecraft/server/MCUtil.java
+@@ -432,9 +432,9 @@ public final class MCUtil {
+ 
+             WorldServer world = ((org.bukkit.craftbukkit.CraftWorld)bukkitWorld).getHandle();
+             PlayerChunkMap chunkMap = world.getChunkProvider().playerChunkMap;
+-            Long2ObjectLinkedOpenHashMap<PlayerChunk> visibleChunks = chunkMap.visibleChunks;
++            /* Concrete - replace chunk map */
+             ChunkMapDistance chunkMapDistance = chunkMap.getChunkMapDistanceManager();
+-            List<PlayerChunk> allChunks = new ArrayList<>(visibleChunks.values());
++            List<PlayerChunk> allChunks = chunkMap.chunkMap.getUpdatingValuesCopy(); /* Concrete - replace chunk map */
+             List<EntityPlayer> players = world.players;
+ 
+             int fullLoadedChunks = 0;
+@@ -457,7 +457,7 @@ public final class MCUtil {
+             worldData.addProperty("view-distance", world.spigotConfig.viewDistance);
+             worldData.addProperty("keep-spawn-loaded", world.keepSpawnInMemory);
+             worldData.addProperty("keep-spawn-loaded-range", world.paperConfig.keepLoadedRange);
+-            worldData.addProperty("visible-chunk-count", visibleChunks.size());
++            worldData.addProperty("visible-chunk-count", allChunks.size()); /* Concrete - replace chunk map */
+             worldData.addProperty("loaded-chunk-count", chunkMap.loadedChunks.size());
+             worldData.addProperty("verified-fully-loaded-chunks", fullLoadedChunks);
+ 
 @@ -535,4 +535,28 @@ public final class MCUtil {
          // TODO make sure the constant `33` is correct on future updates. See getChunkAt(int, int, ChunkStatus, boolean)
          return 33 + ChunkStatus.getTicketLevelOffset(status);
@@ -644,10 +956,31 @@ index 45fd135034de668c1f4282fe538e8d352db49278..d871ac2ad1ae38a160f8cb4e3f158c2e
          if (iblockdata == null) return PathType.BLOCKED; // Paper
          Block block = iblockdata.getBlock();
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index b4307f2a30ccd48e367580408d7172e2c7edc4fe..c1b97f3e6a410bc8af8bea315e46c255b521a23f 100644
+index b4307f2a30ccd48e367580408d7172e2c7edc4fe..cb28a383337c53693cfec333c424907b6621d040 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -221,8 +221,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -54,8 +54,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+     private static final Logger LOGGER = LogManager.getLogger();
+     public static final int GOLDEN_TICKET = 33 + ChunkStatus.b();
+-    public final Long2ObjectLinkedOpenHashMap<PlayerChunk> updatingChunks = new Long2ObjectLinkedOpenHashMap();
+-    public volatile Long2ObjectLinkedOpenHashMap<PlayerChunk> visibleChunks;
++    //public final Long2ObjectLinkedOpenHashMap<PlayerChunk> updatingChunks = new Long2ObjectLinkedOpenHashMap(); /* Concrete - replace chunk map */
++    //public volatile Long2ObjectLinkedOpenHashMap<PlayerChunk> visibleChunks; /* Concrete - replace chunk map */
++    public final ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Object<PlayerChunk> chunkMap = new ca.spottedleaf.concrete.chunk.QueuedChangesMapLong2Object<>(8192, 0.7f); /* Concrete - replace chunk map */
+     private final Long2ObjectLinkedOpenHashMap<PlayerChunk> pendingUnload;
+     final LongSet loadedChunks; // Paper - private -> package
+     public final WorldServer world;
+@@ -136,7 +137,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+     public PlayerChunkMap(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, IAsyncTaskHandler<Runnable> iasynctaskhandler, ILightAccess ilightaccess, ChunkGenerator<?> chunkgenerator, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier, int i) {
+         super(new File(worldserver.getWorldProvider().getDimensionManager().a(file), "region"), datafixer);
+-        this.visibleChunks = this.updatingChunks.clone();
++        //this.visibleChunks = this.updatingChunks.clone(); /* Concrete - replace chunk map */
+         this.pendingUnload = new Long2ObjectLinkedOpenHashMap();
+         this.loadedChunks = new LongOpenHashSet();
+         this.unloadQueue = new LongOpenHashSet();
+@@ -221,8 +222,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      private static int a(ChunkCoordIntPair chunkcoordintpair, int i, int j) {
@@ -663,7 +996,81 @@ index b4307f2a30ccd48e367580408d7172e2c7edc4fe..c1b97f3e6a410bc8af8bea315e46c255
  
          return Math.max(Math.abs(k), Math.abs(l));
      }
-@@ -1000,9 +1005,14 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -233,12 +239,17 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+     @Nullable
+     protected PlayerChunk getUpdatingChunk(long i) {
+-        return (PlayerChunk) this.updatingChunks.get(i);
++        return (PlayerChunk) this.chunkMap.getUpdating(i); /* Concrete - replace chunk map */
+     }
+ 
+     @Nullable
+     protected PlayerChunk getVisibleChunk(long i) {
+-        return (PlayerChunk) this.visibleChunks.get(i);
++        /* Concrete start - replace chunk map */
++        if (MinecraftServer.getServer().isMainThread()) {
++            return this.chunkMap.getVisible(i);
++        }
++        return (PlayerChunk) this.chunkMap.getVisibleAsync(i);
++        /* Concrete end - replace chunk map */
+     }
+ 
+     protected IntSupplier c(long i) {
+@@ -340,7 +351,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.q, this);
+                 }
+ 
+-                this.updatingChunks.put(i, playerchunk);
++                this.chunkMap.queueUpdate(i, playerchunk); /* Concrete - replace chunk map */
+                 this.updatingChunksModified = true;
+             }
+ 
+@@ -359,7 +370,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     // Paper start - derived from below
+     protected void saveIncrementally() {
+         int savedThisTick = 0;
+-        for (PlayerChunk playerchunk : visibleChunks.values()) {
++        for (PlayerChunk playerchunk : this.chunkMap.getVisibleValues()) { /* Concrete - replace chunk map */
+             if (playerchunk.hasBeenLoaded()) {
+ 
+                 IChunkAccess ichunkaccess = (IChunkAccess) playerchunk.getChunkSave().getNow(null); // CraftBukkit - decompile error
+@@ -388,7 +399,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+     protected void save(boolean flag) {
+         if (flag) {
+-            List<PlayerChunk> list = (List) this.visibleChunks.values().stream().filter(PlayerChunk::hasBeenLoaded).peek(PlayerChunk::m).collect(Collectors.toList());
++            List<PlayerChunk> list = (List) this.chunkMap.getVisibleValues().stream().filter(PlayerChunk::hasBeenLoaded).peek(PlayerChunk::m).collect(Collectors.toList()); /* Concrete - replace chunk map */
+             MutableBoolean mutableboolean = new MutableBoolean();
+ 
+             do {
+@@ -415,7 +426,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             this.world.asyncChunkTaskManager.flush(); // Paper - flush to preserve behavior compat with pre-async behaviour
+             PlayerChunkMap.LOGGER.info("ThreadedAnvilChunkStorage ({}): All chunks are saved", this.x.getName());
+         } else {
+-            this.visibleChunks.values().stream().filter(PlayerChunk::hasBeenLoaded).forEach((playerchunk) -> {
++            this.chunkMap.getVisibleValues().stream().filter(PlayerChunk::hasBeenLoaded).forEach((playerchunk) -> { /* Concrete - replace chunk map */
+                 IChunkAccess ichunkaccess = (IChunkAccess) playerchunk.getChunkSave().getNow(null); // CraftBukkit - decompile error
+ 
+                 if (ichunkaccess instanceof ProtoChunkExtension || ichunkaccess instanceof Chunk) {
+@@ -458,7 +469,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         while (longiterator.hasNext()) { // Spigot
+             long j = longiterator.nextLong();
+             longiterator.remove(); // Spigot
+-            PlayerChunk playerchunk = (PlayerChunk) this.updatingChunks.remove(j);
++            PlayerChunk playerchunk = (PlayerChunk) this.chunkMap.queueRemove(j); /* Concrete - replace chunk map */
+ 
+             if (playerchunk != null) {
+                 this.pendingUnload.put(j, playerchunk);
+@@ -586,7 +597,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         if (!this.updatingChunksModified) {
+             return false;
+         } else {
+-            this.visibleChunks = this.updatingChunks.clone();
++            this.chunkMap.performUpdates(); /* Concrete - replace chunk map */
+             this.updatingChunksModified = false;
+             return true;
+         }
+@@ -1000,9 +1011,14 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      protected void sendChunk(EntityPlayer entityplayer, ChunkCoordIntPair chunkcoordintpair, Packet<?>[] apacket, boolean flag, boolean flag1) {
@@ -679,7 +1086,7 @@ index b4307f2a30ccd48e367580408d7172e2c7edc4fe..c1b97f3e6a410bc8af8bea315e46c255
  
                  if (playerchunk != null) {
                      Chunk chunk = playerchunk.getChunk();
-@@ -1011,12 +1021,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1011,19 +1027,19 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                          this.a(entityplayer, apacket, chunk);
                      }
  
@@ -694,7 +1101,30 @@ index b4307f2a30ccd48e367580408d7172e2c7edc4fe..c1b97f3e6a410bc8af8bea315e46c255
              }
  
          }
-@@ -1290,11 +1300,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     }
+ 
+     public int d() {
+-        return this.visibleChunks.size();
++        return this.chunkMap.getVisibleSizeAsync(); /* Concrete - replace chunk map */
+     }
+ 
+     protected PlayerChunkMap.a e() {
+@@ -1031,12 +1047,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     }
+ 
+     protected Iterable<PlayerChunk> f() {
+-        return Iterables.unmodifiableIterable(this.visibleChunks.values());
++        return Iterables.unmodifiableIterable(this.chunkMap.getUpdatingValuesCopy()); /* Concrete - replace chunk map */
+     }
+ 
+     void a(Writer writer) throws IOException {
+         CSVWriter csvwriter = CSVWriter.a().a("x").a("z").a("level").a("in_memory").a("status").a("full_status").a("accessible_ready").a("ticking_ready").a("entity_ticking_ready").a("ticket").a("spawning").a("entity_count").a("block_entity_count").a(writer);
+-        ObjectBidirectionalIterator objectbidirectionaliterator = this.visibleChunks.long2ObjectEntrySet().iterator();
++        ObjectBidirectionalIterator objectbidirectionaliterator = this.chunkMap.getVisibleMap().long2ObjectEntrySet().iterator(); /* Concrete - replace chunk map */
+ 
+         while (objectbidirectionaliterator.hasNext()) {
+             Entry<PlayerChunk> entry = (Entry) objectbidirectionaliterator.next();
+@@ -1290,11 +1306,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              }
          }
  
@@ -711,7 +1141,7 @@ index b4307f2a30ccd48e367580408d7172e2c7edc4fe..c1b97f3e6a410bc8af8bea315e46c255
              }
          }
  
-@@ -1366,35 +1378,47 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1366,35 +1384,47 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              int i2 = Math.max(i, i1) + this.viewDistance;
              int j2 = Math.max(j, j1) + this.viewDistance;
  
@@ -794,9 +1224,27 @@ index 924598eccd6dc95884e7a002e47e0a87783968b5..1a8cc4662620e8d5ff445b3b43d35f28
  
      public boolean isSavingDisabled() {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index a6a9844009da9f9daacc6685a5174582c6cd8fb1..1ad6c62d9c5c97e14b726aced9956c31cc1c9ec6 100644
+index a6a9844009da9f9daacc6685a5174582c6cd8fb1..5c5e15307cb56277fd390240130568a43aeae1a9 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -51,7 +51,7 @@ public class WorldServer extends World {
+ 
+     private static final Logger LOGGER = LogManager.getLogger();
+     private final List<Entity> globalEntityList = Lists.newArrayList();
+-    public final Int2ObjectMap<Entity> entitiesById = new Int2ObjectLinkedOpenHashMap();
++    public final Int2ObjectLinkedOpenHashMap<Entity> entitiesById = new Int2ObjectLinkedOpenHashMap(); /* Concrete - change type for fast iterator */
+     private final Map<UUID, Entity> entitiesByUUID = Maps.newHashMap();
+     private final Queue<Entity> entitiesToAdd = Queues.newArrayDeque();
+     public final List<EntityPlayer> players = Lists.newArrayList(); // Paper - private -> public
+@@ -404,7 +404,7 @@ public class WorldServer extends World {
+ 
+             gameprofilerfiller.exitEnter("regular");
+             this.tickingEntities = true;
+-            ObjectIterator objectiterator = this.entitiesById.int2ObjectEntrySet().iterator();
++            ObjectIterator objectiterator = this.entitiesById.int2ObjectEntrySet().fastIterator(); /* Concrete - use fast iterator to reduce entry creation */
+ 
+             org.spigotmc.ActivationRange.activateEntities(this); // Spigot
+             timings.entityTick.startTiming(); // Spigot
 @@ -466,6 +466,8 @@ public class WorldServer extends World {
          gameprofilerfiller.exit();
      }
@@ -837,3 +1285,39 @@ index a6a9844009da9f9daacc6685a5174582c6cd8fb1..1ad6c62d9c5c97e14b726aced9956c31
  
                          gameprofilerfiller.enter("randomTick");
                          IBlockData iblockdata = chunksection.getType(blockposition2.getX() - j, blockposition2.getY() - j1, blockposition2.getZ() - k);
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+index 3d5aa7e8d9daf35232f9a26021927ba13c5b10a8..5970e74f21df96227aeb78b55058fc07b4af3e05 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+@@ -286,9 +286,9 @@ public class CraftWorld implements World {
+     }
+     public int getTileEntityCount() {
+         // We don't use the full world tile entity list, so we must iterate chunks
+-        Long2ObjectLinkedOpenHashMap<PlayerChunk> chunks = world.getChunkProvider().playerChunkMap.visibleChunks;
++        Iterable<PlayerChunk> chunks = world.getChunkProvider().playerChunkMap.chunkMap.getVisibleValues(); /* Concrete - replace chunk map */
+         int size = 0;
+-        for (net.minecraft.server.PlayerChunk playerchunk : chunks.values()) {
++        for (net.minecraft.server.PlayerChunk playerchunk : chunks) { /* Concrete - replace chunk map */
+             net.minecraft.server.Chunk chunk = playerchunk.getChunk();
+             if (chunk == null) {
+                 continue;
+@@ -303,7 +303,7 @@ public class CraftWorld implements World {
+     public int getChunkCount() {
+         int ret = 0;
+ 
+-        for (PlayerChunk chunkHolder : world.getChunkProvider().playerChunkMap.visibleChunks.values()) {
++        for (PlayerChunk chunkHolder : world.getChunkProvider().playerChunkMap.chunkMap.getVisibleValues()) { /* Concrete - replace chunk map */
+             if (chunkHolder.getChunk() != null) {
+                 ++ret;
+             }
+@@ -431,8 +431,8 @@ public class CraftWorld implements World {
+ 
+     @Override
+     public Chunk[] getLoadedChunks() {
+-        Long2ObjectLinkedOpenHashMap<PlayerChunk> chunks = world.getChunkProvider().playerChunkMap.visibleChunks;
+-        return chunks.values().stream().map(PlayerChunk::getFullChunk).filter(Objects::nonNull).map(net.minecraft.server.Chunk::getBukkitChunk).toArray(Chunk[]::new);
++        Collection<PlayerChunk> chunks = world.getChunkProvider().playerChunkMap.chunkMap.getVisibleValues(); /* Concrete - replace chunk map */
++        return chunks.stream().map(PlayerChunk::getFullChunk).filter(Objects::nonNull).map(net.minecraft.server.Chunk::getBukkitChunk).toArray(Chunk[]::new); /* Concrete - replace chunk map */
+     }
+ 
+     @Override
