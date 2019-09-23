@@ -5,21 +5,29 @@ Subject: [PATCH] Remove logic creating lots of garbage on the heap
 
 - PathfinderGoalSelector showed up at the top in memory profiling due
 to streams
+
 - ChunkMapDistance showed up at the top too due to bad iterator usage
+
 - PlayerChunkMap#move and ChunkMap showed near the top when moving
 around due to avoidable ChunkCoordIntPair allocations
+
 - PathFinderNormal allocates a block position when checking the path
 type of a block
+
 - Either.Left/Right do not cache the optional returned for left()/right()
  (getChunk type calls all have to go through them...)
+
 - ObjectAVLTreeSet does not override removeIf, so the default uses
 an iterator. removeIf is invoked heavily in ChunkMapDistance (on every
 tick). Replace with an impl that caches the iterator
+
 - Some lighting stuff allocating AtomicInteger for passing a second
 return value from a function. use int[] instead since the JIT does
 not choke on that apparently (confirmed via memory profiling)
+
 - Randomly ticking a block would allocate a BlockPosition, replace
 with mutable pos
+
 - Entity iteration for ticking would use a non-fast iterator, thus
 creating lots of garbage entries.
 
@@ -29,6 +37,8 @@ creating lots of garbage entries.
    a system which will queue updates to a map locked by a seqlock.
    Intentionally, the constructors/fields were clobbered, breaking
    the ABI.
+
+- Vec3d allocation by tracker for checking a simple delta
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedObjectAVLTreeSet.java b/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedObjectAVLTreeSet.java
 new file mode 100644
@@ -392,6 +402,40 @@ index a78fea826f781edd4442ec7335da59f443228bc4..ea0767b3361336a8af7791363621732f
      }
  
      public SectionPosition getPlayerMapSection() { return this.M(); } // Paper - OBFHELPER
+diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
+index fbac08c379659e2f38cb790d76f5428e8c92545f..f2f6ac9da615d1d3d0e026486af3359712459938 100644
+--- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
++++ b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
+@@ -125,8 +125,12 @@ public class EntityTrackerEntry {
+                 ++this.o;
+                 i = MathHelper.d(this.tracker.yaw * 256.0F / 360.0F);
+                 j = MathHelper.d(this.tracker.pitch * 256.0F / 360.0F);
+-                Vec3D vec3d = (new Vec3D(this.tracker.locX, this.tracker.locY, this.tracker.locZ)).d(PacketPlayOutEntity.a(this.xLoc, this.yLoc, this.zLoc));
+-                boolean flag1 = vec3d.g() >= 7.62939453125E-6D;
++                /* Concrete start - remove allocation of Vec3d here */
++                double vec3d_dx = this.tracker.locX - 2.44140625E-4D*(this.xLoc);
++                double vec3d_dy = this.tracker.locY - 2.44140625E-4D*(this.yLoc);
++                double vec3d_dz = this.tracker.locZ - 2.44140625E-4D*(this.zLoc);
++                boolean flag1 = (vec3d_dx * vec3d_dx + vec3d_dy * vec3d_dy + vec3d_dz * vec3d_dz) >= 7.62939453125E-6D;
++                /* Concrete end - remove allocation of Vec3d here */
+                 Packet<?> packet1 = null;
+                 boolean flag2 = flag1 || this.n % 60 == 0;
+                 boolean flag3 = Math.abs(i - this.yRot) >= 1 || Math.abs(j - this.xRot) >= 1;
+@@ -143,9 +147,11 @@ public class EntityTrackerEntry {
+                 // CraftBukkit end
+ 
+                 if (this.n > 0 || this.tracker instanceof EntityArrow) {
+-                    long k = PacketPlayOutEntity.a(vec3d.x);
+-                    long l = PacketPlayOutEntity.a(vec3d.y);
+-                    long i1 = PacketPlayOutEntity.a(vec3d.z);
++                    /* Concrete start - remove allocation of Vec3d here */
++                    long k = PacketPlayOutEntity.a(vec3d_dx);
++                    long l = PacketPlayOutEntity.a(vec3d_dy);
++                    long i1 = PacketPlayOutEntity.a(vec3d_dz);
++                    /* Concrete end - remove allocation of Vec3d here */
+                     boolean flag4 = k < -32768L || k > 32767L || l < -32768L || l > 32767L || i1 < -32768L || i1 > 32767L;
+ 
+                     if (!flag4 && this.o <= 400 && !this.q && this.r == this.tracker.onGround) {
 diff --git a/src/main/java/net/minecraft/server/LightEngineBlock.java b/src/main/java/net/minecraft/server/LightEngineBlock.java
 index 7b0e24888e9f4bfbc0e65c6c59ca6f1b39d29c36..2e4644d28075be0d910c1d7a7a4c85452dcc6f0b 100644
 --- a/src/main/java/net/minecraft/server/LightEngineBlock.java
@@ -956,7 +1000,7 @@ index 45fd135034de668c1f4282fe538e8d352db49278..d871ac2ad1ae38a160f8cb4e3f158c2e
          if (iblockdata == null) return PathType.BLOCKED; // Paper
          Block block = iblockdata.getBlock();
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index b4307f2a30ccd48e367580408d7172e2c7edc4fe..cb28a383337c53693cfec333c424907b6621d040 100644
+index b4307f2a30ccd48e367580408d7172e2c7edc4fe..6b49556a5d547a184c0688e1ed45c99ff8a9387a 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -54,8 +54,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -1198,6 +1242,22 @@ index b4307f2a30ccd48e367580408d7172e2c7edc4fe..cb28a383337c53693cfec333c424907b
                  }
              }
          }
+@@ -1655,9 +1685,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         public void updatePlayer(EntityPlayer entityplayer) {
+             org.spigotmc.AsyncCatcher.catchOp("player tracker update"); // Spigot
+             if (entityplayer != this.tracker) {
+-                Vec3D vec3d = (new Vec3D(entityplayer.locX, entityplayer.locY, entityplayer.locZ)).d(this.tracker.getPositionVector()); // MC-155077, SPIGOT-5113
++                /* Concrete start - remove allocation of Vec3d here */
++                double vec3d_dx = entityplayer.locX - this.tracker.locX;
++                double vec3d_dy = entityplayer.locY - this.tracker.locY;
++                double vec3d_dz = entityplayer.locZ - this.tracker.locZ;
++                /* Concrete end - remove allocation of Vec3d here */
+                 int i = Math.min(this.trackingDistance, (PlayerChunkMap.this.viewDistance - 1) * 16);
+-                boolean flag = vec3d.x >= (double) (-i) && vec3d.x <= (double) i && vec3d.z >= (double) (-i) && vec3d.z <= (double) i && this.tracker.a(entityplayer);
++                boolean flag = vec3d_dx >= (double) (-i) && vec3d_dx <= (double) i && vec3d_dz >= (double) (-i) && vec3d_dz <= (double) i && this.tracker.a(entityplayer); /* Concrete start - remove allocation of Vec3d here */
+ 
+                 if (flag) {
+                     boolean flag1 = this.tracker.attachedToPlayer;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
 index 924598eccd6dc95884e7a002e47e0a87783968b5..1a8cc4662620e8d5ff445b3b43d35f285b5fceed 100644
 --- a/src/main/java/net/minecraft/server/World.java
