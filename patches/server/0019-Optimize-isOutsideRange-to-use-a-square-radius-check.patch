@@ -1,0 +1,195 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 29 Sep 2019 20:47:13 -0700
+Subject: [PATCH] Optimize isOutsideRange to use a square radius check
+
+This option is configurable under 'optimize-chunkrange-check', and is
+enabled by default
+
+diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+index deedc73ea9a79f3bc204afc251c728a98e6ee24b..9480e04e87a08c18da06ef00494fe9ff32376ff1 100644
+--- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
++++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+@@ -113,6 +113,12 @@ public final class ConcreteConfig {
+         BlockFire.configinit();
+     }
+ 
++    public static boolean optimizeChunkRangeCheck;
++
++    private static void optimizeChunkRangeCheck() {
++        optimizeChunkRangeCheck = ConcreteConfig.getBoolean("optimize-chunkrange-check", true);
++    }
++
+     public static final class WorldConnfig {
+ 
+         public final String worldName;
+diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
+index c2c6c9ffc1bccb205d9bcfa9557449f83bdaca5b..78141c62eab8b714cfdd7a6a2c58a8b5d03ad22d 100644
+--- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
++++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
+@@ -35,7 +35,7 @@ public abstract class ChunkMapDistance {
+     private final Long2ObjectMap<ObjectSet<EntityPlayer>> c = new Long2ObjectOpenHashMap();
+     public final Long2ObjectOpenHashMap<ObjectSortedSet<Ticket<?>>> tickets = new Long2ObjectOpenHashMap(); // CraftBukkit - private -> public
+     private final ChunkMapDistance.a e = new ChunkMapDistance.a();
+-    private final ChunkMapDistance.b f = new ChunkMapDistance.b(8);
++    public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); /* Concrete - no longer used */
+     //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); /* Concrete - no longer used */
+     private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue /* Concrete - use a better queue */
+     private final ChunkTaskQueueSorter i;
+@@ -101,7 +101,7 @@ public abstract class ChunkMapDistance {
+     protected abstract PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k);
+ 
+     public boolean a(PlayerChunkMap playerchunkmap) {
+-        this.f.a();
++        //this.f.a(); /* Concrete - no longer used */
+         //this.g.a(); /* Concrete - no longer used */
+         int i = Integer.MAX_VALUE - this.e.a(Integer.MAX_VALUE);
+         boolean flag = i != 0;
+@@ -244,7 +244,7 @@ public abstract class ChunkMapDistance {
+         ((ObjectSet) this.c.computeIfAbsent(i, (j) -> {
+             return new ObjectOpenHashSet();
+         })).add(entityplayer);
+-        this.f.b(i, 0, true);
++        //this.f.b(i, 0, true); /* Concrete - no longer used */
+         //this.g.b(i, 0, true); /* Concrete - no longer used */
+     }
+ 
+@@ -256,7 +256,7 @@ public abstract class ChunkMapDistance {
+         objectset.remove(entityplayer);
+         if (objectset.isEmpty()) {
+             this.c.remove(i);
+-            this.f.b(i, Integer.MAX_VALUE, false);
++            //this.f.b(i, Integer.MAX_VALUE, false); /* Concrete - no longer used */
+             //this.g.b(i, Integer.MAX_VALUE, false); /* Concrete - no longer used */
+         }
+ 
+@@ -287,13 +287,17 @@ public abstract class ChunkMapDistance {
+     /* Concrete end */
+ 
+     public int b() {
+-        this.f.a();
+-        return this.f.a.size();
++        /* Concrete start - use distance map to implement */
++        // note: this is the spawn chunk count
++        return this.chunkMap.playerChunkTickRangeMap.size();
++        /* Concrete end - use distance map to implement */
+     }
+ 
+     public boolean d(long i) {
+-        this.f.a();
+-        return this.f.a.containsKey(i);
++        /* Concrete start - use distance map to implement */
++        // note: this is the is spawn chunk method
++        return this.chunkMap.playerChunkTickRangeMap.getObjectsInRange(i) != null;
++        /* Concrete end - use distance map to implement */
+     }
+ 
+     public String c() {
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index 03d058e1fe280ddfd3b89a3a38a615b135e9c973..cd478d22647e68f6b58da6057aa1e20a25236e9b 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -548,6 +548,36 @@ public class ChunkProviderServer extends IChunkProvider {
+         boolean flag1 = this.world.getGameRules().getBoolean(GameRules.DO_MOB_SPAWNING) && !world.getPlayers().isEmpty(); // CraftBukkit
+ 
+         if (!flag) {
++            /* Concrete start - optimize isOutisdeRange */
++            if (ca.spottedleaf.concrete.config.ConcreteConfig.optimizeChunkRangeCheck) {
++                PlayerChunkMap playerChunkMap = this.playerChunkMap;
++                for (EntityPlayer player : this.world.players) {
++                    if (!player.affectsSpawning || player.isSpectator()) {
++                        playerChunkMap.playerMobSpawnMap.remove(player);
++                        continue;
++                    }
++
++                    int viewDistance = player.getEffectiveViewDistance(playerChunkMap) - 1;
++
++                    // copied and modified from isOutisdeRange
++                    int chunkRange = world.spigotConfig.mobSpawnRange;
++                    chunkRange = (chunkRange > viewDistance) ? (byte)viewDistance : chunkRange;
++                    chunkRange = (chunkRange > ChunkMapDistance.MOB_SPAWN_RANGE) ? ChunkMapDistance.MOB_SPAWN_RANGE : chunkRange;
++
++                    com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent event = new com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent(player.getBukkitEntity(), (byte)chunkRange);
++                    if (event.isCancelled() || event.getSpawnRadius() < 0) {
++                        playerChunkMap.playerMobSpawnMap.remove(player);
++                        continue;
++                    }
++
++                    int range = Math.min(event.getSpawnRadius(), 32); // limit to max view distance
++                    int chunkX = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locX);
++                    int chunkZ = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locZ);
++
++                    playerChunkMap.playerMobSpawnMap.update(player, chunkX, chunkZ, range);
++                }
++            }
++            /* Concrete end - optimize isOutisdeRange */
+             this.world.getMethodProfiler().enter("pollingChunks");
+             int k = this.world.getGameRules().getInt(GameRules.RANDOM_TICK_SPEED);
+             BlockPosition blockposition = this.world.getSpawn();
+@@ -592,7 +622,7 @@ public class ChunkProviderServer extends IChunkProvider {
+                     // Paper start - timings
+                     this.world.timings.chunkRangeCheckBig.startTiming();
+                     // note: this is just a copy of the expression in the if
+-                    boolean bigRadiusOutsideRange = !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair);
++                    boolean bigRadiusOutsideRange = ca.spottedleaf.concrete.config.ConcreteConfig.optimizeChunkRangeCheck ? this.playerChunkMap.playerChunkTickRangeMap.getObjectsInRange(chunk.getPos()) != null : !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair); /* Concrete - optimize isOutisdeRange */
+                     this.world.timings.chunkRangeCheckBig.stopTiming();
+                     if (bigRadiusOutsideRange) {
+                         // Paper end
+@@ -600,7 +630,7 @@ public class ChunkProviderServer extends IChunkProvider {
+                         // Paper start - timings
+                         this.world.timings.chunkRangeCheckSmall.startTiming();
+                         // note: this is just a copy of the expression in the if
+-                        boolean smallRadiusOutsideRange = flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair, true);
++                        boolean smallRadiusOutsideRange = flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && (ca.spottedleaf.concrete.config.ConcreteConfig.optimizeChunkRangeCheck ? this.playerChunkMap.playerMobSpawnMap.getObjectsInRange(chunk.getPos()) != null : !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair, true)); /* Concrete - optimize isOutisdeRange */
+                         this.world.timings.chunkRangeCheckSmall.stopTiming();
+                         if (smallRadiusOutsideRange) { // Spigot
+                             // Paper end
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index f46163a0694fe9085e7f36249880981aece25e94..4a6aeb526db3c6d13a91e7f7b75ad8ae95141e49 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -119,6 +119,16 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         return distance - 1;
+     }
+ 
++    // A note about the naming used here:
++    // Previously, mojang used a "spawn range" of 8 for controlling both ticking and
++    // mob spawn range. However, spigot makes the spawn range configurable by
++    // checking if the chunk is in the tick range (8) and the spawn range
++    // obviously this means a spawn range > 8 cannot be implemented
++
++    // these maps are named after spigot's uses
++    public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerMobSpawnMap; // this map is absent from updateMaps since it's controlled at the start of a tick
++    public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerChunkTickRangeMap;
++
+     void addPlayerToDistanceMaps(EntityPlayer player) {
+         try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapAdd.startTiming()) {
+             this.updateMaps(player);
+@@ -129,6 +139,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapRemove.startTiming()) {
+             this.playerViewDistanceTicketMap.remove(player);
+             this.playerViewDistanceMap.remove(player);
++            this.playerMobSpawnMap.remove(player);
++            this.playerChunkTickRangeMap.remove(player);
+         }
+     }
+ 
+@@ -152,6 +164,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             this.playerViewDistanceTicketMap.update(player, chunkX, chunkZ, getTicketLevelDistance(effectiveViewDistance));
+         }
+         this.playerViewDistanceMap.update(player, chunkX, chunkZ, effectiveViewDistance);
++
++        this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, ChunkMapDistance.MOB_SPAWN_RANGE);
+     }
+ 
+     private void updateMaps(EntityPlayer player) {
+@@ -228,6 +242,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     java.util.Arrays.fill(tempPacket, null);
+                     PlayerChunkMap.this.sendChunk(player, rangeX, rangeZ, tempPacket, true, false); // unloaded, loaded
+                 });
++
++        this.playerChunkTickRangeMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets);
++        this.playerMobSpawnMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets);
+         /* Concrete end - distance maps */
+     }
+ 
