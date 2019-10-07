@@ -86,7 +86,7 @@ index c2c6c9ffc1bccb205d9bcfa9557449f83bdaca5b..78141c62eab8b714cfdd7a6a2c58a8b5
  
      public String c() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 03d058e1fe280ddfd3b89a3a38a615b135e9c973..a522f7461d974f228d705c7d77363b006462d564 100644
+index 03d058e1fe280ddfd3b89a3a38a615b135e9c973..483465dc04435628fb1d598c1870ccfd85a42908 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -548,6 +548,37 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -102,7 +102,7 @@ index 03d058e1fe280ddfd3b89a3a38a615b135e9c973..a522f7461d974f228d705c7d77363b00
 +                        continue;
 +                    }
 +
-+                    int viewDistance = player.getEffectiveViewDistance(playerChunkMap) - 1;
++                    int viewDistance = player.getEffectiveViewDistance(playerChunkMap);
 +
 +                    // copied and modified from isOutisdeRange
 +                    int chunkRange = world.spigotConfig.mobSpawnRange;
@@ -146,11 +146,11 @@ index 03d058e1fe280ddfd3b89a3a38a615b135e9c973..a522f7461d974f228d705c7d77363b00
                          if (smallRadiusOutsideRange) { // Spigot
                              // Paper end
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 55f0ffad2884205663711bcaa27c84b8f7768e3b..4dc4b73bdde6c3608fc7ababd027894e284d49c0 100644
+index 486f5f9b1e23ffc25406c5c333fd0e60292c3c99..f1a8ae39c00ddafb9019e35d4dffb47c2691f747 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -119,6 +119,16 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-         return distance - 1;
+         return distance;
      }
  
 +    // A note about the naming used here:
@@ -166,8 +166,8 @@ index 55f0ffad2884205663711bcaa27c84b8f7768e3b..4dc4b73bdde6c3608fc7ababd027894e
      void addPlayerToDistanceMaps(EntityPlayer player) {
          try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapAdd.startTiming()) {
              this.updateMaps(player);
-@@ -129,6 +139,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-         try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapRemove.startTiming()) {
+@@ -130,6 +140,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             this.playerViewDistanceBroadcastMap.remove(player);
              this.playerViewDistanceTicketMap.remove(player);
              this.playerViewDistanceMap.remove(player);
 +            this.playerMobSpawnMap.remove(player);
@@ -175,17 +175,17 @@ index 55f0ffad2884205663711bcaa27c84b8f7768e3b..4dc4b73bdde6c3608fc7ababd027894e
          }
      }
  
-@@ -164,6 +176,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-             this.playerViewDistanceTicketMap.update(player, chunkX, chunkZ, getTicketLevelDistance(effectiveViewDistance));
+@@ -167,6 +179,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          }
          this.playerViewDistanceMap.update(player, chunkX, chunkZ, effectiveViewDistance); /* Concrete - per player view distance */
+         this.playerViewDistanceBroadcastMap.update(player, chunkX, chunkZ, effectiveViewDistance + 1); // clients need chunk neighbours
 +        this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, ChunkMapDistance.MOB_SPAWN_RANGE);
      }
      /* Concrete end */
  
-@@ -228,6 +241,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                     java.util.Arrays.fill(tempPacket, null);
+@@ -232,6 +245,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      PlayerChunkMap.this.sendChunk(player, rangeX, rangeZ, tempPacket, true, false); // unloaded, loaded
+                     java.util.Arrays.fill(tempPacket, null);
                  });
 +
 +        this.playerChunkTickRangeMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets);

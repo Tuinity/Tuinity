@@ -378,10 +378,10 @@ index 0000000000000000000000000000000000000000..9f24e62c428ee3373de733453172af42
 +}
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java b/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..aa670728abac40724031665763ba7bfb5ccde341
+index 0000000000000000000000000000000000000000..780ef28b0e9c33196e9ac8afce964ff73452a153
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java
-@@ -0,0 +1,384 @@
+@@ -0,0 +1,388 @@
 +package ca.spottedleaf.concrete.util.map;
 +
 +import ca.spottedleaf.concrete.util.Util;
@@ -392,6 +392,7 @@ index 0000000000000000000000000000000000000000..aa670728abac40724031665763ba7bfb
 +import net.minecraft.server.ChunkCoordIntPair;
 +import net.minecraft.server.MinecraftServer;
 +
++import javax.annotation.Nullable;
 +import java.util.Iterator;
 +
 +/** @author Spottedleaf */
@@ -430,14 +431,17 @@ index 0000000000000000000000000000000000000000..aa670728abac40724031665763ba7bfb
 +        this.removeCallback = removeCallback;
 +    }
 +
++    @Nullable
 +    public PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> getObjectsInRange(final long key) {
 +        return this.areaMap.get(key);
 +    }
 +
++    @Nullable
 +    public PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> getObjectsInRange(final ChunkCoordIntPair chunkPos) {
 +        return this.getObjectsInRange(chunkPos.x, chunkPos.z);
 +    }
 +
++    @Nullable
 +    public PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> getObjectsInRange(final int chunkX, final int chunkZ) {
 +        return this.getObjectsInRange(Util.getCoordinateKey(chunkX, chunkZ));
 +    }
@@ -1100,6 +1104,36 @@ index ddec62fbf591ba06ee1fdf9fbbc0a6122a1dfb9d..1d5b346be8a8549856f42aa9ecf3db0c
          mobSpawn = Timings.ofSafe(name + "mobSpawn");
          doChunkUnload = Timings.ofSafe(name + "doChunkUnload");
          scheduledBlocks = Timings.ofSafe(name + "Scheduled Blocks");
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index 67dc837f4325db11dedf05259549dfeb9f651c5b..3afb454c4d4a1aee04ac82c45e5b62442d85a248 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -143,6 +143,25 @@ public class Chunk implements IChunkAccess {
+     public boolean needsDecoration;
+     // CraftBukkit end
+ 
++    /* Concrete start */
++    public void forEachEntity(final Consumer<Entity> consumer) {
++        final List<Entity>[] slices = this.entitySlices;
++        for (int i = 0, slicesLen = slices.length; i < slicesLen; ++i) {
++            final org.bukkit.craftbukkit.util.UnsafeList<Entity> slice = (org.bukkit.craftbukkit.util.UnsafeList)slices[i];
++
++            if (slice == null) {
++                continue;
++            }
++
++            final Object[] data = slice.getRawDataArray();
++
++            for (int j = 0, sliceLen = slice.size(); j < sliceLen; ++j) {
++                consumer.accept((Entity)data[j]);
++            }
++        }
++    }
++    /* Concrete end */
++
+     public Chunk(World world, ProtoChunk protochunk) {
+         this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.q(), protochunk.getSections(), (Consumer) null);
+         Iterator iterator = protochunk.y().iterator();
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..e3a5f9afe63b33263e2a6a06841ed6f14dc31d78 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
@@ -1163,8 +1197,36 @@ index 7801879c8785c4fcfb412eeae19d7890def874f1..a78fea826f781edd4442ec7335da59f4
      }
  
      // Yes, this doesn't match Vanilla, but it's the best we can do for now.
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..f8d241426ca9ef6239ca703c71ce4bf1061e940f 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -84,6 +84,23 @@ public class PlayerChunk {
+         return null;
+     }
+     // Paper end
++    /* Concrete start */
++    @Nullable
++    public Chunk getEntityTickingChunk() {
++        CompletableFuture<Either<Chunk, PlayerChunk.Failure>> completablefuture = this.entityTickingFuture;
++        Either<Chunk, PlayerChunk.Failure> either = completablefuture.getNow(null);
++
++        return either == null ? null : either.left().orElse(null);
++    }
++
++    @Nullable
++    public Chunk getTickingChunk() {
++        CompletableFuture<Either<Chunk, PlayerChunk.Failure>> completablefuture = this.tickingFuture;
++        Either<Chunk, PlayerChunk.Failure> either = completablefuture.getNow(null);
++
++        return either == null ? null : either.left().orElse(null);
++    }
++    /* Concrete end */
+ 
+     public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getStatusFutureUnchecked(ChunkStatus chunkstatus) {
+         CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(chunkstatus.c());
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 95ee33513563a2294d2a7f7621ab62350207516f..d436caea01af2f5628b6f5a5b967ed88491b9792 100644
+index 59e74900f8050833f07f8840779d33c87d230ee7..cecd94a7bdf99b5e449601f3a0b704ac6e4e658d 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -78,7 +78,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -1269,3 +1331,16 @@ index 7a0b657f2d1d7e1abae91f9a85c8f547a50784d3..13555aeca43302d41259e6d947056375
          }
  
          this.getScoreboard().a(entity);
+diff --git a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+index 1aec70a1f1a9d8fd2cd06bde4033e19e769ab331..b3b0974365cf338a4b5a82a4eb5d257acf62d309 100644
+--- a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
++++ b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+@@ -17,7 +17,7 @@ import java.util.RandomAccess;
+ public class UnsafeList<E> extends AbstractList<E> implements List<E>, RandomAccess, Cloneable, Serializable {
+     private static final long serialVersionUID = 8683452581112892191L;
+ 
+-    private transient Object[] data;
++    private transient Object[] data; public final Object[] getRawDataArray() { return this.data; } /* Concrete - expose for raw get */
+     private int size;
+     private int initialCapacity;
+ 
