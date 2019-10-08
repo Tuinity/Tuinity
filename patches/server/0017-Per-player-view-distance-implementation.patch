@@ -199,7 +199,7 @@ index 8b3052b1132ec728e1b266f3aede6bbd922ce617..de34aa14df2849dc85e3fc5e2896fd91
                      double deltaX = this.locX - player.locX;
                      double deltaZ = this.locZ - player.locZ;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index f8d241426ca9ef6239ca703c71ce4bf1061e940f..b49c71e8246290fedd06419ac0b7a4cd298514a7 100644
+index f8d241426ca9ef6239ca703c71ce4bf1061e940f..b647b4c2a611614404f085295d9c5d9aaffc5297 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -265,6 +265,38 @@ public class PlayerChunk {
@@ -219,7 +219,7 @@ index f8d241426ca9ef6239ca703c71ce4bf1061e940f..b49c71e8246290fedd06419ac0b7a4cd
 +
 +            if (flag) { // flag -> border only
 +                for (EntityPlayer player : players) {
-+                    int viewDistance = player.getEffectiveViewDistance(chunkMap);
++                    int viewDistance = viewDistanceMap.getLastViewDistance(player);
 +                    long lastPosition = viewDistanceMap.getLastCoordinate(player);
 +
 +                    int distX = Math.abs(ca.spottedleaf.concrete.util.Util.getCoordinateX(lastPosition) - this.location.x);
@@ -242,7 +242,7 @@ index f8d241426ca9ef6239ca703c71ce4bf1061e940f..b49c71e8246290fedd06419ac0b7a4cd
              entityplayer.playerConnection.sendPacket(packet);
          });
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 2049f5be35ac556747789177736be8b444bb66af..486f5f9b1e23ffc25406c5c333fd0e60292c3c99 100644
+index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810567c093c 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -78,7 +78,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -479,7 +479,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..486f5f9b1e23ffc25406c5c333fd0e60
 -            Packet[] cachedPackets = new Packet[2]; /* Concrete */
 +        if (flag) { // flag -> border only
 +            for (EntityPlayer player : inRange) {
-+                int viewDistance = player.getEffectiveViewDistance(this);
++                int viewDistance = this.playerViewDistanceBroadcastMap.getLastViewDistance(player);
 +                long lastPosition = this.playerViewDistanceBroadcastMap.getLastCoordinate(player);
  
 -            for (int k2 = k1; k2 <= i2; ++k2) {
@@ -559,7 +559,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..486f5f9b1e23ffc25406c5c333fd0e60
  
                          if (playerchunk != null && playerchunk.getChunk() != null) {
 -                            flag1 = PlayerChunkMap.b(chunkcoordintpair, entityplayer, false) <= PlayerChunkMap.this.viewDistance;
-+                            flag1 = PlayerChunkMap.b(chunkcoordintpair, entityplayer, false) <= entityplayer.getEffectiveViewDistance(PlayerChunkMap.this); /* Concrete - per player view distance */
++                            flag1 = PlayerChunkMap.b(chunkcoordintpair, entityplayer, false) <= PlayerChunkMap.this.playerViewDistanceBroadcastMap.getLastViewDistance(entityplayer); /* Concrete - per player view distance */
                          }
                      }
  
