@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Tue, 8 Oct 2019 16:28:28 -0700
+Subject: [PATCH] Always invoke chunk check for entities
+
+While all code looks like it correctly handles moving entities and
+then performing the chunk check, I do not trust plugins to do the
+same. Logic like saving and the optimised tracker relies on it
+being called.
+
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index ef97d353655b2a72dba16f399a1c01a616b3a9f6..50aae3edc9e219bddc653975f515e67b26c025a6 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -683,7 +683,11 @@ public class WorldServer extends World {
+             }
+             entity.tickTimer.stopTiming(); // Spigot
+ 
++            /* Concrete start - ALWAYS run the entity chunk check */
++        } else {
++            this.chunkCheck(entity);
+         }
++        /* Concrete end - ALWAYS run the entity chunk check */
+     }
+ 
+     public void a(Entity entity, Entity entity1) {
+@@ -718,23 +722,31 @@ public class WorldServer extends World {
+ 
+     public void chunkCheck(Entity entity) {
+         this.getMethodProfiler().enter("chunkCheck");
+-        int i = MathHelper.floor(entity.locX / 16.0D);
++        int i = MathHelper.floor(entity.locX / 16.0D); final int currChunkX = i; /* Concrete - diff on change */
+         int j = Math.min(15, Math.max(0, MathHelper.floor(entity.locY / 16.0D))); // Paper - stay consistent with chunk add/remove behavior
+-        int k = MathHelper.floor(entity.locZ / 16.0D);
++        int k = MathHelper.floor(entity.locZ / 16.0D); final int currChunkZ = k; /* Concrete - diff on change */
+ 
+         if (!entity.inChunk || entity.chunkX != i || entity.chunkY != j || entity.chunkZ != k) {
+             /* Concrete start - optimized tracker */
+             int prevChunkX = entity.chunkX;
+             int prevChunkZ = entity.chunkZ;
+             /* Concrete end - optimized tracker */
+-            if (entity.inChunk && this.isChunkLoaded(entity.chunkX, entity.chunkZ)) {
+-                this.getChunkAt(entity.chunkX, entity.chunkZ).a(entity, entity.chunkY);
+-            }
+-
+-            if (!entity.valid && !entity.bU() && !this.isChunkLoaded(i, k)) { // Paper - always load chunks to register valid entities location
++            /* Concrete start - try to avoid invoking load events if we can */
++            Chunk lastChunk = this.getChunkProvider().getChunkAtIfCachedImmediately(entity.chunkX, entity.chunkZ);
++            Chunk newChunk = this.getChunkProvider().getChunkAtIfCachedImmediately(currChunkX, currChunkZ);
++            if (entity.inChunk && lastChunk != null) {
++                lastChunk.a(entity, entity.chunkY);
++            }
++            if (!entity.valid && !entity.bU() && newChunk == null) { // Paper - always load chunks to register valid entities location
++                /* Concrete end - try to avoid invoking load events if we can */
+                 entity.inChunk = false;
+             } else {
+-                this.getChunkAt(i, k).a(entity);
++                /* Concrete start - try to avoid invoking load events if we can */
++                if (newChunk == null) {
++                    newChunk = this.getChunkAt(currChunkX, currChunkZ);
++                }
++                newChunk.a(entity);
++                /* Concrete end - try to avoid invoking load events if we can */
+             }
+             /* Concrete start - optimized tracker */
+             int newChunkX = entity.chunkX;
