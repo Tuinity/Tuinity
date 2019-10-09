@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Wed, 9 Oct 2019 04:38:54 -0700
+Subject: [PATCH] Lag compensate eating
+
+When the server is lagging, players will wait longer when eating.
+Change to also use a time check instead if it passes.
+
+This can be controlled by config, and is enabled by default
+
+diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+index aba777bade6d476bc10dfcb1c1b8eb03fd9c445d..90130ad19d5bf41c0c61b50a1b211ea9003c9de1 100644
+--- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
++++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+@@ -119,6 +119,12 @@ public final class ConcreteConfig {
+         optimizeChunkRangeCheck = ConcreteConfig.getBoolean("optimize-chunkrange-check", true);
+     }
+ 
++    public static boolean lagCompensateEating;
++
++    private static void lagCompensateEating() {
++        lagCompensateEating = ConcreteConfig.getBoolean("lag-compensate-eating", true);
++    }
++
+     public static final class WorldConnfig {
+ 
+         public final String worldName;
+diff --git a/src/main/java/net/minecraft/server/EntityLiving.java b/src/main/java/net/minecraft/server/EntityLiving.java
+index f675ad2f5295296fd1e040162ddcc6253d384cc6..49d3c081bdf9ec3dd7605c13a1368fdc622c2f9e 100644
+--- a/src/main/java/net/minecraft/server/EntityLiving.java
++++ b/src/main/java/net/minecraft/server/EntityLiving.java
+@@ -110,7 +110,7 @@ public abstract class EntityLiving extends Entity {
+     private int jumpTicks;
+     private float bF;
+     public ItemStack activeItem; // Paper - public
+-    protected int bo;
++    protected int bo; protected final int getEatTimeTicks() { return this.bo; }  protected final void setEatTimeTicks(int value) { this.bo = value; }/* Concrete - OBFHELPER */
+     protected int bp;
+     private BlockPosition bG;
+     private DamageSource bH;
+@@ -2781,6 +2781,8 @@ public abstract class EntityLiving extends Entity {
+         return ((Byte) this.datawatcher.get(EntityLiving.ar) & 2) > 0 ? EnumHand.OFF_HAND : EnumHand.MAIN_HAND;
+     }
+ 
++    protected long eatStartTime;
++    protected int totalEatTimeTicks;
+     private void o() {
+         if (this.isHandRaised()) {
+             if (ItemStack.d(this.b(this.getRaisedHand()), this.activeItem)) {
+@@ -2789,7 +2791,13 @@ public abstract class EntityLiving extends Entity {
+                     this.b(this.activeItem, 5);
+                 }
+ 
+-                if (--this.bo == 0 && !this.world.isClientSide && !this.activeItem.m()) {
++                /* Concrete start - lag compensate eating */
++                // we add 2 to the expected time to avoid lag compensating when we don't need to
++                boolean shouldLagCompensate
++                        = ca.spottedleaf.concrete.config.ConcreteConfig.lagCompensateEating && this.eatStartTime != -1 && (System.nanoTime() - this.eatStartTime) > ((2 + this.totalEatTimeTicks) * 50 * (1000 * 1000));
++                if ((--this.bo == 0 || shouldLagCompensate) && !this.world.isClientSide && !this.activeItem.m()) {
++                    this.setEatTimeTicks(0);
++                    /* Concrete end - lag compensate eating */
+                     this.q();
+                 }
+             } else {
+@@ -2830,7 +2838,10 @@ public abstract class EntityLiving extends Entity {
+ 
+         if (!itemstack.isEmpty() && !this.isHandRaised() || forceUpdate) { // Paper use override flag
+             this.activeItem = itemstack;
+-            this.bo = itemstack.k();
++            /* Concrete start - lag compensate eating */
++            this.bo = this.totalEatTimeTicks = itemstack.k();
++            this.eatStartTime = System.nanoTime();
++            /* Concrete end - lag compensate eating */
+             if (!this.world.isClientSide) {
+                 this.c(1, true);
+                 this.c(2, enumhand == EnumHand.OFF_HAND);
+@@ -2854,7 +2865,9 @@ public abstract class EntityLiving extends Entity {
+                 }
+             } else if (!this.isHandRaised() && !this.activeItem.isEmpty()) {
+                 this.activeItem = ItemStack.a;
+-                this.bo = 0;
++                this.bo = 0; /* Concrete - diff on change */
++                this.totalEatTimeTicks = 0; /* Concrete - lag compensate eating */
++                this.eatStartTime = -1L; /* Concrete - lag compensate eating */
+             }
+         }
+ 
+@@ -2972,7 +2985,9 @@ public abstract class EntityLiving extends Entity {
+         }
+ 
+         this.activeItem = ItemStack.a;
+-        this.bo = 0;
++        this.bo = 0; /* Concrete - diff on change */
++        this.totalEatTimeTicks = 0; /* Concrete - lag compensate eating */
++        this.eatStartTime = -1L; /* Concrete - lag compensate eating */
+     }
+ 
+     public boolean isBlocking() {
