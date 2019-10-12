@@ -342,22 +342,111 @@ index 0000000000000000000000000000000000000000..64e4534aae11ead8848dcfa9130ab03b
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/ca/spottedleaf/concrete/util/Util.java b/src/main/java/ca/spottedleaf/concrete/util/Util.java
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/OptimizedSmallEnumSet.java b/src/main/java/ca/spottedleaf/concrete/util/OptimizedSmallEnumSet.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..9f24e62c428ee3373de733453172af4268329cd2
+index 0000000000000000000000000000000000000000..0105b191a55229e52a269e2b90e5c0cf288bed7a
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/concrete/util/Util.java
-@@ -0,0 +1,28 @@
++++ b/src/main/java/ca/spottedleaf/concrete/util/OptimizedSmallEnumSet.java
+@@ -0,0 +1,65 @@
 +package ca.spottedleaf.concrete.util;
 +
++import java.util.Collection;
++
++// containing utils to work on small numbers of enums
++public final class OptimizedSmallEnumSet<E extends Enum> {
++
++    private final Class<E> enumClass;
++    private long backingSet;
++
++    public OptimizedSmallEnumSet(final Class<E> clazz) {
++        if (clazz == null) {
++            throw new IllegalArgumentException("Null class");
++        }
++        if (!clazz.isEnum()) {
++            throw new IllegalArgumentException("Class must be enum, not " + clazz.getCanonicalName());
++        }
++        this.enumClass = clazz;
++    }
++
++    public boolean addUnchecked(final E element) {
++        final int ordinal = element.ordinal();
++        final long key = 1L << ordinal;
++
++        final long prev = this.backingSet;
++        this.backingSet = prev | key;
++
++        return (prev & key) == 0;
++    }
++
++    public boolean removeUnchecked(final E element) {
++        final int ordinal = element.ordinal();
++        final long key = 1L << ordinal;
++
++        final long prev = this.backingSet;
++        this.backingSet = prev & ~key;
++
++        return (prev & key) != 0;
++    }
++
++    public void clear() {
++        this.backingSet = 0L;
++    }
++
++    public int size() {
++        return Long.bitCount(this.backingSet);
++    }
++
++    public void addAllUnchecked(final Collection<E> enums) {
++        for (final E element : enums) {
++            if (element == null) {
++                throw new NullPointerException("Null element");
++            }
++            this.backingSet |= (1L << element.ordinal());
++        }
++    }
++
++    public long getBackingSet() {
++        return this.backingSet;
++    }
++
++    public boolean hasCommonElements(final OptimizedSmallEnumSet<E> other) {
++        return (other.backingSet & this.backingSet) != 0;
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/Util.java b/src/main/java/ca/spottedleaf/concrete/util/Util.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c25943f4946eb7e908ac4657764bc94ff8d1113c
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/util/Util.java
+@@ -0,0 +1,45 @@
++package ca.spottedleaf.concrete.util;
++
++import net.minecraft.server.BlockPosition;
++import net.minecraft.server.ChunkCoordIntPair;
++import net.minecraft.server.Entity;
 +import org.bukkit.Bukkit;
 +
 +public final class Util {
++
++    public static final long INVALID_CHUNK_KEY = getCoordinateKey(Integer.MAX_VALUE, Integer.MAX_VALUE);
 +
 +    public static void ensureTickThread(final String reason) {
 +        if (!Bukkit.isPrimaryThread()) {
 +            throw new IllegalStateException(reason);
 +        }
++    }
++
++    public static long getCoordinateKey(final BlockPosition blockPos) {
++        return getCoordinateKey(blockPos.getX() >> 4, blockPos.getZ() >> 4);
++    }
++
++    public static long getCoordinateKey(final Entity entity) {
++        return getCoordinateKey(getChunkCoordinate(entity.locX), getChunkCoordinate(entity.locZ));
++    }
++
++    public static long getCoordinateKey(final ChunkCoordIntPair pair) {
++        return getCoordinateKey(pair.x, pair.z);
 +    }
 +
 +    public static long getCoordinateKey(final int x, final int z) {
@@ -1105,10 +1194,28 @@ index ddec62fbf591ba06ee1fdf9fbbc0a6122a1dfb9d..1d5b346be8a8549856f42aa9ecf3db0c
          doChunkUnload = Timings.ofSafe(name + "doChunkUnload");
          scheduledBlocks = Timings.ofSafe(name + "Scheduled Blocks");
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 67dc837f4325db11dedf05259549dfeb9f651c5b..3afb454c4d4a1aee04ac82c45e5b62442d85a248 100644
+index 67dc837f4325db11dedf05259549dfeb9f651c5b..77631a6090fc41fff51e233143d81237c7864dd0 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -143,6 +143,25 @@ public class Chunk implements IChunkAccess {
+@@ -49,7 +49,7 @@ public class Chunk implements IChunkAccess {
+     private Supplier<PlayerChunk.State> u;
+     @Nullable
+     private Consumer<Chunk> v;
+-    private final ChunkCoordIntPair loc;
++    private final ChunkCoordIntPair loc; public final long coordinateKey; /* Concrete - Cache coordinate key */
+     private volatile boolean x;
+ 
+     public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeBase[] abiomebase) {
+@@ -100,7 +100,7 @@ public class Chunk implements IChunkAccess {
+         this.n = new ShortList[16];
+         this.entitySlices = (List[]) (new List[16]); // Spigot
+         this.world = world;
+-        this.loc = chunkcoordintpair;
++        this.loc = chunkcoordintpair; this.coordinateKey = ca.spottedleaf.concrete.util.Util.getCoordinateKey(this.loc); /* Concrete - Cache coordinate key */
+         this.i = chunkconverter;
+         HeightMap.Type[] aheightmap_type = HeightMap.Type.values();
+         int j = aheightmap_type.length;
+@@ -143,6 +143,64 @@ public class Chunk implements IChunkAccess {
      public boolean needsDecoration;
      // CraftBukkit end
  
@@ -1129,16 +1236,291 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..3afb454c4d4a1aee04ac82c45e5b6244
 +            }
 +        }
 +    }
++
++    public static final int NEIGHBOUR_CACHE_RADIUS = 2;
++    // note that it also includes this chunk, just in case we want to check from a getIfCached result...
++    boolean loadedTicketLevel;
++
++    private int neighbourChunksLoadedBitset;
++    private final Chunk[] loadedNeighbourChunks = new Chunk[(NEIGHBOUR_CACHE_RADIUS * 2 + 1) * (NEIGHBOUR_CACHE_RADIUS * 2 + 1)];
++
++    private static int getNeighbourIndex(final int relativeX, final int relativeZ) {
++        return (relativeX + NEIGHBOUR_CACHE_RADIUS) * (NEIGHBOUR_CACHE_RADIUS * 2 + 1) + (relativeZ + NEIGHBOUR_CACHE_RADIUS);
++    }
++
++    public final Chunk getRelativeNeighoburIfLoaded(final int relativeX, final int relativeZ) {
++        return this.loadedNeighbourChunks[getNeighbourIndex(relativeX, relativeZ)];
++    }
++
++    public final boolean isNeighbourLoaded(final int relativeX, final int relativeZ) {
++        return (this.neighbourChunksLoadedBitset & (1 << getNeighbourIndex(relativeX, relativeZ))) != 0;
++    }
++
++    public final void setNeighbourLoaded(final int relativeX, final int relativeZ, final Chunk chunk) {
++        if (chunk == null) {
++            throw new IllegalArgumentException("Chunk must be non-null, neighbour: (" + relativeX + "," + relativeZ + "), chunk: " + this.loc);
++        }
++        final int index = getNeighbourIndex(relativeX, relativeZ);
++        this.loadedNeighbourChunks[index] = chunk;
++        this.neighbourChunksLoadedBitset |= (1 << index);
++    }
++
++    public final void setNeighbourUnloaded(final int relativeX, final int relativeZ) {
++        final int index = getNeighbourIndex(relativeX, relativeZ);
++        this.loadedNeighbourChunks[index] = null;
++        this.neighbourChunksLoadedBitset &= ~(1 << index);
++    }
++
++    public final void resetNeighbours() {
++        this.neighbourChunksLoadedBitset = 0;
++        java.util.Arrays.fill(this.loadedNeighbourChunks, null);
++    }
 +    /* Concrete end */
 +
      public Chunk(World world, ProtoChunk protochunk) {
          this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.q(), protochunk.getSections(), (Consumer) null);
          Iterator iterator = protochunk.y().iterator();
+@@ -634,6 +692,23 @@ public class Chunk implements IChunkAccess {
+ 
+     // CraftBukkit start
+     public void loadCallback() {
++        /* Concrete start - neighbour cache */
++        int chunkX = this.loc.x;
++        int chunkZ = this.loc.z;
++        ChunkProviderServer chunkProvider = ((WorldServer)this.world).getChunkProvider();
++        for (int dx = NEIGHBOUR_CACHE_RADIUS; dx <= NEIGHBOUR_CACHE_RADIUS; ++dx) {
++            for (int dz = NEIGHBOUR_CACHE_RADIUS; dz <= NEIGHBOUR_CACHE_RADIUS; ++dz) {
++                Chunk neighbour = chunkProvider.getChunkAtIfLoadedMainThread(chunkX + dx, chunkZ + dz);
++                if (neighbour != null) {
++                    neighbour.setNeighbourLoaded(-dx, -dz, this);
++                    // should be in cached already
++                    this.setNeighbourLoaded(dx, dz, neighbour);
++                }
++            }
++        }
++        this.loadedTicketLevel = true;
++        chunkProvider.addLoadedChunk(this);
++        /* Concrete end - neighbour cache */
+         org.bukkit.Server server = this.world.getServer();
+         if (server != null) {
+             /*
+@@ -675,6 +750,22 @@ public class Chunk implements IChunkAccess {
+         server.getPluginManager().callEvent(unloadEvent);
+         // note: saving can be prevented, but not forced if no saving is actually required
+         this.mustNotSave = !unloadEvent.isSaveChunk();
++        /* Concrete start - neighbour cache */
++        int chunkX = this.loc.x;
++        int chunkZ = this.loc.z;
++        ChunkProviderServer chunkProvider = ((WorldServer)this.world).getChunkProvider();
++        for (int dx = NEIGHBOUR_CACHE_RADIUS; dx <= NEIGHBOUR_CACHE_RADIUS; ++dx) {
++            for (int dz = NEIGHBOUR_CACHE_RADIUS; dz <= NEIGHBOUR_CACHE_RADIUS; ++dz) {
++                Chunk neighbour = chunkProvider.getChunkAtIfLoadedMainThread(chunkX + dx, chunkZ + dz);
++                if (neighbour != null) {
++                    neighbour.setNeighbourUnloaded(-dx, -dz);
++                }
++            }
++        }
++        this.loadedTicketLevel = false;
++        chunkProvider.removeLoadedChunk(this);
++        this.resetNeighbours();
++        /* Concrete end - neighbour cache */
+     }
+     // CraftBukkit end
+ 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..e3a5f9afe63b33263e2a6a06841ed6f14dc31d78 100644
+index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..9f175362f60ac8fdf6aa1e6463846381f21f0dec 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -557,11 +557,10 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -26,7 +26,7 @@ public class ChunkProviderServer extends IChunkProvider {
+     private final ChunkMapDistance chunkMapDistance;
+     public final ChunkGenerator<?> chunkGenerator;
+     private final WorldServer world;
+-    private final Thread serverThread;
++    final Thread serverThread; /* Concrete - private -> package */
+     private final LightEngineThreaded lightEngine;
+     public final ChunkProviderServer.a serverThreadQueue; // Paper private -> public
+     public final PlayerChunkMap playerChunkMap;
+@@ -38,6 +38,87 @@ public class ChunkProviderServer extends IChunkProvider {
+     private final ChunkStatus[] cacheStatus = new ChunkStatus[4];
+     private final IChunkAccess[] cacheChunk = new IChunkAccess[4];
+ 
++    /* Concrete start - loaded chunk cache for fast getIfLoaded calls */
++    final ca.spottedleaf.concurrentutil.lock.WeakSeqLock loadedChunkMapSeqLock = new ca.spottedleaf.concurrentutil.lock.WeakSeqLock();
++    final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<Chunk> loadedChunkMap = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>(8192, 0.5f);
++
++    private final Chunk[] lastLoadedChunks = new Chunk[4 * 4];
++    private final long[] lastLoadedChunkKeys = new long[4 * 4];
++
++    {
++        java.util.Arrays.fill(this.lastLoadedChunkKeys, ca.spottedleaf.concrete.util.Util.INVALID_CHUNK_KEY);
++    }
++
++    private static int getCacheKey(int x, int z) {
++        return x & 3 | ((z & 3) << 2);
++    }
++
++    void addLoadedChunk(Chunk chunk) {
++        this.loadedChunkMapSeqLock.acquireWrite();
++        try {
++            this.loadedChunkMap.put(chunk.coordinateKey, chunk);
++        } finally {
++            this.loadedChunkMapSeqLock.releaseWrite();
++        }
++
++        // rewrite cache if we have to
++        // we do this since we also cache null chunks
++        int cacheKey = getCacheKey(chunk.getPos().x, chunk.getPos().z);
++
++        long cachedKey = this.lastLoadedChunkKeys[cacheKey];
++        if (cachedKey == chunk.coordinateKey) {
++            this.lastLoadedChunks[cacheKey] = chunk;
++        }
++    }
++
++    void removeLoadedChunk(Chunk chunk) {
++        this.loadedChunkMapSeqLock.acquireWrite();
++        try {
++            this.loadedChunkMap.remove(chunk.coordinateKey);
++        } finally {
++            this.loadedChunkMapSeqLock.releaseWrite();
++        }
++
++        // rewrite cache if we have to
++        // we do this since we also cache null chunks
++        int cacheKey = getCacheKey(chunk.getPos().x, chunk.getPos().z);
++
++        long cachedKey = this.lastLoadedChunkKeys[cacheKey];
++        if (cachedKey == chunk.coordinateKey) {
++            this.lastLoadedChunks[cacheKey] = null;
++        }
++    }
++
++    public Chunk getChunkAtIfLoadedMainThread(int x, int z) {
++        int cacheKey = getCacheKey(x, z);
++        long chunkKey = ca.spottedleaf.concrete.util.Util.getCoordinateKey(x, z);
++
++        long cachedKey = this.lastLoadedChunkKeys[cacheKey];
++        if (cachedKey == chunkKey) {
++            return this.lastLoadedChunks[cacheKey];
++        }
++
++        Chunk ret = this.loadedChunkMap.get(chunkKey);
++
++        this.lastLoadedChunkKeys[cacheKey] = chunkKey;
++        this.lastLoadedChunks[cacheKey] = ret;
++
++        return ret;
++    }
++
++    public Chunk getChunkAtIfLoadedMainThreadNoCache(int x, int z) {
++        return this.loadedChunkMap.get(ca.spottedleaf.concrete.util.Util.getCoordinateKey(x, z));
++    }
++
++    public Chunk getChunkAtMainThread(int x, int z) {
++        Chunk ret = this.loadedChunkMap.get(ca.spottedleaf.concrete.util.Util.getCoordinateKey(x, z));
++        if (ret != null) {
++            return ret;
++        }
++        return (Chunk)this.getChunkAt(x, z, ChunkStatus.FULL, true);
++    }
++    /* Concrete end - loaded chunk cache for fast getIfLoaded calls */
++
+     public ChunkProviderServer(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator<?> chunkgenerator, int i, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
+         this.world = worldserver;
+         this.serverThreadQueue = new ChunkProviderServer.a(worldserver);
+@@ -98,16 +179,30 @@ public class ChunkProviderServer extends IChunkProvider {
+ 
+     @Nullable
+     public Chunk getChunkAtIfLoadedImmediately(int x, int z) {
+-        long k = ChunkCoordIntPair.pair(x, z);
+-
+-        // Note: Bypass cache since we need to check ticket level, and to make this MT-Safe
++        /* Concrete start - Optimize getIfLoaded type calls */
++        long k = ca.spottedleaf.concrete.util.Util.getCoordinateKey(x, z);
+ 
+-        PlayerChunk playerChunk = this.getChunk(k);
+-        if (playerChunk == null) {
+-            return null;
++        if (Thread.currentThread() == this.serverThread) {
++            return this.getChunkAtIfLoadedMainThread(x, z);
+         }
+ 
+-        return playerChunk.getFullChunk();
++        Chunk ret = null;
++        int readlock;
++        do {
++            readlock = this.loadedChunkMapSeqLock.acquireRead();
++            try {
++                ret = this.loadedChunkMap.get(k);
++            } catch (Throwable thr) {
++                if (thr instanceof ThreadDeath) {
++                    throw (ThreadDeath)thr;
++                }
++                // re-try, this means a CME occurred...
++                continue;
++            }
++        } while (!this.loadedChunkMapSeqLock.tryReleaseRead(readlock));
++
++        return ret;
++        /* Concrete end - Optimize getIfLoaded type calls */
+     }
+ 
+     @Nullable
+@@ -262,6 +357,13 @@ public class ChunkProviderServer extends IChunkProvider {
+         } else {
+             long k = ChunkCoordIntPair.pair(i, j);
+ 
++            /* Concrete start - optimize this for loaded chunks */
++            Chunk loadedRet = this.getChunkAtIfLoadedMainThread(x, z);
++            if (loadedRet != null) {
++                return loadedRet;
++            }
++            /* Concrete end - optimize this for loaded chunks */
++
+             IChunkAccess ichunkaccess;
+ 
+             for (int l = 0; l < 4; ++l) {
+@@ -306,38 +408,7 @@ public class ChunkProviderServer extends IChunkProvider {
+         if (Thread.currentThread() != this.serverThread) {
+             return null;
+         } else {
+-            long k = ChunkCoordIntPair.pair(i, j);
+-
+-            for (int l = 0; l < 4; ++l) {
+-                if (k == this.cachePos[l] && this.cacheStatus[l] == ChunkStatus.FULL) {
+-                    IChunkAccess ichunkaccess = this.cacheChunk[l];
+-
+-                    return ichunkaccess instanceof Chunk ? (Chunk) ichunkaccess : null;
+-                }
+-            }
+-
+-            PlayerChunk playerchunk = this.getChunk(k);
+-
+-            if (playerchunk == null) {
+-                return null;
+-            } else {
+-                Either<IChunkAccess, PlayerChunk.Failure> either = (Either) playerchunk.b(ChunkStatus.FULL).getNow(null); // Craftbukkit - decompile error
+-
+-                if (either == null) {
+-                    return null;
+-                } else {
+-                    IChunkAccess ichunkaccess1 = (IChunkAccess) either.left().orElse(null); // Craftbukkit - decompile error
+-
+-                    if (ichunkaccess1 != null) {
+-                        this.a(k, ichunkaccess1, ChunkStatus.FULL);
+-                        if (ichunkaccess1 instanceof Chunk) {
+-                            return (Chunk) ichunkaccess1;
+-                        }
+-                    }
+-
+-                    return null;
+-                }
+-            }
++            return this.getChunkAtIfLoadedMainThread(i, j); /* Concrete - optimize for loaded chunks */
+         }
+     }
+ 
+@@ -557,11 +628,10 @@ public class ChunkProviderServer extends IChunkProvider {
              EnumCreatureType[] aenumcreaturetype = EnumCreatureType.values();
              // Paper start - per player mob spawning
              int[] worldMobCount;
@@ -1153,7 +1535,7 @@ index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..e3a5f9afe63b33263e2a6a06841ed6f1
                  // re-set mob counts
                  for (EntityPlayer player : this.world.players) {
                      Arrays.fill(player.mobCounts, 0);
-@@ -641,9 +640,17 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -641,9 +711,17 @@ public class ChunkProviderServer extends IChunkProvider {
  
                                      if (this.world.paperConfig.perPlayerMobSpawns) {
                                          int minDiff = Integer.MAX_VALUE;
@@ -1311,6 +1693,67 @@ index 59e74900f8050833f07f8840779d33c87d230ee7..cecd94a7bdf99b5e449601f3a0b704ac
          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
          while (objectiterator.hasNext()) {
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 9d29fc8ca4f5c338b7bff368fd4ceefc9573624f..0bd777dde2c9de243a54edb42782e3e0711b7f95 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -331,7 +331,16 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+ 
+     @Override
+     public Chunk getChunkAt(int i, int j) {
+-        return (Chunk) this.getChunkAt(i, j, ChunkStatus.FULL);
++        /* Concrete start - optimize this method for loaded chunks */
++        ChunkProviderServer chunkProvider = (ChunkProviderServer)this.chunkProvider;
++        if (chunkProvider.serverThread == Thread.currentThread()) {
++            Chunk loaded = chunkProvider.getChunkAtIfLoadedMainThread(i, j);
++            if (loaded != null) {
++                return loaded;
++            }
++        }
++        return (Chunk)chunkProvider.getChunkAt(i, j, ChunkStatus.FULL, true);
++        /* Concrete end - optimize this method for loaded chunks */
+     }
+ 
+     // Paper start - if loaded
+@@ -1247,9 +1256,11 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+         int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
+         int l = MathHelper.floor((axisalignedbb.maxZ + 2.0D) / 16.0D);
+ 
++        ChunkProviderServer chunkProvider = ((ChunkProviderServer)this.chunkProvider); /* Concrete - optimize for loaded chunks */
++
+         for (int i1 = i; i1 <= j; ++i1) {
+             for (int j1 = k; j1 <= l; ++j1) {
+-                Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper /* Concrete - optimize for loaded chunks */
+ 
+                 if (chunk != null) {
+                     chunk.a(entity, axisalignedbb, list, predicate);
+@@ -1267,9 +1278,11 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+         int l = MathHelper.f((axisalignedbb.maxZ + 2.0D) / 16.0D);
+         List<Entity> list = Lists.newArrayList();
+ 
++        ChunkProviderServer chunkProvider = ((ChunkProviderServer)this.chunkProvider); /* Concrete - optimize for loaded chunks */
++
+         for (int i1 = i; i1 < j; ++i1) {
+             for (int j1 = k; j1 < l; ++j1) {
+-                Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper /* Concrete - optimize for loaded chunks */
+ 
+                 if (chunk != null) {
+                     chunk.a(entitytypes, axisalignedbb, list, predicate);
+@@ -1288,10 +1301,11 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+         int l = MathHelper.f((axisalignedbb.maxZ + 2.0D) / 16.0D);
+         List<T> list = Lists.newArrayList();
+         IChunkProvider ichunkprovider = this.getChunkProvider();
++        ChunkProviderServer chunkProvider = ((ChunkProviderServer)this.chunkProvider); /* Concrete - optimize for loaded chunks */
+ 
+         for (int i1 = i; i1 < j; ++i1) {
+             for (int j1 = k; j1 < l; ++j1) {
+-                Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper /* Concrete - optimize for loaded chunks */
+ 
+                 if (chunk != null) {
+                     chunk.a(oclass, axisalignedbb, list, predicate);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
 index 7a0b657f2d1d7e1abae91f9a85c8f547a50784d3..13555aeca43302d41259e6d9470563753a66b212 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java

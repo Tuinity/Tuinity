@@ -1,0 +1,999 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sat, 12 Oct 2019 15:34:24 -0700
+Subject: [PATCH] Optimize Entity#move
+
+WORK IN PROGRESS
+
+diff --git a/src/main/java/ca/spottedleaf/concrete/collision/AxisCycle.java b/src/main/java/ca/spottedleaf/concrete/collision/AxisCycle.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..70f8646a39d1a1254dc1c415b94ef134288e86d0
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/collision/AxisCycle.java
+@@ -0,0 +1,67 @@
++package ca.spottedleaf.concrete.collision;
++
++public final class AxisCycle {
++
++    public static final int NONE = 0;
++    public static final int FORWARDS = 1;
++    public static final int BACKWARDS = 2;
++
++    public static final int AXIS_X = 1 << 0;
++    public static final int AXIS_Y = 1 << 1;
++    public static final int AXIS_Z = 1 << 2;
++
++    public static int toValue(final int cycle) {
++        // 0 -> 0
++        // 1 -> 1
++        // 2 -> -1
++        return ((cycle << 30) >> 31) | cycle;
++    }
++
++    public static int inverse(final int cycle) {
++        final int index = cycle << 1;
++        final int table = (0 << 0) | (2 << 2) | (1 << 4); // 0, 1, 2 -> 0, 2, 1
++        return (table >>> index) & 3;
++    }
++
++    public static int choose(int x, int y, int z, int axis) {
++        // axis = X -> x
++        // axis = Y -> y
++        // axis = Z -> z
++        int maskX = ((axis << 31) >> 31);
++        int maskY = ((axis << 30) >> 31);
++        int maskZ = ((axis << 29) >> 31);
++
++        return (x & maskX) | (y & maskY) | (z & maskZ);
++    }
++
++    private static final int[] CYCLE_TABLE = {
++            /* 0: 0, 1, 2  ------> */ 0, 1, 2,
++            /* 1: 0, 1, 2  ------> */ 1, 2, 0,
++            /* 2: 0, 1, 2  ------> */ 2, 0, 1,
++    };
++
++    // see above table
++    public static int cycle(final int currentCycle, final int nextCycle) {
++        final int index = (currentCycle * 3 + nextCycle) << 1;
++        final int table = (0 <<  0) | (1 <<  2) | (2 <<  4) |
++                          (1 <<  6) | (2 <<  8) | (0 << 10) |
++                          (2 << 12) | (0 << 14) | (1 << 16); // variant of CYCLE_TABLE but included in one integer
++
++        return (table >>> index) & 3;
++    }
++
++    private static final int[] BETWEEN_TABLE = {
++            /* 0: 0, 1, 2  ------> */ 0, 2, 1,
++            /* 1: 0, 1, 2  ------> */ 1, 0, 2,
++            /* 2: 0, 1, 2  ------> */ 2, 1 ,0,
++    };
++
++    public static int between(final int axis0, final int axis1) {
++        final int index = (axis1 * 3 + axis0) << 1;
++        final int table = (0 <<  0) | (1 <<  2) | (2 <<  4) |
++                          (2 <<  6) | (0 <<  8) | (1 << 10) |
++                          (1 << 12) | (2 << 14) | (0 << 16); // variant of BETWEEN_TABLE but included in one integer
++
++        return (table >>> index) & 3;
++    }
++}
+diff --git a/src/main/java/ca/spottedleaf/concrete/collision/CollisionConstants.java b/src/main/java/ca/spottedleaf/concrete/collision/CollisionConstants.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..45415e45da4274a1e1db482a5d5d3abb86bc4163
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/collision/CollisionConstants.java
+@@ -0,0 +1,7 @@
++package ca.spottedleaf.concrete.collision;
++
++public final class CollisionConstants {
++
++    public static final double EPSILON = 1.0E-7D;
++
++}
+\ No newline at end of file
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/pool/CachedLists.java b/src/main/java/ca/spottedleaf/concrete/util/pool/CachedLists.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..ebdbac75ceb16d4bda9ad3c26997b0d076bfb72b
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/util/pool/CachedLists.java
+@@ -0,0 +1,19 @@
++package ca.spottedleaf.concrete.util.pool;
++
++import net.minecraft.server.Entity;
++import net.minecraft.server.VoxelShape;
++import org.bukkit.craftbukkit.util.UnsafeList;
++
++public final class CachedLists {
++
++    public static final UnsafeList<VoxelShape> TEMP_COLLISION_LIST = new UnsafeList<>(1024); /* Concrete - optimize Entity#move */
++    public static final UnsafeList<Entity> TEMP_ENTITY_LIST = new UnsafeList<>(1024); /* Concrete - optimize Entity#move */
++    public static final UnsafeList<Entity> TEMP_COLLIDE_NEARBY_LIST = new UnsafeList<>(1024);
++
++    public static void reset() {
++        TEMP_COLLISION_LIST.completeReset();
++        TEMP_ENTITY_LIST.completeReset();
++        TEMP_COLLIDE_NEARBY_LIST.completeReset();
++    }
++
++}
+diff --git a/src/main/java/net/minecraft/server/AxisAlignedBB.java b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+index c950139c0f819e87ded97dc8fb915b6755e51e71..067098255ccef0ba1e8ec127f87d65f5b17c2251 100644
+--- a/src/main/java/net/minecraft/server/AxisAlignedBB.java
++++ b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+@@ -13,6 +13,11 @@ public class AxisAlignedBB {
+     public final double maxY;
+     public final double maxZ;
+ 
++    /* Concrete start */
++    // cache computed VoxelShape
++    public VoxelShape cachedVoxelShape;
++    /* Concrete end */
++
+     public AxisAlignedBB(double d0, double d1, double d2, double d3, double d4, double d5) {
+         this.minX = Math.min(d0, d3);
+         this.minY = Math.min(d1, d4);
+@@ -193,6 +198,7 @@ public class AxisAlignedBB {
+         return this.d(vec3d.x, vec3d.y, vec3d.z);
+     }
+ 
++    public final boolean intersects(AxisAlignedBB axisalignedbb) { return this.c(axisalignedbb); } /* Concrete - OBFHELPER */
+     public boolean c(AxisAlignedBB axisalignedbb) {
+         return this.a(axisalignedbb.minX, axisalignedbb.minY, axisalignedbb.minZ, axisalignedbb.maxX, axisalignedbb.maxY, axisalignedbb.maxZ);
+     }
+diff --git a/src/main/java/net/minecraft/server/DataPaletteBlock.java b/src/main/java/net/minecraft/server/DataPaletteBlock.java
+index 8fba1e2f3d61887f4d1395582a5f4fd2e5ed83f0..71c555b00d554a69c226196d7809e3d6b30fad59 100644
+--- a/src/main/java/net/minecraft/server/DataPaletteBlock.java
++++ b/src/main/java/net/minecraft/server/DataPaletteBlock.java
+@@ -170,6 +170,7 @@ public class DataPaletteBlock<T> implements DataPaletteExpandable<T> {
+         return this.a(b(i, j, k));
+     }
+ 
++    public final T rawGet(int index) { return this.a(index); } /* Concrete - OBFHELPER */
+     protected T a(int i) {
+         T t0 = this.h.a(this.a.a(i));
+ 
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index d4bad0fcecb970964f29180b76c09e883abfe2d4..1abae24250b06a1b2f8c070ea191c8d002d457cc 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -826,25 +826,31 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return d0;
+     }
+ 
++    private static final org.bukkit.craftbukkit.util.UnsafeList<VoxelShape> TEMP_COLLISION_LIST = ca.spottedleaf.concrete.util.pool.CachedLists.TEMP_COLLISION_LIST; /* Concrete - optimize Entity#move */
++    private static final org.bukkit.craftbukkit.util.UnsafeList<Entity> TEMP_ENTITY_LIST = ca.spottedleaf.concrete.util.pool.CachedLists.TEMP_ENTITY_LIST; /* Concrete - optimize Entity#move */
++
+     private Vec3D e(Vec3D vec3d) {
+         AxisAlignedBB axisalignedbb = this.getBoundingBox();
+         VoxelShapeCollision voxelshapecollision = VoxelShapeCollision.a(this);
+         VoxelShape voxelshape = this.world.getWorldBorder().a();
+-        Stream<VoxelShape> stream = VoxelShapes.c(voxelshape, VoxelShapes.a(axisalignedbb.shrink(1.0E-7D)), OperatorBoolean.AND) ? Stream.empty() : Stream.of(voxelshape);
+-        Stream<VoxelShape> stream1 = this.world.a(this, axisalignedbb.a(vec3d), (Set) ImmutableSet.of());
+-        StreamAccumulator<VoxelShape> streamaccumulator = new StreamAccumulator<>(Stream.concat(stream1, stream));
+-        Vec3D vec3d1 = vec3d.g() == 0.0D ? vec3d : a(this, vec3d, axisalignedbb, this.world, voxelshapecollision, streamaccumulator);
++        /* Concrete start - optimize Entity#move */
++        if (!VoxelShapes.c(voxelshape, VoxelShapes.a(axisalignedbb.shrink(1.0E-7D)), OperatorBoolean.AND)) {
++            TEMP_COLLISION_LIST.add(voxelshape);
++        }
++        this.world.getEntityShapesColliding(this, axisalignedbb.a(vec3d), null, TEMP_ENTITY_LIST, TEMP_COLLISION_LIST);
++        Vec3D vec3d1 = vec3d.g() == 0.0D ? vec3d : calculateCollision(this, vec3d, axisalignedbb, this.world, voxelshapecollision, TEMP_COLLISION_LIST);
++        /* Concrete end - optimize Entity#move */
+         boolean flag = vec3d.x != vec3d1.x;
+         boolean flag1 = vec3d.y != vec3d1.y;
+         boolean flag2 = vec3d.z != vec3d1.z;
+         boolean flag3 = this.onGround || flag1 && vec3d.y < 0.0D;
+ 
+         if (this.K > 0.0F && flag3 && (flag || flag2)) {
+-            Vec3D vec3d2 = a(this, new Vec3D(vec3d.x, (double) this.K, vec3d.z), axisalignedbb, this.world, voxelshapecollision, streamaccumulator);
+-            Vec3D vec3d3 = a(this, new Vec3D(0.0D, (double) this.K, 0.0D), axisalignedbb.b(vec3d.x, 0.0D, vec3d.z), this.world, voxelshapecollision, streamaccumulator);
++            Vec3D vec3d2 = calculateCollision(this, new Vec3D(vec3d.x, (double) this.K, vec3d.z), axisalignedbb, this.world, voxelshapecollision, TEMP_COLLISION_LIST); /* Concrete - optimize Entity#move */
++            Vec3D vec3d3 = calculateCollision(this, new Vec3D(0.0D, (double) this.K, 0.0D), axisalignedbb.b(vec3d.x, 0.0D, vec3d.z), this.world, voxelshapecollision, TEMP_COLLISION_LIST); /* Concrete - optimize Entity#move */
+ 
+             if (vec3d3.y < (double) this.K) {
+-                Vec3D vec3d4 = a(this, new Vec3D(vec3d.x, 0.0D, vec3d.z), axisalignedbb.b(vec3d3), this.world, voxelshapecollision, streamaccumulator).e(vec3d3);
++                Vec3D vec3d4 = calculateCollision(this, new Vec3D(vec3d.x, 0.0D, vec3d.z), axisalignedbb.b(vec3d3), this.world, voxelshapecollision, TEMP_COLLISION_LIST).e(vec3d3); /* Concrete - optimize Entity#move */
+ 
+                 if (b(vec3d4) > b(vec3d2)) {
+                     vec3d2 = vec3d4;
+@@ -852,16 +858,112 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+             }
+ 
+             if (b(vec3d2) > b(vec3d1)) {
+-                return vec3d2.e(a(this, new Vec3D(0.0D, -vec3d2.y + vec3d.y, 0.0D), axisalignedbb.b(vec3d2), this.world, voxelshapecollision, streamaccumulator));
++                return vec3d2.e(calculateCollision(this, new Vec3D(0.0D, -vec3d2.y + vec3d.y, 0.0D), axisalignedbb.b(vec3d2), this.world, voxelshapecollision, TEMP_COLLISION_LIST)); /* Concrete - optimize Entity#move */
+             }
+         }
+ 
++        TEMP_ENTITY_LIST.setSize(0); /* Concrete */
++        TEMP_COLLISION_LIST.setSize(0); /* Concrete */
++
+         return vec3d1;
+     }
+ 
+     public static double b(Vec3D vec3d) {
+         return vec3d.x * vec3d.x + vec3d.z * vec3d.z;
+     }
++    /* Concrete start - optimize Entity#move */
++    public static Vec3D calculateCollision(@Nullable Entity entity, Vec3D vec3d, AxisAlignedBB axisalignedbb,
++                                           World world, VoxelShapeCollision voxelshapecollision,
++                                           org.bukkit.craftbukkit.util.UnsafeList<VoxelShape> collisions) {
++        boolean flag = vec3d.x == 0.0D;
++        boolean flag1 = vec3d.y == 0.0D;
++        boolean flag2 = vec3d.z == 0.0D;
++
++        if ((!flag || !flag1) && (!flag || !flag2) && (!flag1 || !flag2)) {
++            int preCollisions = collisions.size();
++            world.getCollidingBlocks(entity, axisalignedbb.a(vec3d), collisions);
++
++            Vec3D ret = calculateCollisions(vec3d, axisalignedbb, collisions);
++            collisions.setSize(preCollisions);
++            return ret;
++        } else {
++            return calculateCollisions(vec3d, axisalignedbb, world, voxelshapecollision, collisions);
++        }
++    }
++
++    public static Vec3D calculateCollisions(Vec3D vec3d, AxisAlignedBB axisalignedbb,
++                                            org.bukkit.craftbukkit.util.UnsafeList<VoxelShape> collisions) {
++        double d0 = vec3d.x;
++        double d1 = vec3d.y;
++        double d2 = vec3d.z;
++
++        if (d1 != 0.0D) {
++            d1 = VoxelShapes.a(EnumDirection.EnumAxis.Y, axisalignedbb, collisions, d1);
++            if (d1 != 0.0D) {
++                axisalignedbb = axisalignedbb.d(0.0D, d1, 0.0D);
++            }
++        }
++
++        boolean flag = Math.abs(d0) < Math.abs(d2);
++
++        if (flag && d2 != 0.0D) {
++            d2 = VoxelShapes.a(EnumDirection.EnumAxis.Z, axisalignedbb, collisions, d2);
++            if (d2 != 0.0D) {
++                axisalignedbb = axisalignedbb.d(0.0D, 0.0D, d2);
++            }
++        }
++
++        if (d0 != 0.0D) {
++            d0 = VoxelShapes.a(EnumDirection.EnumAxis.X, axisalignedbb, collisions, d0);
++            if (!flag && d0 != 0.0D) {
++                axisalignedbb = axisalignedbb.d(d0, 0.0D, 0.0D);
++            }
++        }
++
++        if (!flag && d2 != 0.0D) {
++            d2 = VoxelShapes.a(EnumDirection.EnumAxis.Z, axisalignedbb, collisions, d2);
++        }
++
++        return new Vec3D(d0, d1, d2);
++    }
++
++    public static Vec3D calculateCollisions(Vec3D vec3d, AxisAlignedBB axisalignedbb, IWorldReader iworldreader,
++                          VoxelShapeCollision voxelshapecollision,
++                          org.bukkit.craftbukkit.util.UnsafeList<VoxelShape> collisions) {
++        double d0 = vec3d.x;
++        double d1 = vec3d.y;
++        double d2 = vec3d.z;
++
++        if (d1 != 0.0D) {
++            d1 = VoxelShapes.a(EnumDirection.EnumAxis.Y, axisalignedbb, iworldreader, d1, voxelshapecollision, collisions);
++            if (d1 != 0.0D) {
++                axisalignedbb = axisalignedbb.d(0.0D, d1, 0.0D);
++            }
++        }
++
++        boolean flag = Math.abs(d0) < Math.abs(d2);
++
++        if (flag && d2 != 0.0D) {
++            d2 = VoxelShapes.a(EnumDirection.EnumAxis.Z, axisalignedbb, iworldreader, d2, voxelshapecollision, collisions);
++            if (d2 != 0.0D) {
++                axisalignedbb = axisalignedbb.d(0.0D, 0.0D, d2);
++            }
++        }
++
++        if (d0 != 0.0D) {
++            d0 = VoxelShapes.a(EnumDirection.EnumAxis.X, axisalignedbb, iworldreader, d0, voxelshapecollision, collisions);
++            if (!flag && d0 != 0.0D) {
++                axisalignedbb = axisalignedbb.d(d0, 0.0D, 0.0D);
++            }
++        }
++
++        if (!flag && d2 != 0.0D) {
++            d2 = VoxelShapes.a(EnumDirection.EnumAxis.Z, axisalignedbb, iworldreader, d2, voxelshapecollision, collisions);
++        }
++
++        return new Vec3D(d0, d1, d2);
++    }
++    /* Concrete end - optimize Entity#move */
+ 
+     public static Vec3D a(@Nullable Entity entity, Vec3D vec3d, AxisAlignedBB axisalignedbb, World world, VoxelShapeCollision voxelshapecollision, StreamAccumulator<VoxelShape> streamaccumulator) {
+         boolean flag = vec3d.x == 0.0D;
+@@ -1124,8 +1226,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+ 
+     }
+ 
+-    @Nullable
+-    public AxisAlignedBB aq() {
++    @Nullable public final AxisAlignedBB getHardCollisionBox() { return this.aq(); } /* Concrete - OBFHELPER */
++    @Nullable public AxisAlignedBB aq() { /* Concrete - OBFHELPER */
+         return null;
+     }
+ 
+@@ -2039,8 +2141,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return false;
+     }
+ 
+-    @Nullable
+-    public AxisAlignedBB j(Entity entity) {
++    @Nullable public final AxisAlignedBB getHardCollisionWith(Entity entity) { return this.j(entity); } /* Concrete - OBFHELPER */
++    @Nullable public AxisAlignedBB j(Entity entity) { /* Concrete - OBFHELPER */
+         return null;
+     }
+ 
+@@ -3106,6 +3208,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return entity;
+     }
+ 
++    public final boolean rootVehiclesMatch(Entity entity) { return this.x(entity); } /* Concrete - OBFHELPER */
+     public boolean x(Entity entity) {
+         return this.getRootVehicle() == entity.getRootVehicle();
+     }
+diff --git a/src/main/java/net/minecraft/server/EntityLiving.java b/src/main/java/net/minecraft/server/EntityLiving.java
+index 7f9089b217411f9b8d6d531b3ab25321f5ead2a6..e658ef14e3b1d98a7cdc3e4a361d37cbfdb518de 100644
+--- a/src/main/java/net/minecraft/server/EntityLiving.java
++++ b/src/main/java/net/minecraft/server/EntityLiving.java
+@@ -2597,8 +2597,13 @@ public abstract class EntityLiving extends Entity {
+ 
+     protected void doTick() {}
+ 
++    private static org.bukkit.craftbukkit.util.UnsafeList<Entity> TEMP_COLLIDE_NEARBY_LIST = ca.spottedleaf.concrete.util.pool.CachedLists.TEMP_COLLIDE_NEARBY_LIST; /* Concrete */
++
+     protected void collideNearby() {
+-        List<Entity> list = this.world.getEntities(this, this.getBoundingBox(), IEntitySelector.a(this));
++        /* Concrete start */
++        org.bukkit.craftbukkit.util.UnsafeList<Entity> tempList = TEMP_COLLIDE_NEARBY_LIST;
++        List<Entity> list = this.world.getEntities( this, this.getBoundingBox(), IEntitySelector.a(this), tempList);
++        /* Concrete end */
+ 
+         if (!list.isEmpty()) {
+             int i = this.world.getGameRules().getInt(GameRules.MAX_ENTITY_CRAMMING);
+@@ -2627,7 +2632,12 @@ public abstract class EntityLiving extends Entity {
+                 this.D(entity);
+             }
+         }
+-
++        /* Concrete start */
++        if (tempList != null) {
++            tempList.setSize(0);
++            TEMP_COLLIDE_NEARBY_LIST = tempList;
++        }
++        /* Concrete end */
+     }
+ 
+     protected void a(AxisAlignedBB axisalignedbb, AxisAlignedBB axisalignedbb1) {
+diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
+index dca18afdbb588cf5ac7bbaa54c7deb52241b550c..903b7314b8efbc9d4752fe053398d43d7da93232 100644
+--- a/src/main/java/net/minecraft/server/IEntityAccess.java
++++ b/src/main/java/net/minecraft/server/IEntityAccess.java
+@@ -14,6 +14,14 @@ public interface IEntityAccess {
+ 
+     List<Entity> getEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Predicate<? super Entity> predicate);
+ 
++    default List<Entity> getEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Predicate<? super Entity> predicate, @Nullable List<Entity> ret) {
++        if (ret == null) {
++            return this.getEntities(entity, axisalignedbb, predicate);
++        }
++        ret.addAll(this.getEntities(entity, axisalignedbb, predicate));
++        return ret;
++    }
++
+     <T extends Entity> List<T> a(Class<? extends T> oclass, AxisAlignedBB axisalignedbb, @Nullable Predicate<? super T> predicate);
+ 
+     default <T extends Entity> List<T> b(Class<? extends T> oclass, AxisAlignedBB axisalignedbb, @Nullable Predicate<? super T> predicate) {
+@@ -23,7 +31,12 @@ public interface IEntityAccess {
+     List<? extends EntityHuman> getPlayers();
+ 
+     default List<Entity> getEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
+-        return this.getEntities(entity, axisalignedbb, IEntitySelector.f);
++        /* Concrete start - Add ret param */
++        return this.getEntities((List<Entity>)null, entity, axisalignedbb);
++    }
++    default List<Entity> getEntities(@Nullable List<Entity> ret, @Nullable Entity entity, AxisAlignedBB axisalignedbb) {
++        return this.getEntities(entity, axisalignedbb, IEntitySelector.f, ret);
++        /* Concrete end - Add ret param */
+     }
+ 
+     default boolean a(@Nullable Entity entity, VoxelShape voxelshape) {
+@@ -42,6 +55,93 @@ public interface IEntityAccess {
+         return this.b(oclass, axisalignedbb, IEntitySelector.f);
+     }
+ 
++    /* Concrete start */
++    // this function is copied from a(Entity, AxisAlignedBB, Set) but without streams
++    // this function is also duplicated below
++    default List<VoxelShape> getEntityShapesColliding(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Set<Entity> exclude,
++                                                  @Nullable List<Entity> tempEntityList, @Nullable List<VoxelShape> tempRetList) {
++        if (axisalignedbb.a() < 1.0E-7D) {
++            return tempRetList == null ? java.util.Collections.emptyList() : tempRetList;
++        }
++
++        AxisAlignedBB axisalignedbb1 = axisalignedbb.g(1.0E-7D);
++        List<Entity> entities = this.getEntities(tempEntityList, entity, axisalignedbb1);
++
++        if (entities.isEmpty()) {
++            return tempRetList == null ? java.util.Collections.emptyList() : tempRetList;
++        }
++
++        if (tempRetList == null) {
++            tempRetList = Lists.newArrayList();
++        }
++
++        for (Entity possibleCollide : entities) {
++            if (exclude != null && exclude.contains(possibleCollide)) {
++                continue;
++            }
++            if (entity != null && entity.rootVehiclesMatch(possibleCollide)) {
++                continue;
++            }
++
++            AxisAlignedBB current = possibleCollide.getHardCollisionBox();
++            if (current != null && axisalignedbb1.intersects(current)) {
++                tempRetList.add(VoxelShapes.of(current));
++            }
++
++            if (entity != null) {
++                current = entity.getHardCollisionWith(possibleCollide);
++                if (current != null && axisalignedbb1.intersects(current)) {
++                    tempRetList.add(VoxelShapes.of(current));
++                }
++            }
++        }
++
++        return tempRetList;
++    }
++
++    // copied from above
++    default boolean entityShapesCollidingAllMatch(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Set<Entity> exclude,
++                                                  @Nullable List<Entity> tempEntityList, Predicate<VoxelShape> predicate) {
++        if (axisalignedbb.a() < 1.0E-7D) {
++            return true;
++        }
++
++        AxisAlignedBB axisalignedbb1 = axisalignedbb.g(1.0E-7D);
++        List<Entity> entities = this.getEntities(tempEntityList, entity, axisalignedbb1);
++
++        if (entities.isEmpty()) {
++            return true;
++        }
++
++        for (Entity possibleCollide : entities) {
++            if (exclude != null && exclude.contains(possibleCollide)) {
++                continue;
++            }
++            if (entity != null && entity.rootVehiclesMatch(possibleCollide)) {
++                continue;
++            }
++
++            AxisAlignedBB current = possibleCollide.getHardCollisionBox();
++            if (current != null && axisalignedbb1.intersects(current)) {
++                if (!predicate.test(VoxelShapes.of(current))) {
++                    return false;
++                }
++            }
++
++            if (entity != null) {
++                current = entity.getHardCollisionWith(possibleCollide);
++                if (current != null && axisalignedbb1.intersects(current)) {
++                    if (!predicate.test(VoxelShapes.of(current))) {
++                        return false;
++                    }
++                }
++            }
++        }
++
++        return true;
++    }
++    /* Concrete end */
++
+     default Stream<VoxelShape> a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
+         if (axisalignedbb.a() < 1.0E-7D) {
+             return Stream.empty();
+diff --git a/src/main/java/net/minecraft/server/IWorldReader.java b/src/main/java/net/minecraft/server/IWorldReader.java
+index a25736e23deeff460224eea7a580d1f8cb1a6428..c9bf1f1352200600bcb7be67881970448e5c3412 100644
+--- a/src/main/java/net/minecraft/server/IWorldReader.java
++++ b/src/main/java/net/minecraft/server/IWorldReader.java
+@@ -99,15 +99,37 @@ public interface IWorldReader extends IIBlockAccess {
+     }
+ 
+     default boolean getCubes(Entity entity) {
+-        return this.b(entity, entity.getBoundingBox(), Collections.emptySet());
++        return this.getCubes(entity, entity.getBoundingBox()); /* Concrete - optimize this call */
+     }
+ 
+     default boolean getCubes(Entity entity, AxisAlignedBB axisalignedbb) {
+-        return this.b(entity, axisalignedbb, Collections.emptySet());
++        /* Concrete start - optimize this call */
++        if (!this.collidingBlocksMatchAll(entity, axisalignedbb, VoxelShape::isEmpty)) {
++            return false;
++        }
++        if (this instanceof IEntityAccess) {
++            if (!((IEntityAccess)this).entityShapesCollidingAllMatch(entity, axisalignedbb, null, null, VoxelShape::isEmpty)) {
++                return false;
++            }
++        }
++
++        return true;
++        /* Concrete end - optimize this call */
+     }
+ 
+     default boolean b(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
+-        return this.c(entity, axisalignedbb, set).allMatch(VoxelShape::isEmpty);
++        /* Concrete start - optimize this call */
++        if (!this.collidingBlocksMatchAll(entity, axisalignedbb, VoxelShape::isEmpty)) {
++            return false;
++        }
++        if (this instanceof IEntityAccess) {
++            if (!((IEntityAccess)this).entityShapesCollidingAllMatch(entity, axisalignedbb, set, null, VoxelShape::isEmpty)) {
++                return false;
++            }
++        }
++
++        return true;
++        /* Concrete end - optimize this call */
+     }
+ 
+     default Stream<VoxelShape> a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
+@@ -118,6 +140,290 @@ public interface IWorldReader extends IIBlockAccess {
+         return Streams.concat(new Stream[]{this.b(entity, axisalignedbb), this.a(entity, axisalignedbb, set)});
+     }
+ 
++    /* Concrete start */
++    // note: order will be different than from the copied method
++    default java.util.Collection<VoxelShape> getCollidingBlocks(@Nullable Entity entity, AxisAlignedBB axisalignedbb,
++                                                          @Nullable java.util.Collection<VoxelShape> ret) {
++        // TODO obfhelpers
++        if (ret == null) {
++            ret = new java.util.ArrayList<>();
++        }
++
++        if (entity != null) {
++            VoxelShape voxelshape1 = IWorldReader.this.getWorldBorder().a();
++            boolean flag = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().shrink(1.0E-7D)), OperatorBoolean.AND);
++            boolean flag1 = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().g(1.0E-7D)), OperatorBoolean.AND);
++
++            if (!flag && flag1) {
++                ret.add(voxelshape1);
++            }
++        }
++
++        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
++        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
++
++        int minChunkX = minBlockX >> 4;
++        int maxChunkX = maxBlockX >> 4;
++
++        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
++        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
++
++        int minChunkY = minBlockY >> 4;
++        int maxChunkY = maxBlockY >> 4;
++
++        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
++        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
++
++        int minChunkZ = minBlockZ >> 4;
++        int maxChunkZ = maxBlockZ >> 4;
++
++        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity);
++        BlockPosition.MutableBlockPosition mutableBlockPosition = new BlockPosition.MutableBlockPosition();
++        VoxelShape voxelshape = VoxelShapes.of(axisalignedbb);
++
++        ChunkStatus requiredStatus = IWorldReader.this.O();
++        boolean useOptimizedGet = requiredStatus == ChunkStatus.FULL && this instanceof WorldServer;
++        ChunkProviderServer chunkProvider = !useOptimizedGet ? null : ((WorldServer)this).getChunkProvider();
++
++        if (maxBlockY < 0) {
++            // no point in checking
++            return ret;
++        }
++
++        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++
++            for (int currChunkY = minChunkY; currChunkY <= maxChunkY; ++currChunkY) {
++                int minY = minBlockY;
++                int maxY = maxBlockY;
++
++                for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++                    int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++                    int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++
++                    IChunkAccess chunk = useOptimizedGet ? chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ) : // avoid loading chunks
++                            this.getChunkAt(currChunkX, currChunkZ, requiredStatus, false);
++
++                    if (chunk == null) {
++                        continue;
++                    }
++
++                    // TODO it might be better to throw the next 3 nested for loops into their own method.
++
++                    ChunkSection[] sections = chunk.getSections(); // TODO on update, make sure this is RAW access
++                    int maxSectionY = sections.length * 16;
++
++                    // bound y
++
++                    if (maxY >= maxSectionY) {
++                        maxY = maxSectionY - 1;
++                    }
++                    if (minY < 0) {
++                        minY = 0;
++                    }
++
++                    for (int currY = minY; currY <= maxY; ++currY) {
++                        ChunkSection section = sections[currY >>> 4];
++                        if (section == null) {
++                            // empty
++                            continue;
++                        }
++
++                        DataPaletteBlock<IBlockData> blocks = section.blockIds;
++                        int blockKeyY = (currY & 15) << 8;
++
++                        int edgeCountY = (currY == minY || currY == maxY) ? 1 : 0;
++
++                        for (int currX = minX; currX <= maxX; ++currX) {
++                            int blockKeyXY = blockKeyY | currX;
++                            int blockX = currX + (currChunkX << 4); // world position
++
++                            int edgeCountXY;
++                            if (blockX == minBlockX || blockX == maxBlockX) {
++                                edgeCountXY = edgeCountY + 1;
++                            } else {
++                                edgeCountXY = edgeCountY;
++                            }
++
++                            for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                                int blockZ = currZ + (currChunkZ << 4); // world position
++
++                                int edgeCountFull;
++                                if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                                    edgeCountFull = edgeCountXY + 1;
++                                } else {
++                                    edgeCountFull = edgeCountXY;
++                                }
++
++                                if (edgeCountFull == 3) {
++                                    continue;
++                                }
++
++                                int blockKeyFull = blockKeyXY | (currZ << 4);
++                                IBlockData blockData = blocks.rawGet(blockKeyFull);
++
++                                if ((edgeCountFull != 1 || blockData.f()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                                    mutableBlockPosition.setValues(blockX, currY, blockZ);
++                                    VoxelShape voxelshape2 = blockData.b((IBlockAccess)IWorldReader.this, mutableBlockPosition, collisionShape);
++                                    VoxelShape voxelshape3 = voxelshape2.a((double)blockX, (double)currY, (double)blockZ);
++
++                                    if (VoxelShapes.c(voxelshape, voxelshape3, OperatorBoolean.AND)) { // TODO Optimize, the enum axis cycle,
++                                        ret.add(voxelshape3);
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        return ret;
++    }
++
++    default boolean collidingBlocksMatchAll(@Nullable Entity entity, AxisAlignedBB axisalignedbb,
++                                                               java.util.function.Predicate<VoxelShape> predicate) {
++        // TODO obfhelpers
++        if (entity != null) {
++            VoxelShape voxelshape1 = IWorldReader.this.getWorldBorder().a();
++            boolean flag = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().shrink(1.0E-7D)), OperatorBoolean.AND);
++            boolean flag1 = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().g(1.0E-7D)), OperatorBoolean.AND);
++
++            if (!flag && flag1) {
++                if (!predicate.test(voxelshape1)) {
++                    return false;
++                }
++            }
++        }
++
++        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
++        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
++
++        int minChunkX = minBlockX >> 4;
++        int maxChunkX = maxBlockX >> 4;
++
++        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
++        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
++
++        int minChunkY = minBlockY >> 4;
++        int maxChunkY = maxBlockY >> 4;
++
++        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
++        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
++
++        int minChunkZ = minBlockZ >> 4;
++        int maxChunkZ = maxBlockZ >> 4;
++
++        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity);
++        BlockPosition.MutableBlockPosition mutableBlockPosition = new BlockPosition.MutableBlockPosition();
++        VoxelShape voxelshape = VoxelShapes.of(axisalignedbb);
++
++        ChunkStatus requiredStatus = IWorldReader.this.O();
++        boolean useOptimizedGet = requiredStatus == ChunkStatus.FULL && this instanceof WorldServer;
++        ChunkProviderServer chunkProvider = !useOptimizedGet ? null : ((WorldServer)this).getChunkProvider();
++
++        if (maxBlockY < 0) {
++            // no point in checking
++            return true;
++        }
++
++        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++
++            for (int currChunkY = minChunkY; currChunkY <= maxChunkY; ++currChunkY) {
++                int minY = minBlockY;
++                int maxY = maxBlockY;
++
++                for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++                    int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++                    int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++
++                    IChunkAccess chunk = useOptimizedGet ? chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ) : // avoid loading chunks
++                            this.getChunkAt(currChunkX, currChunkZ, requiredStatus, false);
++
++                    if (chunk == null) {
++                        continue;
++                    }
++
++                    // TODO it might be better to throw the next 3 nested for loops into their own method.
++
++                    ChunkSection[] sections = chunk.getSections(); // TODO on update, make sure this is RAW access
++                    int maxSectionY = sections.length * 16;
++
++                    // bound y
++
++                    if (maxY >= maxSectionY) {
++                        maxY = maxSectionY - 1;
++                    }
++                    if (minY < 0) {
++                        minY = 0;
++                    }
++
++                    for (int currY = minY; currY <= maxY; ++currY) {
++                        ChunkSection section = sections[currY >>> 4];
++                        if (section == null) {
++                            // empty
++                            continue;
++                        }
++
++                        DataPaletteBlock<IBlockData> blocks = section.blockIds;
++                        int blockKeyY = (currY & 15) << 8;
++
++                        int edgeCountY = (currY == minY || currY == maxY) ? 1 : 0;
++
++                        for (int currX = minX; currX <= maxX; ++currX) {
++                            int blockKeyXY = blockKeyY | currX;
++                            int blockX = currX + (currChunkX << 4); // world position
++
++                            int edgeCountXY;
++                            if (blockX == minBlockX || blockX == maxBlockX) {
++                                edgeCountXY = edgeCountY + 1;
++                            } else {
++                                edgeCountXY = edgeCountY;
++                            }
++
++                            for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                                int blockZ = currZ + (currChunkZ << 4); // world position
++
++                                int edgeCountFull;
++                                if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                                    edgeCountFull = edgeCountXY + 1;
++                                } else {
++                                    edgeCountFull = edgeCountXY;
++                                }
++
++                                if (edgeCountFull == 3) {
++                                    continue;
++                                }
++
++                                int blockKeyFull = blockKeyXY | (currZ << 4);
++                                IBlockData blockData = blocks.rawGet(blockKeyFull);
++
++                                if ((edgeCountFull != 1 || blockData.f()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                                    mutableBlockPosition.setValues(blockX, currY, blockZ);
++                                    VoxelShape voxelshape2 = blockData.b((IBlockAccess)IWorldReader.this, mutableBlockPosition, collisionShape);
++                                    VoxelShape voxelshape3 = voxelshape2.a((double)blockX, (double)currY, (double)blockZ);
++
++                                    if (VoxelShapes.c(voxelshape, voxelshape3, OperatorBoolean.AND)) {
++                                        if (!predicate.test(voxelshape3)) {
++                                            return false;
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        return true;
++    }
++
++    /* Concrete end */
++
+     default Stream<VoxelShape> b(@Nullable final Entity entity, AxisAlignedBB axisalignedbb) {
+         int i = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
+         int j = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 3a08e7e3ca4c16cf70802e27471d2af2d8c0b957..932adbb7f33f094ca9dbcc2def9bd9a1d524d05a 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -1163,6 +1163,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+         long remaining = (TICK_TIME - (endTime - lastTick)) - catchupTime;
+         new com.destroystokyo.paper.event.server.ServerTickEndEvent(this.ticks, ((double)(endTime - lastTick) / 1000000D), remaining).callEvent();
+         // Paper end
++        ca.spottedleaf.concrete.util.pool.CachedLists.reset();
+         co.aikar.timings.TimingsManager.FULL_SERVER_TICK.stopTiming(); // Paper
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/VoxelShape.java b/src/main/java/net/minecraft/server/VoxelShape.java
+index 092f02cc2fe3f3df1a38b33c3db8c934c8db0a5a..34a7b87eb96fe96f71bf0d595083c61c6f22544b 100644
+--- a/src/main/java/net/minecraft/server/VoxelShape.java
++++ b/src/main/java/net/minecraft/server/VoxelShape.java
+@@ -145,7 +145,7 @@ public abstract class VoxelShape {
+         return this.a(EnumAxisCycle.a(enumdirection_enumaxis, EnumDirection.EnumAxis.X), axisalignedbb, d0);
+     }
+ 
+-    protected double a(EnumAxisCycle enumaxiscycle, AxisAlignedBB axisalignedbb, double d0) {
++    protected double a(EnumAxisCycle enumaxiscycle, AxisAlignedBB axisalignedbb, double d0) {//TODO optimize
+         if (this.isEmpty()) {
+             return d0;
+         } else if (Math.abs(d0) < 1.0E-7D) {
+diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
+index c8bd4b703464ab9d25b7de4b5f9851c717a65a22..535af5a1e7701335cb7339e3d3172326856b4f9c 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapes.java
++++ b/src/main/java/net/minecraft/server/VoxelShapes.java
+@@ -35,6 +35,20 @@ public final class VoxelShapes {
+ 
+     public static final VoxelShape of(AxisAlignedBB axisAlignedbb) { return VoxelShapes.a(axisAlignedbb); } // Paper - OBFHELPER
+     public static VoxelShape a(AxisAlignedBB axisalignedbb) {
++        /* Concrete start - cache voxel shape for BB */
++        boolean mainThread = MinecraftServer.getServer() != null && MinecraftServer.getServer().serverThread == Thread.currentThread();
++        if (axisalignedbb.cachedVoxelShape != null && mainThread) {
++            return axisalignedbb.cachedVoxelShape;
++        }
++        VoxelShape ret = of_moved(axisalignedbb);
++        if (mainThread) {
++            axisalignedbb.cachedVoxelShape = ret;
++        }
++        return ret;
++    }
++
++    private static VoxelShape of_moved(AxisAlignedBB axisalignedbb) {
++        /* Concrete end - cache voxel shape for BB */
+         int i = a(axisalignedbb.minX, axisalignedbb.maxX);
+         int j = a(axisalignedbb.minY, axisalignedbb.maxY);
+         int k = a(axisalignedbb.minZ, axisalignedbb.maxZ);
+@@ -184,11 +198,32 @@ public final class VoxelShapes {
+         return d0;
+     }
+ 
++    /* Concrete start - optimize Entity#move */
++    public static double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb,
++                           org.bukkit.craftbukkit.util.UnsafeList<VoxelShape> stream, double d0) {
++        Object[] data = stream.getRawDataArray();
++        for (int i = 0, size = stream.size(); i < size; ++i) {
++            if (Math.abs(d0) < 1.0E-7D) {
++                return 0.0;
++            }
++            VoxelShape shape = (VoxelShape)data[i];
++            d0 = shape.a(enumdirection_enumaxis, axisalignedbb, d0);
++        }
++        return d0;
++    }
++    /* Concrete start - optimize Entity#move */
++
++    /* Concrete start - optimize Entity#move */
+     public static double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb, IWorldReader iworldreader, double d0, VoxelShapeCollision voxelshapecollision, Stream<VoxelShape> stream) {
+-        return a(axisalignedbb, iworldreader, d0, voxelshapecollision, EnumAxisCycle.a(enumdirection_enumaxis, EnumDirection.EnumAxis.Z), stream);
++        return a(axisalignedbb, iworldreader, d0, voxelshapecollision, EnumAxisCycle.a(enumdirection_enumaxis, EnumDirection.EnumAxis.Z), stream.iterator());
+     }
+ 
+-    private static double a(AxisAlignedBB axisalignedbb, IWorldReader iworldreader, double d0, VoxelShapeCollision voxelshapecollision, EnumAxisCycle enumaxiscycle, Stream<VoxelShape> stream) {
++    public static double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb, IWorldReader iworldreader, double d0, VoxelShapeCollision voxelshapecollision, Iterable<VoxelShape> stream) {
++        return a(axisalignedbb, iworldreader, d0, voxelshapecollision, EnumAxisCycle.a(enumdirection_enumaxis, EnumDirection.EnumAxis.Z), stream.iterator());
++    }
++
++    private static double a(AxisAlignedBB axisalignedbb, IWorldReader iworldreader, double d0, VoxelShapeCollision voxelshapecollision, EnumAxisCycle enumaxiscycle, Iterator<VoxelShape> stream) { // TODO optimize
++        /* Concrete end - optimize Entity#move */
+         if (axisalignedbb.b() >= 1.0E-6D && axisalignedbb.c() >= 1.0E-6D && axisalignedbb.d() >= 1.0E-6D) {
+             if (Math.abs(d0) < 1.0E-7D) {
+                 return 0.0D;
+@@ -254,12 +289,15 @@ public final class VoxelShapes {
+                     l1 += k1;
+                 }
+ 
+-                double[] adouble = new double[]{d0};
++                /* Concrete start - optimize Entity#move */
++                double adouble = d0;
++                while (stream.hasNext()) {
++                    VoxelShape voxelshape = stream.next();
++                    adouble = voxelshape.a(enumdirection_enumaxis2, axisalignedbb, adouble);
++                }
+ 
+-                stream.forEach((voxelshape) -> {
+-                    adouble[0] = voxelshape.a(enumdirection_enumaxis2, axisalignedbb, adouble[0]);
+-                });
+-                return adouble[0];
++                return adouble;
++                /* Concrete end - optimize Entity#move */
+             }
+         } else {
+             return d0;
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 6ee9908933620db0fcc20d4fbe2103b337e59fa2..6f2b3eb643372ea2e9191c652ce2efc31ccdea61 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -1255,7 +1255,12 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+ 
+     @Override
+     public List<Entity> getEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Predicate<? super Entity> predicate) {
+-        List<Entity> list = Lists.newArrayList();
++        /* Concrete start - Add ret param */
++        return this.getEntities(entity, axisalignedbb, predicate, (List)null);
++    }
++    public List<Entity> getEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Predicate<? super Entity> predicate, @Nullable List<Entity> ret) {
++        List<Entity> list = ret == null ? Lists.newArrayList() : ret;
++        /* Concrete end - Add ret param */
+         int i = MathHelper.floor((axisalignedbb.minX - 2.0D) / 16.0D);
+         int j = MathHelper.floor((axisalignedbb.maxX + 2.0D) / 16.0D);
+         int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
+diff --git a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+index b3b0974365cf338a4b5a82a4eb5d257acf62d309..a273a2828ee355a59086785291043d3dd4daede1 100644
+--- a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
++++ b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+@@ -119,6 +119,32 @@ public class UnsafeList<E> extends AbstractList<E> implements List<E>, RandomAcc
+         return indexOf(o) >= 0;
+     }
+ 
++    /* Concrete start */
++    int maxSize;
++    public void setSize(int size) {
++        if (maxSize < this.size) {
++            maxSize = this.size;
++        }
++        this.size = size;
++    }
++
++    public void completeReset() {
++        if (this.data != null) {
++            Arrays.fill(this.data, 0, Math.max(this.size, this.maxSize), null);
++        }
++        this.size = 0;
++        this.maxSize = 0;
++        if (this.iterPool != null) {
++            for (Iterator temp : this.iterPool) {
++                if (temp == null) {
++                    continue;
++                }
++                ((Itr)temp).valid = false;
++            }
++        }
++    }
++    /* Concrete end */
++
+     @Override
+     public void clear() {
+         // Create new array to reset memory usage to initial capacity

@@ -4,6 +4,76 @@ Date: Sat, 5 Jan 2019 11:48:09 -0800
 Subject: [PATCH] Use ConcurrentUtil
 
 
+diff --git a/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java b/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java
+index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..fffb2d4f616a74c4d52d3989b3c3989fb8756675 100644
+--- a/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java
++++ b/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java
+@@ -1,5 +1,6 @@
+ package com.destroystokyo.paper.io;
+ 
++import ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue; /* Concrete - use concurrentutil */
+ import java.util.concurrent.ConcurrentLinkedQueue;
+ import java.util.concurrent.atomic.AtomicBoolean;
+ import java.util.concurrent.atomic.AtomicInteger;
+@@ -48,13 +49,13 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
+ 
+     private static final int TOTAL_PRIORITIES     = 6;
+ 
+-    final ConcurrentLinkedQueue<T>[] queues = (ConcurrentLinkedQueue<T>[])new ConcurrentLinkedQueue[TOTAL_PRIORITIES];
++    final MultiThreadedQueue<T>[] queues = new MultiThreadedQueue[TOTAL_PRIORITIES]; /* Concrete - use concurrentutil */
+ 
+     private final AtomicBoolean shutdown = new AtomicBoolean();
+ 
+     {
+         for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
+-            this.queues[i] = new ConcurrentLinkedQueue<>();
++            this.queues[i] = new MultiThreadedQueue<>(); /* Concrete - use concurrentutil */
+         }
+     }
+ 
+@@ -73,9 +74,8 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
+      */
+     public void add(final T task) throws IllegalStateException {
+         task.onQueue(this);
+-        this.queues[task.getPriority()].add(task);
+-        if (this.shutdown.get()) {
+-            // note: we're not actually sure at this point if our task will go through
++        if (!this.queues[task.getPriority()].add(task)) { /* Concrete - use concurrentutil */
++            // note: we're not actually sure at this point if our task will go through /* Concrete - we are certain now */
+             throw new IllegalStateException("Queue has shutdown, refusing to execute task " + IOUtil.genericToString(task));
+         }
+     }
+@@ -86,7 +86,7 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
+     public T poll() {
+         T task;
+         for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
+-            final ConcurrentLinkedQueue<T> queue = this.queues[i];
++            final MultiThreadedQueue<T> queue = this.queues[i]; /* Concrete - use concurrentutil */
+ 
+             while ((task = queue.poll()) != null) {
+                 final int prevPriority = task.tryComplete(i);
+@@ -109,7 +109,7 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
+      */
+     public boolean hasTasks() {
+         for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
+-            final ConcurrentLinkedQueue<T> queue = this.queues[i];
++            final MultiThreadedQueue<T> queue = this.queues[i]; /* Concrete - use concurrentutil */
+ 
+             if (queue.peek() != null) {
+                 return true;
+@@ -130,6 +130,12 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
+      * @return {@code true} if the queue was shutdown, {@code false} if it has shut down already
+      */
+     public boolean shutdown() {
++        /* Concrete start - use concurrentutil */
++        for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
++            final MultiThreadedQueue<T> queue = this.queues[i];
++            queue.preventAdds();
++        }
++        /* Concrete end - use concurrentutil */
+         return this.shutdown.getAndSet(false);
+     }
+ 
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
 index 6c27fdbaf155fa2795a1d3a4c63fe06aad3bc046..155e33a06566e10361a5bec17463cf53f1ebc0a3 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
@@ -67,6 +137,19 @@ index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..0490675ac9f01097f428fde5e4d457bc
      public Channel channel;
      public SocketAddress socketAddress; public void setSpoofedRemoteAddress(SocketAddress address) { this.socketAddress = address; } // Paper - OBFHELPER
      // Spigot Start
+diff --git a/src/main/java/net/minecraft/server/ThreadedMailbox.java b/src/main/java/net/minecraft/server/ThreadedMailbox.java
+index 464391c0cdc81e29804c559f5d9246bdc327cc4e..9bb222952473613c3d0e8b09c6bf142649d337ef 100644
+--- a/src/main/java/net/minecraft/server/ThreadedMailbox.java
++++ b/src/main/java/net/minecraft/server/ThreadedMailbox.java
+@@ -17,7 +17,7 @@ public class ThreadedMailbox<T> implements Mailbox<T>, AutoCloseable, Runnable {
+     private final String e;
+ 
+     public static ThreadedMailbox<Runnable> a(Executor executor, String s) {
+-        return new ThreadedMailbox<>(new PairedQueue.c<>(new ConcurrentLinkedQueue()), executor, s);
++        return new ThreadedMailbox<>(new PairedQueue.c<>(new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>()), executor, s); /* Concrete - use concurrentutil */
+     }
+ 
+     public ThreadedMailbox(PairedQueue<? super T, ? extends Runnable> pairedqueue, Executor executor, String s) {
 diff --git a/src/main/java/net/minecraft/server/UserCache.java b/src/main/java/net/minecraft/server/UserCache.java
 index 1d4bf64b1bf0a852dd881a4248c2fcca52ea74a6..b39dbb1a9049e67215f2984d23b5d2e4bd6c0b9c 100644
 --- a/src/main/java/net/minecraft/server/UserCache.java
