@@ -118,22 +118,10 @@ index 0000000000000000000000000000000000000000..ebdbac75ceb16d4bda9ad3c26997b0d0
 +
 +}
 diff --git a/src/main/java/net/minecraft/server/AxisAlignedBB.java b/src/main/java/net/minecraft/server/AxisAlignedBB.java
-index c950139c0f819e87ded97dc8fb915b6755e51e71..067098255ccef0ba1e8ec127f87d65f5b17c2251 100644
+index c950139c0f819e87ded97dc8fb915b6755e51e71..d5ed9a9ee051c784b262d3cdcc1ecb3075ab3008 100644
 --- a/src/main/java/net/minecraft/server/AxisAlignedBB.java
 +++ b/src/main/java/net/minecraft/server/AxisAlignedBB.java
-@@ -13,6 +13,11 @@ public class AxisAlignedBB {
-     public final double maxY;
-     public final double maxZ;
- 
-+    /* Concrete start */
-+    // cache computed VoxelShape
-+    public VoxelShape cachedVoxelShape;
-+    /* Concrete end */
-+
-     public AxisAlignedBB(double d0, double d1, double d2, double d3, double d4, double d5) {
-         this.minX = Math.min(d0, d3);
-         this.minY = Math.min(d1, d4);
-@@ -193,6 +198,7 @@ public class AxisAlignedBB {
+@@ -193,6 +193,7 @@ public class AxisAlignedBB {
          return this.d(vec3d.x, vec3d.y, vec3d.z);
      }
  
@@ -862,31 +850,10 @@ index 092f02cc2fe3f3df1a38b33c3db8c934c8db0a5a..34a7b87eb96fe96f71bf0d595083c61c
              return d0;
          } else if (Math.abs(d0) < 1.0E-7D) {
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
-index c8bd4b703464ab9d25b7de4b5f9851c717a65a22..535af5a1e7701335cb7339e3d3172326856b4f9c 100644
+index c8bd4b703464ab9d25b7de4b5f9851c717a65a22..0336399b4f69434c950eaa20cd83757f88a996b0 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java
 +++ b/src/main/java/net/minecraft/server/VoxelShapes.java
-@@ -35,6 +35,20 @@ public final class VoxelShapes {
- 
-     public static final VoxelShape of(AxisAlignedBB axisAlignedbb) { return VoxelShapes.a(axisAlignedbb); } // Paper - OBFHELPER
-     public static VoxelShape a(AxisAlignedBB axisalignedbb) {
-+        /* Concrete start - cache voxel shape for BB */
-+        boolean mainThread = MinecraftServer.getServer() != null && MinecraftServer.getServer().serverThread == Thread.currentThread();
-+        if (axisalignedbb.cachedVoxelShape != null && mainThread) {
-+            return axisalignedbb.cachedVoxelShape;
-+        }
-+        VoxelShape ret = of_moved(axisalignedbb);
-+        if (mainThread) {
-+            axisalignedbb.cachedVoxelShape = ret;
-+        }
-+        return ret;
-+    }
-+
-+    private static VoxelShape of_moved(AxisAlignedBB axisalignedbb) {
-+        /* Concrete end - cache voxel shape for BB */
-         int i = a(axisalignedbb.minX, axisalignedbb.maxX);
-         int j = a(axisalignedbb.minY, axisalignedbb.maxY);
-         int k = a(axisalignedbb.minZ, axisalignedbb.maxZ);
-@@ -184,11 +198,32 @@ public final class VoxelShapes {
+@@ -184,11 +184,32 @@ public final class VoxelShapes {
          return d0;
      }
  
@@ -909,19 +876,19 @@ index c8bd4b703464ab9d25b7de4b5f9851c717a65a22..535af5a1e7701335cb7339e3d3172326
      public static double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb, IWorldReader iworldreader, double d0, VoxelShapeCollision voxelshapecollision, Stream<VoxelShape> stream) {
 -        return a(axisalignedbb, iworldreader, d0, voxelshapecollision, EnumAxisCycle.a(enumdirection_enumaxis, EnumDirection.EnumAxis.Z), stream);
 +        return a(axisalignedbb, iworldreader, d0, voxelshapecollision, EnumAxisCycle.a(enumdirection_enumaxis, EnumDirection.EnumAxis.Z), stream.iterator());
++    }
++
++    public static double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb, IWorldReader iworldreader, double d0, VoxelShapeCollision voxelshapecollision, Iterable<VoxelShape> stream) {
++        return a(axisalignedbb, iworldreader, d0, voxelshapecollision, EnumAxisCycle.a(enumdirection_enumaxis, EnumDirection.EnumAxis.Z), stream.iterator());
      }
  
 -    private static double a(AxisAlignedBB axisalignedbb, IWorldReader iworldreader, double d0, VoxelShapeCollision voxelshapecollision, EnumAxisCycle enumaxiscycle, Stream<VoxelShape> stream) {
-+    public static double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb, IWorldReader iworldreader, double d0, VoxelShapeCollision voxelshapecollision, Iterable<VoxelShape> stream) {
-+        return a(axisalignedbb, iworldreader, d0, voxelshapecollision, EnumAxisCycle.a(enumdirection_enumaxis, EnumDirection.EnumAxis.Z), stream.iterator());
-+    }
-+
 +    private static double a(AxisAlignedBB axisalignedbb, IWorldReader iworldreader, double d0, VoxelShapeCollision voxelshapecollision, EnumAxisCycle enumaxiscycle, Iterator<VoxelShape> stream) { // TODO optimize
 +        /* Concrete end - optimize Entity#move */
          if (axisalignedbb.b() >= 1.0E-6D && axisalignedbb.c() >= 1.0E-6D && axisalignedbb.d() >= 1.0E-6D) {
              if (Math.abs(d0) < 1.0E-7D) {
                  return 0.0D;
-@@ -254,12 +289,15 @@ public final class VoxelShapes {
+@@ -254,12 +275,15 @@ public final class VoxelShapes {
                      l1 += k1;
                  }
  
