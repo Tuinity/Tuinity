@@ -167,7 +167,7 @@ index c8c74f2b3ef67947ca797deef30077c034251138..31a0769a27e37dfd8f6eacedd2c19f05
                      double deltaX = this.locX - player.locX;
                      double deltaZ = this.locZ - player.locZ;
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index ea0767b3361336a8af7791363621732fa194babd..852b731a57a383f733cba67e78ba19aad820aebf 100644
+index 34d96f761aefcb2c33b29abad9a2a2c63133f999..f33263bb1d9ff5f8950183a06afa32cfd90fc0c0 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
 @@ -102,6 +102,11 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
@@ -199,10 +199,10 @@ index 8b3052b1132ec728e1b266f3aede6bbd922ce617..de34aa14df2849dc85e3fc5e2896fd91
                      double deltaX = this.locX - player.locX;
                      double deltaZ = this.locZ - player.locZ;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index f8d241426ca9ef6239ca703c71ce4bf1061e940f..b647b4c2a611614404f085295d9c5d9aaffc5297 100644
+index f8d241426ca9ef6239ca703c71ce4bf1061e940f..30809c4666502665115abacf135e09833adfbdbb 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -265,6 +265,38 @@ public class PlayerChunk {
+@@ -265,6 +265,50 @@ public class PlayerChunk {
      }
  
      private void a(Packet<?> packet, boolean flag) {
@@ -212,13 +212,19 @@ index f8d241426ca9ef6239ca703c71ce4bf1061e940f..b647b4c2a611614404f085295d9c5d9a
 +        if (this.players instanceof PlayerChunkMap) {
 +            PlayerChunkMap chunkMap = ((PlayerChunkMap)this.players);
 +            ca.spottedleaf.concrete.util.map.PlayerAreaMap viewDistanceMap = ((PlayerChunkMap)this.players).playerViewDistanceBroadcastMap;
-+            Iterable<EntityPlayer> players = viewDistanceMap.getObjectsInRange(this.location);
++            ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = viewDistanceMap.getObjectsInRange(this.location);
 +            if (players == null) {
 +                return;
 +            }
 +
 +            if (flag) { // flag -> border only
-+                for (EntityPlayer player : players) {
++                Object[] backingSet = players.getBackingSet();
++                for (int i = 0, len = backingSet.length; i < len; ++i) {
++                    Object temp = backingSet[i];
++                    if (!(temp instanceof EntityPlayer)) {
++                        continue;
++                    }
++                    EntityPlayer player = (EntityPlayer)temp;
 +                    int viewDistance = viewDistanceMap.getLastViewDistance(player);
 +                    long lastPosition = viewDistanceMap.getLastCoordinate(player);
 +
@@ -230,7 +236,13 @@ index f8d241426ca9ef6239ca703c71ce4bf1061e940f..b647b4c2a611614404f085295d9c5d9a
 +                    }
 +                }
 +            } else {
-+                for (EntityPlayer player : players) {
++                Object[] backingSet = players.getBackingSet();
++                for (int i = 0, len = backingSet.length; i < len; ++i) {
++                    Object temp = backingSet[i];
++                    if (!(temp instanceof EntityPlayer)) {
++                        continue;
++                    }
++                    EntityPlayer player = (EntityPlayer)temp;
 +                    player.playerConnection.sendPacket(packet);
 +                }
 +            }
@@ -242,7 +254,7 @@ index f8d241426ca9ef6239ca703c71ce4bf1061e940f..b647b4c2a611614404f085295d9c5d9a
              entityplayer.playerConnection.sendPacket(packet);
          });
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810567c093c 100644
+index 07256c6497a6479ce988a6800de7045215338481..caa9d451e707e4e07061c0fa273174c6c8ca20dc 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -78,7 +78,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -355,7 +367,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -879,9 +944,16 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -885,9 +950,22 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                  this.v.getAndIncrement();
                  Packet<?>[] apacket = new Packet[2];
  
@@ -365,9 +377,15 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
 +                /* Concrete start - per player view distance */
 +                // there can be potential desync with player's last mapped section and the view distance map, so use the
 +                // view distance map here.
-+                Iterable<EntityPlayer> players = PlayerChunkMap.this.playerViewDistanceBroadcastMap.getObjectsInRange(chunkcoordintpair);
++                ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = PlayerChunkMap.this.playerViewDistanceBroadcastMap.getObjectsInRange(chunkcoordintpair);
 +                if (players != null) {
-+                    for (EntityPlayer player : players) {
++                    Object[] backingSet = players.getBackingSet();
++                    for (int i = 0, len = backingSet.length; i < len; ++i) {
++                        Object temp = backingSet[i];
++                        if (!(temp instanceof EntityPlayer)) {
++                            continue;
++                        }
++                        EntityPlayer player = (EntityPlayer)temp;
 +                        this.a(player, apacket, chunk);
 +                    }
 +                }
@@ -375,7 +393,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
                  return Either.left(chunk);
              });
          }, (runnable) -> {
-@@ -984,28 +1056,22 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -990,28 +1068,22 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      protected void setViewDistance(int i) {
@@ -414,7 +432,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
          }
  
      }
-@@ -1281,6 +1347,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1287,6 +1359,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          });
      }
  
@@ -422,7 +440,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
      private boolean b(EntityPlayer entityplayer) {
          return entityplayer.isSpectator() && !this.world.getGameRules().getBoolean(GameRules.SPECTATORS_GENERATE_CHUNKS);
      }
-@@ -1306,15 +1373,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1312,15 +1385,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              }
          }
  
@@ -442,7 +460,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
  
      }
  
-@@ -1327,7 +1390,6 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1333,7 +1402,6 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public void movePlayer(EntityPlayer entityplayer) {
@@ -450,7 +468,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
          while (objectiterator.hasNext()) {
-@@ -1378,66 +1440,42 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1384,66 +1452,53 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          int k1;
          int l1;
  
@@ -460,33 +478,39 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
 -            int i2 = Math.max(i, i1) + this.viewDistance;
 -            int j2 = Math.max(j, j1) + this.viewDistance;
 +        this.updateDistanceMaps(entityplayer); /* Concrete - this is replaced by the calllbacks in the view distance map */
-+
-+    }
-+
-+    @Override
-+    public Stream<EntityPlayer> a(ChunkCoordIntPair chunkcoordintpair, boolean flag) {
-+        /* Concrete start - per player view distance */
-+        // there can be potential desync with player's last mapped section and the view distance map, so use the
-+        // view distance map here.
-+        Iterable<EntityPlayer> inRange = this.playerViewDistanceBroadcastMap.getObjectsInRange(chunkcoordintpair);
-+
-+        if (inRange == null) {
-+            return Stream.empty();
-+        }
-+        // all current cases are inlined so we wont hit this code, it's just in case plugins or future updates use it
-+        List<EntityPlayer> players = new ArrayList<>();
  
 -            Packet[] cachedPackets = new Packet[2]; /* Concrete */
-+        if (flag) { // flag -> border only
-+            for (EntityPlayer player : inRange) {
-+                int viewDistance = this.playerViewDistanceBroadcastMap.getLastViewDistance(player);
-+                long lastPosition = this.playerViewDistanceBroadcastMap.getLastCoordinate(player);
++    }
  
 -            for (int k2 = k1; k2 <= i2; ++k2) {
 -                for (int l2 = l1; l2 <= j2; ++l2) {
 -                    /* Concrete start - remove ChunkCoordIntPair allocation */
 -                    boolean flag3 = getSquareRadiusDistance(k2, l2, i1, j1) <= this.viewDistance;
 -                    boolean flag4 = getSquareRadiusDistance(k2, l2, i, j) <= this.viewDistance;
++    @Override
++    public Stream<EntityPlayer> a(ChunkCoordIntPair chunkcoordintpair, boolean flag) {
++        /* Concrete start - per player view distance */
++        // there can be potential desync with player's last mapped section and the view distance map, so use the
++        // view distance map here.
++        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> inRange = this.playerViewDistanceBroadcastMap.getObjectsInRange(chunkcoordintpair);
++
++        if (inRange == null) {
++            return Stream.empty();
++        }
++        // all current cases are inlined so we wont hit this code, it's just in case plugins or future updates use it
++        List<EntityPlayer> players = new ArrayList<>();
++        Object[] backingSet = inRange.getBackingSet();
++
++        if (flag) { // flag -> border only
++            for (int i = 0, len = backingSet.length; i < len; ++i) {
++                Object temp = backingSet[i];
++                if (!(temp instanceof EntityPlayer)) {
++                    continue;
++                }
++                EntityPlayer player = (EntityPlayer)temp;
++                int viewDistance = this.playerViewDistanceBroadcastMap.getLastViewDistance(player);
++                long lastPosition = this.playerViewDistanceBroadcastMap.getLastCoordinate(player);
++
 +                int distX = Math.abs(ca.spottedleaf.concrete.util.Util.getCoordinateX(lastPosition) - chunkcoordintpair.x);
 +                int distZ = Math.abs(ca.spottedleaf.concrete.util.Util.getCoordinateZ(lastPosition) - chunkcoordintpair.z);
  
@@ -525,8 +549,12 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
 -                    this.sendChunk(entityplayer, k1, l1, cachedPackets, false, true);
 -                    java.util.Arrays.fill(cachedPackets, null);
 -                    /* Concrete end */
--                }
-+            for (EntityPlayer player : inRange) {
++            for (int i = 0, len = backingSet.length; i < len; ++i) {
++                Object temp = backingSet[i];
++                if (!(temp instanceof EntityPlayer)) {
++                    continue;
+                 }
++                EntityPlayer player = (EntityPlayer)temp;
 +                players.add(player);
              }
          }
@@ -545,7 +573,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
      }
  
      protected void addEntity(Entity entity) {
-@@ -1690,7 +1728,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1696,7 +1751,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                  double vec3d_dy = entityplayer.locY - this.tracker.locY;
                  double vec3d_dz = entityplayer.locZ - this.tracker.locZ;
                  /* Concrete end - remove allocation of Vec3d here */
@@ -554,7 +582,7 @@ index 2049f5be35ac556747789177736be8b444bb66af..70b50648d729ba5005eefe810d0ae810
                  boolean flag = vec3d_dx >= (double) (-i) && vec3d_dx <= (double) i && vec3d_dz >= (double) (-i) && vec3d_dz <= (double) i && this.tracker.a(entityplayer); /* Concrete start - remove allocation of Vec3d here */
  
                  if (flag) {
-@@ -1701,7 +1739,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1707,7 +1762,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                          PlayerChunk playerchunk = PlayerChunkMap.this.getVisibleChunk(chunkcoordintpair.pair());
  
                          if (playerchunk != null && playerchunk.getChunk() != null) {

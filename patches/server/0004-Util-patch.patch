@@ -894,15 +894,15 @@ index 0000000000000000000000000000000000000000..194764f3d87767b29eb58d579b149aa5
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/map/PooledLinkedHashSets.java b/src/main/java/ca/spottedleaf/concrete/util/map/PooledLinkedHashSets.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..fd270fec046a5215ff3ef8a8c4bff1b3df5a2c8b
+index 0000000000000000000000000000000000000000..b929f6d9b4d39b9b46e324be3a6f09eae5f33372
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/map/PooledLinkedHashSets.java
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,287 @@
 +package ca.spottedleaf.concrete.util.map;
++
 +import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
++import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 +import java.lang.ref.WeakReference;
-+import java.util.Iterator;
 +
 +/** @author Spottedleaf */
 +public class PooledLinkedHashSets<E> {
@@ -1032,11 +1032,35 @@ index 0000000000000000000000000000000000000000..fd270fec046a5215ff3ef8a8c4bff1b3
 +        return ret;
 +    }
 +
-+    public static final class PooledObjectLinkedOpenHashSet<E> implements Iterable<E> {
++    static final class RawSetObjectLinkedOpenHashSet<E> extends ObjectOpenHashSet<E> {
++
++        public RawSetObjectLinkedOpenHashSet() {
++            super();
++        }
++
++        public RawSetObjectLinkedOpenHashSet(final int capacity) {
++            super(capacity);
++        }
++
++        public RawSetObjectLinkedOpenHashSet(final int capacity, final float loadFactor) {
++            super(capacity, loadFactor);
++        }
++
++        @Override
++        public RawSetObjectLinkedOpenHashSet<E> clone() {
++            return (RawSetObjectLinkedOpenHashSet<E>)super.clone();
++        }
++
++        public E[] getRawSet() {
++            return this.key;
++        }
++    }
++
++    public static final class PooledObjectLinkedOpenHashSet<E> {
 +
 +        private static final WeakReference NULL_REFERENCE = new WeakReference<>(null);
 +
-+        final ObjectLinkedOpenHashSet<E> set;
++        final RawSetObjectLinkedOpenHashSet<E> set;
 +        int referenceCount; // -1 if special
 +        int hash; // optimize hashcode
 +
@@ -1048,12 +1072,12 @@ index 0000000000000000000000000000000000000000..fd270fec046a5215ff3ef8a8c4bff1b3
 +        WeakReference<E> lastRemoveObject = NULL_REFERENCE;
 +        WeakReference<PooledObjectLinkedOpenHashSet<E>> lastRemoveMap = NULL_REFERENCE;
 +
-+        public PooledObjectLinkedOpenHashSet() {
-+            this.set = new ObjectLinkedOpenHashSet<>(2, 0.8f);
++        public PooledObjectLinkedOpenHashSet(final PooledLinkedHashSets<E> pooledSets) {
++            this.set = new RawSetObjectLinkedOpenHashSet<>(2, 0.8f);
 +        }
 +
 +        public PooledObjectLinkedOpenHashSet(final E single) {
-+            this();
++            this((PooledLinkedHashSets<E>)null);
 +            this.referenceCount = -1;
 +            this.add(single);
 +        }
@@ -1125,9 +1149,8 @@ index 0000000000000000000000000000000000000000..fd270fec046a5215ff3ef8a8c4bff1b3
 +            return this.set.contains(element);
 +        }
 +
-+        @Override
-+        public Iterator<E> iterator() {
-+            return this.set.iterator();
++        public E[] getBackingSet() {
++            return this.set.getRawSet();
 +        }
 +
 +        public int size() {
@@ -1328,7 +1351,7 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..77631a6090fc41fff51e233143d81237
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..9f175362f60ac8fdf6aa1e6463846381f21f0dec 100644
+index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..a07885afd0c9f54b18d658751e5897cadf9abcd9 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -26,7 +26,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -1535,15 +1558,21 @@ index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..9f175362f60ac8fdf6aa1e6463846381
                  // re-set mob counts
                  for (EntityPlayer player : this.world.players) {
                      Arrays.fill(player.mobCounts, 0);
-@@ -641,9 +711,17 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -641,9 +711,23 @@ public class ChunkProviderServer extends IChunkProvider {
  
                                      if (this.world.paperConfig.perPlayerMobSpawns) {
                                          int minDiff = Integer.MAX_VALUE;
 -                                        for (EntityPlayer entityplayer : this.playerChunkMap.playerMobDistanceMap.getPlayersInRange(chunk.getPos())) {
 +                                        /* Concrete start - use view distance map */
-+                                        java.lang.Iterable<EntityPlayer> players = this.playerChunkMap.playerViewDistanceMap.getObjectsInRange(chunk.getPos());
++                                        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = this.playerChunkMap.playerViewDistanceMap.getObjectsInRange(chunk.getPos());
 +                                        if (players != null) {
-+                                        for (EntityPlayer entityplayer : players) {
++                                            Object[] backingSet = players.getBackingSet();
++                                            for (int index = 0, len = backingSet.length; index < len; ++index) {
++                                                Object temp = backingSet[index];
++                                                if (!(temp instanceof EntityPlayer)) {
++                                                    continue;
++                                                }
++                                                EntityPlayer entityplayer = (EntityPlayer)temp;
 +                                            if (entityplayer.isSpectator() || !entityplayer.affectsSpawning) {
 +                                                continue;
 +                                            }
@@ -1608,7 +1637,7 @@ index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..f8d241426ca9ef6239ca703c71ce4bf1
      public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getStatusFutureUnchecked(ChunkStatus chunkstatus) {
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(chunkstatus.c());
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 59e74900f8050833f07f8840779d33c87d230ee7..cecd94a7bdf99b5e449601f3a0b704ac6e4e658d 100644
+index 59e74900f8050833f07f8840779d33c87d230ee7..73f480ab310232e62a7ddad74f4b062d37c9ff90 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -78,7 +78,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -1666,15 +1695,21 @@ index 59e74900f8050833f07f8840779d33c87d230ee7..cecd94a7bdf99b5e449601f3a0b704ac
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -147,9 +177,17 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -147,9 +177,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          int chunkZ = (int)Math.floor(entity.locZ) >> 4;
          int index = entity.getEntityType().getEnumCreatureType().ordinal();
  
 -        for (EntityPlayer player : this.playerMobDistanceMap.getPlayersInRange(chunkX, chunkZ)) {
 +        /* Concrete start - use view distance map */
-+        Iterable<EntityPlayer> players = this.playerViewDistanceMap.getObjectsInRange(chunkX, chunkZ);
++        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = this.playerViewDistanceMap.getObjectsInRange(chunkX, chunkZ);
 +        if (players != null) {
-+        for (EntityPlayer player : players) {
++            Object[] backingSet = players.getBackingSet();
++        for (int i = 0, len = backingSet.length; i < len; ++i) {
++            Object temp = backingSet[i];
++            if (!(temp instanceof EntityPlayer)) {
++                continue;
++            }
++            EntityPlayer player = (EntityPlayer)temp;
 +            if (player.isSpectator() || !player.affectsSpawning) {
 +                continue;
 +            }
@@ -1685,7 +1720,7 @@ index 59e74900f8050833f07f8840779d33c87d230ee7..cecd94a7bdf99b5e449601f3a0b704ac
      }
  
      public int getMobCountNear(EntityPlayer entityPlayer, EnumCreatureType enumCreatureType) {
-@@ -1270,6 +1308,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1270,6 +1314,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public void movePlayer(EntityPlayer entityplayer) {
