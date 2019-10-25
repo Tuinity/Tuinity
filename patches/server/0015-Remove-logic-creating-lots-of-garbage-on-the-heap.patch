@@ -22,8 +22,8 @@ an iterator. removeIf is invoked heavily in ChunkMapDistance (on every
 tick). Replace with an impl that caches the iterator
 
 - Some lighting stuff allocating AtomicInteger for passing a second
-return value from a function. use int[] instead since the JIT does
-not choke on that apparently (confirmed via memory profiling)
+return value from a function. use a field since the JIT is not stack
+allocating the variable
 
 - Randomly ticking a block would allocate a BlockPosition, replace
 with mutable pos
@@ -40,6 +40,125 @@ creating lots of garbage entries.
 
 - Vec3d allocation by tracker for checking a simple delta
 
+- Iterator usage in hot areas
+
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedAbstractDoubleList.java b/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedAbstractDoubleList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..54b1878ccec21be399af4b89fff10ae94c03ad88
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedAbstractDoubleList.java
+@@ -0,0 +1,39 @@
++package ca.spottedleaf.concrete.util.fastutil;
++
++import it.unimi.dsi.fastutil.doubles.AbstractDoubleList;
++import it.unimi.dsi.fastutil.doubles.DoubleList;
++
++import java.util.List;
++
++public abstract class ExtendedAbstractDoubleList extends AbstractDoubleList {
++
++    @Override
++    public boolean equals(final Object other) {
++        if (other == this) {
++            return true;
++        }
++        if (!(other instanceof DoubleList)) {
++            if (other instanceof List) {
++                return super.equals(other);
++            }
++            return false;
++        }
++
++        final DoubleList otherList = (DoubleList)other;
++
++        final int otherSize = otherList.size();
++        final int thisSize = this.size();
++
++        if (otherSize != thisSize) {
++            return false;
++        }
++
++        for (int i = 0; i < thisSize; ++i) {
++            if (this.getDouble(i) != otherList.getDouble(i)) {
++                return false;
++            }
++        }
++
++        return true;
++    }
++}
+\ No newline at end of file
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedDoubleArrayList.java b/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedDoubleArrayList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..37a0fd2eb8473517f40877e9b784bb4a8c0e3013
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedDoubleArrayList.java
+@@ -0,0 +1,65 @@
++package ca.spottedleaf.concrete.util.fastutil;
++
++import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
++import it.unimi.dsi.fastutil.doubles.DoubleList;
++
++import java.util.Arrays;
++import java.util.List;
++
++public class ExtendedDoubleArrayList extends DoubleArrayList {
++
++    public ExtendedDoubleArrayList() {
++        super();
++    }
++
++    public ExtendedDoubleArrayList(final int capacity) {
++        super(capacity);
++    }
++
++    public ExtendedDoubleArrayList(final double[] array) {
++        this(array, array.length, true);
++    }
++
++    public ExtendedDoubleArrayList(final double[] array, final int size, final boolean copy) {
++        super(copy ? array.clone() : array, false);
++        this.size = size;
++    }
++
++    public static ExtendedDoubleArrayList getList(final double[] list, final int requiredLength) {
++        if (list.length == requiredLength) {
++            return new ExtendedDoubleArrayList(list, requiredLength, false);
++        } else {
++            return new ExtendedDoubleArrayList(Arrays.copyOf(list, requiredLength), requiredLength, false);
++        }
++    }
++
++    @Override
++    public boolean equals(final Object other) {
++        if (other == this) {
++            return true;
++        }
++        if (!(other instanceof DoubleList)) {
++            if (other instanceof List) {
++                return super.equals(other);
++            }
++            return false;
++        }
++
++        final DoubleList otherList = (DoubleList)other;
++
++        final int otherSize = otherList.size();
++        final int thisSize = this.size();
++
++        if (otherSize != thisSize) {
++            return false;
++        }
++
++        for (int i = 0; i < thisSize; ++i) {
++            if (this.getDouble(i) != otherList.getDouble(i)) {
++                return false;
++            }
++        }
++
++        return true;
++    }
++}
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedObjectAVLTreeSet.java b/src/main/java/ca/spottedleaf/concrete/util/fastutil/ExtendedObjectAVLTreeSet.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..2206beca4d39d4c12c3c8d1fbd7d0549618e46cf
@@ -384,6 +503,19 @@ index a07885afd0c9f54b18d658751e5897cadf9abcd9..c7ffbb21a6feb0cb92797e6ba95d750b
              this.world.getMethodProfiler().enter("customSpawners");
              if (flag1) {
                  try (co.aikar.timings.Timing ignored = this.world.timings.miscMobSpawning.startTiming()) { // Paper - timings
+diff --git a/src/main/java/net/minecraft/server/DoubleListOffset.java b/src/main/java/net/minecraft/server/DoubleListOffset.java
+index 73657f740731b9bc606e64d0a2a3f32a842db3f5..8dec9410868cef2b1b7974c4ff161f366587ef5c 100644
+--- a/src/main/java/net/minecraft/server/DoubleListOffset.java
++++ b/src/main/java/net/minecraft/server/DoubleListOffset.java
+@@ -3,7 +3,7 @@ package net.minecraft.server;
+ import it.unimi.dsi.fastutil.doubles.AbstractDoubleList;
+ import it.unimi.dsi.fastutil.doubles.DoubleList;
+ 
+-public class DoubleListOffset extends AbstractDoubleList {
++public class DoubleListOffset extends ca.spottedleaf.concrete.util.fastutil.ExtendedAbstractDoubleList { /* Concrete - remove iterator allocation */
+ 
+     private final DoubleList a;
+     private final double b;
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
 index 5a990f0294f14ef5d7adbbcf51a53496ae6f1134..34d96f761aefcb2c33b29abad9a2a2c63133f999 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
@@ -437,7 +569,7 @@ index fbac08c379659e2f38cb790d76f5428e8c92545f..f2f6ac9da615d1d3d0e026486af33597
  
                      if (!flag4 && this.o <= 400 && !this.q && this.r == this.tracker.onGround) {
 diff --git a/src/main/java/net/minecraft/server/LightEngineBlock.java b/src/main/java/net/minecraft/server/LightEngineBlock.java
-index 7b0e24888e9f4bfbc0e65c6c59ca6f1b39d29c36..2e4644d28075be0d910c1d7a7a4c85452dcc6f0b 100644
+index 7b0e24888e9f4bfbc0e65c6c59ca6f1b39d29c36..911f5834d528c60ecbdac1d71d42f57655ae250d 100644
 --- a/src/main/java/net/minecraft/server/LightEngineBlock.java
 +++ b/src/main/java/net/minecraft/server/LightEngineBlock.java
 @@ -37,17 +37,19 @@ public final class LightEngineBlock extends LightEngineLayer<LightEngineStorageB
@@ -446,70 +578,83 @@ index 7b0e24888e9f4bfbc0e65c6c59ca6f1b39d29c36..2e4644d28075be0d910c1d7a7a4c8545
              } else {
 -                AtomicInteger atomicinteger = new AtomicInteger();
 -                IBlockData iblockdata = this.a(j, atomicinteger);
-+                /* Concrete start - apparently the JIT has a rough time stack allocating AtomicInteger... */
-+                int[] atomicinteger = new int[1];
-+                IBlockData iblockdata = this.getTypeAndLevelForType(j, atomicinteger);
-+                /* Concrete end - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                /* Concrete start - avoid allocating AtomicInteger */
++                IBlockData iblockdata = this.getTypeAndLevelForType(j, true);
++                int atomicinteger = this.lastLevel;
++                /* Concrete end - avoid allocating AtomicInteger */
  
 -                if (atomicinteger.get() >= 15) {
-+                if (atomicinteger[0] >= 15) { /* Concrete - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                if (atomicinteger >= 15) { /* Concrete - avoid allocating AtomicInteger */
                      return 15;
                  } else {
 -                    IBlockData iblockdata1 = this.a(i, (AtomicInteger) null);
-+                    IBlockData iblockdata1 = this.getTypeAndLevelForType(i, null); /* Concrete - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                    IBlockData iblockdata1 = this.getTypeAndLevelForType(i, false); /* Concrete - avoid allocating AtomicInteger */
                      VoxelShape voxelshape = this.a(iblockdata1, i, enumdirection);
                      VoxelShape voxelshape1 = this.a(iblockdata, j, enumdirection.opposite());
  
 -                    return VoxelShapes.b(voxelshape, voxelshape1) ? 15 : k + Math.max(1, atomicinteger.get());
-+                    return VoxelShapes.b(voxelshape, voxelshape1) ? 15 : k + Math.max(1, atomicinteger[0]); /* Concrete - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                    return VoxelShapes.b(voxelshape, voxelshape1) ? 15 : k + Math.max(1, atomicinteger); /* Concrete - avoid allocating AtomicInteger */
                  }
              }
          }
 diff --git a/src/main/java/net/minecraft/server/LightEngineLayer.java b/src/main/java/net/minecraft/server/LightEngineLayer.java
-index bc5743501fb6b9b9d2c33afa2c781ce42f178136..ae6235dedd615ce90f1ae09a5c2f9e6978fe493a 100644
+index bc5743501fb6b9b9d2c33afa2c781ce42f178136..72eef040a068a3bd90d5e24d92e433ff8d23686f 100644
 --- a/src/main/java/net/minecraft/server/LightEngineLayer.java
 +++ b/src/main/java/net/minecraft/server/LightEngineLayer.java
-@@ -60,9 +60,19 @@ public abstract class LightEngineLayer<M extends LightEngineStorageArray<M>, S e
+@@ -11,7 +11,7 @@ public abstract class LightEngineLayer<M extends LightEngineStorageArray<M>, S e
+     protected final EnumSkyBlock b;
+     protected final S c;
+     private boolean f;
+-    protected final BlockPosition.MutableBlockPosition d = new BlockPosition.MutableBlockPosition();
++    protected final BlockPosition.MutableBlockPosition d = new BlockPosition.MutableBlockPosition(); protected int lastLevel; /* Concrete - avoid allocating AtomicInteger */
+     private final long[] g = new long[2];
+     private final IBlockAccess[] h = new IBlockAccess[2];
+ 
+@@ -60,9 +60,18 @@ public abstract class LightEngineLayer<M extends LightEngineStorageArray<M>, S e
      }
  
      protected IBlockData a(long i, @Nullable AtomicInteger atomicinteger) {
-+        /* Concrete start - apparently the JIT has a rough time stack allocating AtomicInteger... */
-+        int[] level = atomicinteger == null ? null : new int[1];
-+        IBlockData ret = this.getTypeAndLevelForType(i, level);
++        /* Concrete start - avoid allocating AtomicInteger */
++        IBlockData ret = this.getTypeAndLevelForType(i, atomicinteger != null);
 +        if (atomicinteger != null) {
-+            atomicinteger.lazySet(level[0]);
++            atomicinteger.lazySet(this.lastLevel);
 +        }
 +        return ret;
 +    }
-+    protected IBlockData getTypeAndLevelForType(long i, @Nullable int[] atomicinteger) {
++    protected IBlockData getTypeAndLevelForType(long i, boolean getLevel) {
 +        /* Concrete end */
          if (i == Long.MAX_VALUE) {
-             if (atomicinteger != null) {
+-            if (atomicinteger != null) {
 -                atomicinteger.set(0);
-+                atomicinteger[0] = 0; /* Concrete - apparently the JIT has a rough time stack allocating AtomicInteger... */
++            if (getLevel) { /* Concrete - avoid allocating AtomicInteger */
++                this.lastLevel = 0; /* Concrete - avoid allocating AtomicInteger */
              }
  
              return Blocks.AIR.getBlockData();
-@@ -73,7 +83,7 @@ public abstract class LightEngineLayer<M extends LightEngineStorageArray<M>, S e
+@@ -72,8 +81,8 @@ public abstract class LightEngineLayer<M extends LightEngineStorageArray<M>, S e
+             IBlockAccess iblockaccess = this.a(j, k);
  
              if (iblockaccess == null) {
-                 if (atomicinteger != null) {
+-                if (atomicinteger != null) {
 -                    atomicinteger.set(16);
-+                    atomicinteger[0] = 16; /* Concrete - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                if (getLevel) { /* Concrete - avoid allocating AtomicInteger */
++                    this.lastLevel = 16; /* Concrete - avoid allocating AtomicInteger */
                  }
  
                  return Blocks.BEDROCK.getBlockData();
-@@ -83,7 +93,7 @@ public abstract class LightEngineLayer<M extends LightEngineStorageArray<M>, S e
+@@ -82,8 +91,8 @@ public abstract class LightEngineLayer<M extends LightEngineStorageArray<M>, S e
+                 IBlockData iblockdata = iblockaccess.getType(this.d);
                  boolean flag = iblockdata.o() && iblockdata.g();
  
-                 if (atomicinteger != null) {
+-                if (atomicinteger != null) {
 -                    atomicinteger.set(iblockdata.b(this.a.getWorld(), (BlockPosition) this.d));
-+                    atomicinteger[0] = (iblockdata.b(this.a.getWorld(), (BlockPosition) this.d)); /* Concrete - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                if (getLevel) { /* Concrete - avoid allocating AtomicInteger */
++                    this.lastLevel = (iblockdata.b(this.a.getWorld(), (BlockPosition) this.d)); /* Concrete - avoid allocating AtomicInteger */
                  }
  
                  return flag ? iblockdata : Blocks.AIR.getBlockData();
 diff --git a/src/main/java/net/minecraft/server/LightEngineSky.java b/src/main/java/net/minecraft/server/LightEngineSky.java
-index 04c70d517c47edae497ec48bbff7a9d5d5f4e8a8..fec171b378415efbb8210d457b77c4995f8839dc 100644
+index 04c70d517c47edae497ec48bbff7a9d5d5f4e8a8..8c2597f0eece676500ac9a25a32a314f0966d96e 100644
 --- a/src/main/java/net/minecraft/server/LightEngineSky.java
 +++ b/src/main/java/net/minecraft/server/LightEngineSky.java
 @@ -27,10 +27,12 @@ public final class LightEngineSky extends LightEngineLayer<LightEngineStorageSky
@@ -518,13 +663,13 @@ index 04c70d517c47edae497ec48bbff7a9d5d5f4e8a8..fec171b378415efbb8210d457b77c499
              } else {
 -                AtomicInteger atomicinteger = new AtomicInteger();
 -                IBlockData iblockdata = this.a(j, atomicinteger);
-+                /* Concrete start - apparently the JIT has a rough time stack allocating AtomicInteger... */
-+                int[] atomicinteger = new int[1];
-+                IBlockData iblockdata = this.getTypeAndLevelForType(j, atomicinteger);
-+                /* Concrete end - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                /* Concrete start - avoid allocating AtomicInteger */
++                IBlockData iblockdata = this.getTypeAndLevelForType(j, true);
++                int atomicinteger = this.lastLevel;
++                /* Concrete end - avoid allocating AtomicInteger */
  
 -                if (atomicinteger.get() >= 15) {
-+                if (atomicinteger[0] >= 15) { /* Concrete - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                if (atomicinteger >= 15) { /* Concrete - avoid allocating AtomicInteger */
                      return 15;
                  } else {
                      int l = BlockPosition.b(i);
@@ -533,7 +678,7 @@ index 04c70d517c47edae497ec48bbff7a9d5d5f4e8a8..fec171b378415efbb8210d457b77c499
                      }
  
 -                    IBlockData iblockdata1 = this.a(i, (AtomicInteger) null);
-+                    IBlockData iblockdata1 = this.getTypeAndLevelForType(i, null); /* Concrete - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                    IBlockData iblockdata1 = this.getTypeAndLevelForType(i, false); /* Concrete - avoid allocating AtomicInteger */
                      VoxelShape voxelshape;
  
                      if (enumdirection != null) {
@@ -542,7 +687,7 @@ index 04c70d517c47edae497ec48bbff7a9d5d5f4e8a8..fec171b378415efbb8210d457b77c499
                      boolean flag1 = i == Long.MAX_VALUE || flag && i1 > l1;
  
 -                    return flag1 && k == 0 && atomicinteger.get() == 0 ? 0 : k + Math.max(1, atomicinteger.get());
-+                    return flag1 && k == 0 && atomicinteger[0] == 0 ? 0 : k + Math.max(1, atomicinteger[0]); /* Concrete - apparently the JIT has a rough time stack allocating AtomicInteger... */
++                    return flag1 && k == 0 && atomicinteger == 0 ? 0 : k + Math.max(1, atomicinteger); /* Concrete - avoid allocating AtomicInteger */
                  }
              }
          }
@@ -1412,6 +1557,75 @@ index 7512660a5b94b04cd48a8ff824b50499120bd8fc..07256c6497a6479ce988a6800de70452
  
                  if (flag) {
                      boolean flag1 = this.tracker.attachedToPlayer;
+diff --git a/src/main/java/net/minecraft/server/PlayerInventory.java b/src/main/java/net/minecraft/server/PlayerInventory.java
+index 4aee712a6f189c1a053c08eb2f8ebff42f1fe804..32cead99e0ad59960c69c5471a73168c24114e4b 100644
+--- a/src/main/java/net/minecraft/server/PlayerInventory.java
++++ b/src/main/java/net/minecraft/server/PlayerInventory.java
+@@ -559,8 +559,10 @@ public class PlayerInventory implements IInventory, INamableTileEntity {
+ 
+         NonNullList nonnulllist;
+ 
+-        for (Iterator iterator = this.f.iterator(); iterator.hasNext(); i -= nonnulllist.size()) {
+-            nonnulllist = (NonNullList) iterator.next();
++        /* Concrete start - reduce iterator creation */
++        for (int index = 0, len = this.f.size(); index < len; ++index, i -= nonnulllist.size()) {
++            nonnulllist = this.f.get(index);
++            /* Concrete end - reduce iterator creation */
+             if (i < nonnulllist.size()) {
+                 list = nonnulllist;
+                 break;
+diff --git a/src/main/java/net/minecraft/server/VoxelShapeArray.java b/src/main/java/net/minecraft/server/VoxelShapeArray.java
+index 55d7df61a025954181377423aa5d6c1f4935ba85..51df252591cfc6063cba190cec22d5fd4c72ad70 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapeArray.java
++++ b/src/main/java/net/minecraft/server/VoxelShapeArray.java
+@@ -11,7 +11,7 @@ public final class VoxelShapeArray extends VoxelShape {
+     private final DoubleList d;
+ 
+     protected VoxelShapeArray(VoxelShapeDiscrete voxelshapediscrete, double[] adouble, double[] adouble1, double[] adouble2) {
+-        this(voxelshapediscrete, (DoubleList) DoubleArrayList.wrap(Arrays.copyOf(adouble, voxelshapediscrete.b() + 1)), (DoubleList) DoubleArrayList.wrap(Arrays.copyOf(adouble1, voxelshapediscrete.c() + 1)), (DoubleList) DoubleArrayList.wrap(Arrays.copyOf(adouble2, voxelshapediscrete.d() + 1)));
++        this(voxelshapediscrete, ca.spottedleaf.concrete.util.fastutil.ExtendedDoubleArrayList.getList(adouble, voxelshapediscrete.b() + 1), ca.spottedleaf.concrete.util.fastutil.ExtendedDoubleArrayList.getList(adouble1, voxelshapediscrete.c() + 1), ca.spottedleaf.concrete.util.fastutil.ExtendedDoubleArrayList.getList(adouble2, voxelshapediscrete.d() + 1)); /* Concrete - remove iterator allocation */
+     }
+ 
+     VoxelShapeArray(VoxelShapeDiscrete voxelshapediscrete, DoubleList doublelist, DoubleList doublelist1, DoubleList doublelist2) {
+diff --git a/src/main/java/net/minecraft/server/VoxelShapeCubePoint.java b/src/main/java/net/minecraft/server/VoxelShapeCubePoint.java
+index 9e09671dc24cfcd3bfe872cacdeb0a5d7e83c112..c46089463f8df75e00ff12c6dec4a92494ae262e 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapeCubePoint.java
++++ b/src/main/java/net/minecraft/server/VoxelShapeCubePoint.java
+@@ -2,7 +2,7 @@ package net.minecraft.server;
+ 
+ import it.unimi.dsi.fastutil.doubles.AbstractDoubleList;
+ 
+-public class VoxelShapeCubePoint extends AbstractDoubleList {
++public class VoxelShapeCubePoint extends ca.spottedleaf.concrete.util.fastutil.ExtendedAbstractDoubleList { /* Concrete - remove iterator allocation */
+ 
+     private final int a;
+ 
+diff --git a/src/main/java/net/minecraft/server/VoxelShapeMergerList.java b/src/main/java/net/minecraft/server/VoxelShapeMergerList.java
+index e8daa74986f07163fd5318f431398b4f0efde6e8..900d472af1a9bda56329ccfeb6a950e6fb61fff1 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapeMergerList.java
++++ b/src/main/java/net/minecraft/server/VoxelShapeMergerList.java
+@@ -18,7 +18,7 @@ public final class VoxelShapeMergerList implements VoxelShapeMerger {
+         int l = doublelist1.size();
+         int i1 = k + l;
+ 
+-        this.a = new DoubleArrayList(i1);
++        this.a = new ca.spottedleaf.concrete.util.fastutil.ExtendedDoubleArrayList(i1); /* Concrete - remove iterator creation */
+         this.b = new IntArrayList(i1);
+         this.c = new IntArrayList(i1);
+ 
+diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
+index c8bd4b703464ab9d25b7de4b5f9851c717a65a22..811ff0331c6fc63264c4862bf16724c564cc6577 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapes.java
++++ b/src/main/java/net/minecraft/server/VoxelShapes.java
+@@ -19,7 +19,7 @@ public final class VoxelShapes {
+         return new VoxelShapeCube(voxelshapebitset);
+     });
+     public static final VoxelShape a = create(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+-    private static final VoxelShape c = new VoxelShapeArray(new VoxelShapeBitSet(0, 0, 0), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}));
++    private static final VoxelShape c = new VoxelShapeArray(new VoxelShapeBitSet(0, 0, 0), new ca.spottedleaf.concrete.util.fastutil.ExtendedDoubleArrayList(new double[]{0.0D}), new ca.spottedleaf.concrete.util.fastutil.ExtendedDoubleArrayList(new double[]{0.0D}), new ca.spottedleaf.concrete.util.fastutil.ExtendedDoubleArrayList(new double[]{0.0D})); /* Concrete - remove iterator allocation */
+ 
+     public static VoxelShape a() {
+         return VoxelShapes.c;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
 index 09c7c697e92cb94a3532a12dd4076d6536b2ff49..a1ba1116fb0458bbd20241c1517b888bc1f0736d 100644
 --- a/src/main/java/net/minecraft/server/World.java

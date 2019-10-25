@@ -1,0 +1,122 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Fri, 25 Oct 2019 02:11:30 -0700
+Subject: [PATCH] Delay chunk unloads
+
+Chunk unloads are now delayed by 30s. Specifically, ticket level
+reduction is delayed by 30s. This is done to allow players to
+teleport and have their pets follow them, as the chunks will no longer
+unload or have entity ticking status removed.
+
+It's also targetted to reduce performance regressions when
+plugins or edge cases in code do not spam sync loads since chunks
+without tickets get unloaded immediately.
+
+diff --git a/src/main/java/net/minecraft/server/ChunkMap.java b/src/main/java/net/minecraft/server/ChunkMap.java
+index 50444a2f49f07e66ff9ea55dacc1819023ea6624..b0c0e906f3bd8534a6ef0b274ffa163717b7672f 100644
+--- a/src/main/java/net/minecraft/server/ChunkMap.java
++++ b/src/main/java/net/minecraft/server/ChunkMap.java
+@@ -70,6 +70,7 @@ public abstract class ChunkMap extends LightEngineGraph {
+ 
+     protected abstract int b(long i);
+ 
++    public final void update(long coordinate, int level, boolean increaseInLevel) { this.b(coordinate, level, increaseInLevel); } /* Concrete - OBFHELPER */
+     public void b(long i, int j, boolean flag) {
+         this.a(ChunkCoordIntPair.a, i, j, flag);
+     }
+diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
+index 78141c62eab8b714cfdd7a6a2c58a8b5d03ad22d..3175bd537323493b6570e58f729b6a32efa49eb7 100644
+--- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
++++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
+@@ -34,7 +34,7 @@ public abstract class ChunkMapDistance {
+     private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2;
+     private final Long2ObjectMap<ObjectSet<EntityPlayer>> c = new Long2ObjectOpenHashMap();
+     public final Long2ObjectOpenHashMap<ObjectSortedSet<Ticket<?>>> tickets = new Long2ObjectOpenHashMap(); // CraftBukkit - private -> public
+-    private final ChunkMapDistance.a e = new ChunkMapDistance.a();
++    private final ChunkMapDistance.a e = new ChunkMapDistance.a(); final ChunkMapDistance.a getTicketTracker() { return this.e; } /* Concrete - OBFHELPER */
+     public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); /* Concrete - no longer used */
+     //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); /* Concrete - no longer used */
+     private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue /* Concrete - use a better queue */
+@@ -48,6 +48,20 @@ public abstract class ChunkMapDistance {
+     /* Concrete start */
+     protected PlayerChunkMap chunkMap;
+     protected final ChunkMapDistance.TicketTracker playerTicketHandler = new TicketTracker();
++
++    private long nextUnloadId; // delay chunk unloads
++    public final void removeTickets(long chunk, TicketType<?> type) {
++        ObjectSortedSet<Ticket<?>> tickets = this.tickets.get(chunk);
++        if (tickets == null) {
++            return;
++        }
++        boolean changed = tickets.removeIf((Ticket<?> ticket) -> {
++            return ticket.getTicketType() == type;
++        });
++        if (changed) {
++            this.getTicketTracker().update(chunk, getLowestTicketLevel(tickets), false);
++        }
++    }
+     /* Concrete end */
+ 
+     protected ChunkMapDistance(Executor executor, Executor executor1) {
+@@ -66,12 +80,24 @@ public abstract class ChunkMapDistance {
+         ++this.currentTick;
+         ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
+ 
++        int[] tempLevel = new int[] { PlayerChunkMap.GOLDEN_TICKET + 1 }; /* Concrete - delay chunk unloads */
+         while (objectiterator.hasNext()) {
+             Entry<ObjectSortedSet<Ticket<?>>> entry = (Entry) objectiterator.next();
+ 
+             if ((entry.getValue()).removeIf((ticket) -> { // Craftbukkit - decompile error
+-                return ticket.a(this.currentTick);
++                /* Concrete start - delay chunk unloads */
++                boolean ret = ticket.a(this.currentTick);
++                if (ret && ticket.getTicketType() != TicketType.DELAYED_UNLOAD && ticket.getTicketLevel() < tempLevel[0]) {
++                    tempLevel[0] = ticket.getTicketLevel();
++                }
++                return ret;
++                /* Concrete end - delay chunk unloads */
+             })) {
++                /* Concrete start - delay chunk unloads */
++                if (tempLevel[0] < (PlayerChunkMap.GOLDEN_TICKET + 1)) {
++                    entry.getValue().add(new Ticket<>(TicketType.DELAYED_UNLOAD, tempLevel[0], Long.valueOf(++this.nextUnloadId), this.currentTick));
++                }
++                /* Concrete end - delay chunk unloads */
+                 this.e.b(entry.getLongKey(), this.a((ObjectSortedSet) entry.getValue()), false);
+             }
+ 
+@@ -177,6 +203,11 @@ public abstract class ChunkMapDistance {
+         boolean removed = false; // CraftBukkit
+         if (objectsortedset.remove(ticket)) {
+             removed = true; // CraftBukkit
++            /* Concrete start - delay chunk unloads */
++            if (getLowestTicketLevel(objectsortedset) > ticket.getTicketLevel() && ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
++                objectsortedset.add(new Ticket<>(TicketType.DELAYED_UNLOAD, ticket.getTicketLevel(), Long.valueOf(++this.nextUnloadId), this.currentTick));
++            }
++            /* Concrete end - delay chunk unloads */
+         }
+ 
+         if (objectsortedset.isEmpty()) {
+diff --git a/src/main/java/net/minecraft/server/TicketType.java b/src/main/java/net/minecraft/server/TicketType.java
+index e3150f85a5b738c560969cc0a3c9c62f17dc2414..90d945cf1aeedb7fd778ffeab66238eba015b449 100644
+--- a/src/main/java/net/minecraft/server/TicketType.java
++++ b/src/main/java/net/minecraft/server/TicketType.java
+@@ -23,6 +23,7 @@ public class TicketType<T> {
+     public static final TicketType<org.bukkit.plugin.Plugin> PLUGIN_TICKET = a("plugin_ticket", (plugin1, plugin2) -> plugin1.getClass().getName().compareTo(plugin2.getClass().getName())); // Craftbukkit
+     public static final TicketType<Integer> ANTIXRAY = a("antixray", Integer::compareTo); // Paper - Anti-Xray
+     public static final TicketType<Long> ASYNC_LOAD = a("async_load", Long::compareTo); // Paper
++    public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo, 30 * 20); /* Concrete - delay chunk unloads by 30 seconds */
+ 
+     public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
+         return new TicketType<>(s, comparator, 0L);
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+index fd38cac2f3e2a98e14b8aa685b999eb16d883b83..8d08809b84f4737f48ca6d59e06973bb3a97981f 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+@@ -462,6 +462,7 @@ public class CraftWorld implements World {
+         net.minecraft.server.IChunkAccess chunk = world.getChunkProvider().getChunkAt(x, z, ChunkStatus.FULL, false);
+         if (chunk != null) {
+             world.getChunkProvider().removeTicket(TicketType.PLUGIN, chunk.getPos(), 1, Unit.INSTANCE);
++            ((ChunkMapDistance)world.getChunkProvider().playerChunkMap.getChunkMapDistanceManager()).removeTickets(ChunkCoordIntPair.pair(x, z), TicketType.DELAYED_UNLOAD); /* Concrete - delay chunk unloads - let plugins override */
+         }
+ 
+         return true;
