@@ -342,6 +342,130 @@ index 0000000000000000000000000000000000000000..64e4534aae11ead8848dcfa9130ab03b
 +    }
 +}
 \ No newline at end of file
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/EntityList.java b/src/main/java/ca/spottedleaf/concrete/util/EntityList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..1d95b2fe3043a837118e79e6bd6b49fe2c984226
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/util/EntityList.java
+@@ -0,0 +1,118 @@
++package ca.spottedleaf.concrete.util;
++
++import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
++import net.minecraft.server.Entity;
++
++import java.util.Arrays;
++import java.util.Iterator;
++import java.util.NoSuchElementException;
++
++// list with O(1) remove & contains
++public class EntityList implements Iterable<Entity> {
++
++    protected final Int2IntOpenHashMap entityToIndex = new Int2IntOpenHashMap();
++    {
++        this.entityToIndex.defaultReturnValue(Integer.MIN_VALUE);
++    }
++
++    protected Entity[] entities = new Entity[16];
++    protected int count;
++
++    public int size() {
++        return this.count;
++    }
++
++    public boolean contains(final Entity entity) {
++        return this.entityToIndex.containsKey(entity.getId());
++    }
++
++    public boolean remove(final Entity entity) {
++        final int index = this.entityToIndex.remove(entity.getId());
++        if (index == Integer.MIN_VALUE) {
++            return false;
++        }
++
++        // move the entity at the end to this index
++        final int endIndex = --this.count;
++        final Entity end = this.entities[endIndex];
++        if (index != endIndex) {
++            // not empty after this call
++            this.entityToIndex.put(end.getId(), index); // update index
++        }
++        this.entities[index] = end;
++        this.entities[endIndex] = null;
++
++        return true;
++    }
++
++    public boolean add(final Entity entity) {
++        final int count = this.count;
++        final int currIndex = this.entityToIndex.putIfAbsent(entity.getId(), count);
++
++        if (currIndex != Integer.MIN_VALUE) {
++            return false; // already in this list
++        }
++
++        Entity[] list = this.entities;
++
++        if (list.length == count) {
++            // resize required
++            list = this.entities = Arrays.copyOf(list, count * 2); // overflow results in negative
++        }
++
++        list[count] = entity;
++        this.count = count + 1;
++
++        return true;
++    }
++
++    public Entity getChecked(final int index) {
++        if (index < 0 || index >= this.count) {
++            throw new IndexOutOfBoundsException("Index: " + index + " is out of bounds, size: " + this.count);
++        }
++        return this.entities[index];
++    }
++
++    public Entity getUnchecked(final int index) {
++        return this.entities[index];
++    }
++
++    public Entity[] getRawData() {
++        return this.entities;
++    }
++
++    @Override
++    public Iterator<Entity> iterator() {
++        return new Iterator<>() {
++
++            Entity lastRet;
++            int current;
++
++            @Override
++            public boolean hasNext() {
++                return this.current < EntityList.this.count;
++            }
++
++            @Override
++            public Entity next() {
++                if (!this.hasNext()) {
++                    throw new NoSuchElementException();
++                }
++                return this.lastRet = EntityList.this.entities[this.current++];
++            }
++
++            @Override
++            public void remove() {
++                final Entity lastRet = this.lastRet;
++
++                if (lastRet == null) {
++                    throw new IllegalStateException();
++                }
++                this.lastRet = null;
++
++                EntityList.this.remove(lastRet);
++                --this.current;
++            }
++        };
++    }
++}
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/OptimizedSmallEnumSet.java b/src/main/java/ca/spottedleaf/concrete/util/OptimizedSmallEnumSet.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..0105b191a55229e52a269e2b90e5c0cf288bed7a
