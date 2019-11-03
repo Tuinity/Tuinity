@@ -139,7 +139,7 @@ index 71202701808f6abbc0538745fe231fae3cfa880b..fa099f8c051014e62d124b49d389bf48
          }
  
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index c4769046cbcd9c01e1801a12759c3147c14cecd0..04e463a75894d32576c75f70c216605e4eabeda1 100644
+index c4769046cbcd9c01e1801a12759c3147c14cecd0..67c39d2ef24c5542f6abbd9e90b529e6408d61ee 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 @@ -1035,16 +1035,16 @@ public class CraftWorld implements World {
@@ -158,7 +158,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..04e463a75894d32576c75f70c216605e
  
                  // Assuming that bukkitEntity isn't null
 -                if (bukkitEntity != null && bukkitEntity.isValid()) {
-+                if (bukkitEntity != null) { /* Concrete - optimize this call */
++                if (bukkitEntity != null && CraftEntity.canBeSeenByPlugins(bukkitEntity)) { /* Concrete - optimize this call */
                      list.add(bukkitEntity);
                  }
              }
@@ -167,7 +167,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..04e463a75894d32576c75f70c216605e
      @Override
      public List<LivingEntity> getLivingEntities() {
 -        List<LivingEntity> list = new ArrayList<LivingEntity>();
-+        List<LivingEntity> list = new ArrayList<LivingEntity>(world.loadedEntities.size() / 2); /* Concrete - optimize this call */
++        List<LivingEntity> list = new ArrayList<LivingEntity>(world.loadedEntities.size()); /* Concrete - optimize this call */
  
 -        for (Object o : world.entitiesById.values()) {
 +        for (Object o : world.loadedEntities) { /* Concrete - optimize this call */
@@ -178,7 +178,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..04e463a75894d32576c75f70c216605e
  
                  // Assuming that bukkitEntity isn't null
 -                if (bukkitEntity != null && bukkitEntity instanceof LivingEntity && bukkitEntity.isValid()) {
-+                if (bukkitEntity != null && bukkitEntity instanceof LivingEntity) { /* Concrete - optimize this call */
++                if (bukkitEntity != null && bukkitEntity instanceof LivingEntity && CraftEntity.canBeSeenByPlugins(bukkitEntity)) { /* Concrete - optimize this call */
                      list.add((LivingEntity) bukkitEntity);
                  }
              }
@@ -196,7 +196,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..04e463a75894d32576c75f70c216605e
                  Class<?> bukkitClass = bukkitEntity.getClass();
  
 -                if (clazz.isAssignableFrom(bukkitClass) && bukkitEntity.isValid()) {
-+                if (clazz.isAssignableFrom(bukkitClass)) { /* Concrete - optimize this call */
++                if (clazz.isAssignableFrom(bukkitClass) && CraftEntity.canBeSeenByPlugins(bukkitEntity)) { /* Concrete - optimize this call */
                      list.add((T) bukkitEntity);
                  }
              }
@@ -205,7 +205,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..04e463a75894d32576c75f70c216605e
          Collection<Entity> list = new ArrayList<Entity>();
  
 -        for (Object entity: world.entitiesById.values()) {
-+        for (Object entity: world.loadedEntities) {
++        for (Object entity: world.loadedEntities) { /* Concrete - optimize this call */
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
@@ -214,7 +214,30 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..04e463a75894d32576c75f70c216605e
                  for (Class<?> clazz : classes) {
                      if (clazz.isAssignableFrom(bukkitClass)) {
 -                        if (bukkitEntity.isValid()) {
-+                        if (true) { /* Concrete - optimize this call */
++                        if (CraftEntity.canBeSeenByPlugins(bukkitEntity)) { /* Concrete - optimize this call */
                              list.add(bukkitEntity);
                          }
                          break;
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+index 31db42e9fb24d76f48bfaf65700422472db915fc..9225a7a6b19ac1c60c575f370cbfd166fb90723a 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+@@ -179,6 +179,18 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
+         this.entity = entity;
+     }
+ 
++    /* Concrete start */
++    // note: this does not check isChunkLoaded, use Entity#isValid to do that
++    public static boolean canBeSeenByPlugins(org.bukkit.entity.Entity entity) {
++        Entity handle = ((CraftEntity)entity).getHandle();
++        // TODO
++        // isAlive is a dumb choice, given living entities aren't alive (but are in the world) if health < 0
++        // this needs to be brought up to spigot to fix though, we are NOT breaking api implementation, especially
++        // if no-one's complained.
++        return !handle.shouldBeRemoved && handle.isAlive() && handle.valid;
++    }
++    /* Concrete end */
++
+     @Override
+     public Chunk getChunk() {
+         net.minecraft.server.Chunk currentChunk = entity.getCurrentChunk();
