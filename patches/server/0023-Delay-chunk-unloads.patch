@@ -25,7 +25,7 @@ index 50444a2f49f07e66ff9ea55dacc1819023ea6624..b0c0e906f3bd8534a6ef0b274ffa1637
          this.a(ChunkCoordIntPair.a, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 78141c62eab8b714cfdd7a6a2c58a8b5d03ad22d..3175bd537323493b6570e58f729b6a32efa49eb7 100644
+index 78141c62eab8b714cfdd7a6a2c58a8b5d03ad22d..99fbaa015d2875ee24933774cbd43771f9900066 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -34,7 +34,7 @@ public abstract class ChunkMapDistance {
@@ -37,16 +37,20 @@ index 78141c62eab8b714cfdd7a6a2c58a8b5d03ad22d..3175bd537323493b6570e58f729b6a32
      public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); /* Concrete - no longer used */
      //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); /* Concrete - no longer used */
      private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue /* Concrete - use a better queue */
-@@ -48,6 +48,20 @@ public abstract class ChunkMapDistance {
+@@ -48,6 +48,45 @@ public abstract class ChunkMapDistance {
      /* Concrete start */
      protected PlayerChunkMap chunkMap;
      protected final ChunkMapDistance.TicketTracker playerTicketHandler = new TicketTracker();
 +
 +    private long nextUnloadId; // delay chunk unloads
++    private final Long2ObjectOpenHashMap<Ticket<Long>> delayedChunks = new Long2ObjectOpenHashMap<>();
 +    public final void removeTickets(long chunk, TicketType<?> type) {
 +        ObjectSortedSet<Ticket<?>> tickets = this.tickets.get(chunk);
 +        if (tickets == null) {
 +            return;
++        }
++        if (type == TicketType.DELAYED_UNLOAD) {
++            this.delayedChunks.remove(chunk);
 +        }
 +        boolean changed = tickets.removeIf((Ticket<?> ticket) -> {
 +            return ticket.getTicketType() == type;
@@ -55,10 +59,31 @@ index 78141c62eab8b714cfdd7a6a2c58a8b5d03ad22d..3175bd537323493b6570e58f729b6a32
 +            this.getTicketTracker().update(chunk, getLowestTicketLevel(tickets), false);
 +        }
 +    }
++
++    private final java.util.function.LongFunction<Ticket<Long>> computeFuntion = (long key) -> {
++        Ticket<Long> ret = new Ticket<>(TicketType.DELAYED_UNLOAD, -1, ++ChunkMapDistance.this.nextUnloadId, 0);
++        ret.isCached = true;
++        return ret;
++    };
++
++    private void computeDelayedTicketFor(long chunk, int removedLevel, ObjectSortedSet<Ticket<?>> tickets) {
++        int lowestLevel = getLowestTicketLevel(tickets);
++        if (removedLevel > lowestLevel) {
++            return;
++        }
++        final Ticket<Long> ticket = this.delayedChunks.computeIfAbsent(chunk, this.computeFuntion);
++        if (ticket.getTicketLevel() != -1) {
++            // since we modify data used in sorting, we need to remove before
++            tickets.remove(ticket);
++        }
++        ticket.setCreationTick(this.currentTick);
++        ticket.setTicketLevel(removedLevel);
++        tickets.add(ticket); // re-add with new expire time and ticket level
++    }
      /* Concrete end */
  
      protected ChunkMapDistance(Executor executor, Executor executor1) {
-@@ -66,12 +80,24 @@ public abstract class ChunkMapDistance {
+@@ -66,12 +105,27 @@ public abstract class ChunkMapDistance {
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
@@ -73,29 +98,50 @@ index 78141c62eab8b714cfdd7a6a2c58a8b5d03ad22d..3175bd537323493b6570e58f729b6a32
 +                if (ret && ticket.getTicketType() != TicketType.DELAYED_UNLOAD && ticket.getTicketLevel() < tempLevel[0]) {
 +                    tempLevel[0] = ticket.getTicketLevel();
 +                }
++                if (ticket.getTicketType() == TicketType.DELAYED_UNLOAD && ticket.isCached) {
++                    this.delayedChunks.remove(entry.getLongKey(), ticket); // clean up ticket...
++                }
 +                return ret;
 +                /* Concrete end - delay chunk unloads */
              })) {
 +                /* Concrete start - delay chunk unloads */
 +                if (tempLevel[0] < (PlayerChunkMap.GOLDEN_TICKET + 1)) {
-+                    entry.getValue().add(new Ticket<>(TicketType.DELAYED_UNLOAD, tempLevel[0], Long.valueOf(++this.nextUnloadId), this.currentTick));
++                    this.computeDelayedTicketFor(entry.getLongKey(), tempLevel[0], entry.getValue());
 +                }
 +                /* Concrete end - delay chunk unloads */
                  this.e.b(entry.getLongKey(), this.a((ObjectSortedSet) entry.getValue()), false);
              }
  
-@@ -177,6 +203,11 @@ public abstract class ChunkMapDistance {
+@@ -177,6 +231,11 @@ public abstract class ChunkMapDistance {
          boolean removed = false; // CraftBukkit
          if (objectsortedset.remove(ticket)) {
              removed = true; // CraftBukkit
 +            /* Concrete start - delay chunk unloads */
-+            if (getLowestTicketLevel(objectsortedset) > ticket.getTicketLevel() && ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
-+                objectsortedset.add(new Ticket<>(TicketType.DELAYED_UNLOAD, ticket.getTicketLevel(), Long.valueOf(++this.nextUnloadId), this.currentTick));
++            if (ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
++                this.computeDelayedTicketFor(i, ticket.getTicketLevel(), objectsortedset);
 +            }
 +            /* Concrete end - delay chunk unloads */
          }
  
          if (objectsortedset.isEmpty()) {
+diff --git a/src/main/java/net/minecraft/server/Ticket.java b/src/main/java/net/minecraft/server/Ticket.java
+index badbe6c19d1699659ff6d35f813c069272cda929..9a32eee3e7532e46b692d000a6cbf48d9e84105a 100644
+--- a/src/main/java/net/minecraft/server/Ticket.java
++++ b/src/main/java/net/minecraft/server/Ticket.java
+@@ -5,9 +5,11 @@ import java.util.Objects;
+ public final class Ticket<T> implements Comparable<Ticket<?>> {
+ 
+     private final TicketType<T> a;
+-    private final int b;
++    private int b; public final void setTicketLevel(final int value) { this.b = value; } /* Concrete - remove final, add set OBFHELPER  */
+     public final T identifier; public final T getObjectReason() { return this.identifier; } // Paper - OBFHELPER
+-    private final long d; public final long getCreationTick() { return this.d; } // Paper - OBFHELPER
++    private long d; public final long getCreationTick() { return this.d; } public final void setCreationTick(final long value) { this.d = value; }  // Paper - OBFHELPER /* Concrete - remove final, add set OBFHELPER */
++
++    boolean isCached; /* Concrete - delay chunk unloads, this defends against really stupid plugins */
+ 
+     protected Ticket(TicketType<T> tickettype, int i, T t0, long j) {
+         this.a = tickettype;
 diff --git a/src/main/java/net/minecraft/server/TicketType.java b/src/main/java/net/minecraft/server/TicketType.java
 index e3150f85a5b738c560969cc0a3c9c62f17dc2414..90d945cf1aeedb7fd778ffeab66238eba015b449 100644
 --- a/src/main/java/net/minecraft/server/TicketType.java
