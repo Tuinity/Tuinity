@@ -344,7 +344,7 @@ index 0000000000000000000000000000000000000000..64e4534aae11ead8848dcfa9130ab03b
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/EntityList.java b/src/main/java/ca/spottedleaf/concrete/util/EntityList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..1d95b2fe3043a837118e79e6bd6b49fe2c984226
+index 0000000000000000000000000000000000000000..28ea9b9eac928a2366e4448468dc7c7793a34399
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/EntityList.java
 @@ -0,0 +1,118 @@
@@ -445,7 +445,7 @@ index 0000000000000000000000000000000000000000..1d95b2fe3043a837118e79e6bd6b49fe
 +
 +            @Override
 +            public Entity next() {
-+                if (!this.hasNext()) {
++                if (this.current >= EntityList.this.count) {
 +                    throw new NoSuchElementException();
 +                }
 +                return this.lastRet = EntityList.this.entities[this.current++];
@@ -540,10 +540,10 @@ index 0000000000000000000000000000000000000000..0105b191a55229e52a269e2b90e5c0cf
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/Util.java b/src/main/java/ca/spottedleaf/concrete/util/Util.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..c25943f4946eb7e908ac4657764bc94ff8d1113c
+index 0000000000000000000000000000000000000000..9ca138aebfd573ccf0e4f9c745ed8fb869959c56
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/Util.java
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,55 @@
 +package ca.spottedleaf.concrete.util;
 +
 +import net.minecraft.server.BlockPosition;
@@ -569,6 +569,16 @@ index 0000000000000000000000000000000000000000..c25943f4946eb7e908ac4657764bc94f
 +        return getCoordinateKey(getChunkCoordinate(entity.locX), getChunkCoordinate(entity.locZ));
 +    }
 +
++    public static int fastFloor(double x) {
++        int truncated = (int)x;
++        return x < 0.0 ? truncated - 1 : truncated;
++    }
++
++    public static int fastFloor(float x) {
++        int truncated = (int)x;
++        return x < 0.0 ? truncated - 1 : truncated;
++    }
++
 +    public static long getCoordinateKey(final ChunkCoordIntPair pair) {
 +        return getCoordinateKey(pair.x, pair.z);
 +    }
@@ -586,7 +596,7 @@ index 0000000000000000000000000000000000000000..c25943f4946eb7e908ac4657764bc94f
 +    }
 +
 +    public static int getChunkCoordinate(final double coordinate) {
-+        return (int)Math.floor(coordinate) >> 4;
++        return Util.fastFloor(coordinate) >> 4;
 +    }
 +}
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java b/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java
@@ -1733,10 +1743,21 @@ index fa79d0bed626f837f0d882d5b8c8abd533cb1209..5a990f0294f14ef5d7adbbcf51a53496
  
      // Yes, this doesn't match Vanilla, but it's the best we can do for now.
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..f8d241426ca9ef6239ca703c71ce4bf1061e940f 100644
+index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..9c09be2aca363d31c35b51a2da67ca0c5d1a8fe5 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -84,6 +84,23 @@ public class PlayerChunk {
+@@ -20,8 +20,8 @@ public class PlayerChunk {
+     private static final PlayerChunk.State[] CHUNK_STATES = PlayerChunk.State.values();
+     private final AtomicReferenceArray<CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>>> statusFutures;
+     private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> fullChunkFuture;
+-    private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> tickingFuture;
+-    private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> entityTickingFuture;
++    private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> tickingFuture; volatile boolean isTickingReady; /* Concrete - cache chunk ticking stage */
++    private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> entityTickingFuture; volatile boolean isEntityTickingReady; /* Concrete - cache chunk ticking stage */
+     private CompletableFuture<IChunkAccess> chunkSave;
+     public int oldTicketLevel;
+     private int ticketLevel;
+@@ -84,6 +84,31 @@ public class PlayerChunk {
          return null;
      }
      // Paper end
@@ -1756,10 +1777,58 @@ index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..f8d241426ca9ef6239ca703c71ce4bf1
 +
 +        return either == null ? null : either.left().orElse(null);
 +    }
++
++    public final boolean isEntityTickingReady() {
++        return this.isEntityTickingReady;
++    }
++
++    public final boolean isTickingReady() {
++        return this.isTickingReady;
++    }
 +    /* Concrete end */
  
      public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getStatusFutureUnchecked(ChunkStatus chunkstatus) {
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(chunkstatus.c());
+@@ -379,11 +404,19 @@ public class PlayerChunk {
+ 
+         if (!flag4 && flag5) {
+             this.tickingFuture = playerchunkmap.a(this);
++            /* Concrete start - cache chunk ticking stage */
++            this.tickingFuture.thenAccept((either) -> {
++                if (either.left().isPresent()) {
++                    PlayerChunk.this.isTickingReady = true;
++                }
++            });
++            /* Concrete end - cache chunk ticking stage */
+             this.a(this.tickingFuture);
+         }
+ 
+         if (flag4 && !flag5) {
+             this.tickingFuture.complete(PlayerChunk.UNLOADED_CHUNK);
++            this.isTickingReady = false; /* Concrete - cache whether the chunk is at ticking stage */
+             this.tickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
+         }
+ 
+@@ -396,11 +429,19 @@ public class PlayerChunk {
+             }
+ 
+             this.entityTickingFuture = playerchunkmap.b(this.location);
++            /* Concrete start - cache chunk ticking stage */
++            this.entityTickingFuture.thenAccept((either) -> {
++                if (either.left().isPresent()) {
++                    PlayerChunk.this.isEntityTickingReady = true;
++                }
++            });
++            /* Concrete end - cache chunk ticking stage */
+             this.a(this.entityTickingFuture);
+         }
+ 
+         if (flag6 && !flag7) {
+             this.entityTickingFuture.complete(PlayerChunk.UNLOADED_CHUNK);
++            this.isEntityTickingReady = false; /* Concrete - cache chunk ticking stage */
+             this.entityTickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
+         }
+ 
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 index 59e74900f8050833f07f8840779d33c87d230ee7..73f480ab310232e62a7ddad74f4b062d37c9ff90 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
