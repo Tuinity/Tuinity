@@ -342,6 +342,131 @@ index 0000000000000000000000000000000000000000..64e4534aae11ead8848dcfa9130ab03b
 +    }
 +}
 \ No newline at end of file
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/ChunkList.java b/src/main/java/ca/spottedleaf/concrete/util/ChunkList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..f2096ef11b8da2307621dfad0120e8e2589f0e7a
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/util/ChunkList.java
+@@ -0,0 +1,119 @@
++package ca.spottedleaf.concrete.util;
++
++import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
++import net.minecraft.server.Chunk;
++
++import java.util.Arrays;
++import java.util.Iterator;
++import java.util.NoSuchElementException;
++
++// list with O(1) remove & contains
++public final class ChunkList implements Iterable<Chunk> {
++
++    protected final Long2IntOpenHashMap chunkToIndex = new Long2IntOpenHashMap();
++    {
++        this.chunkToIndex.defaultReturnValue(Integer.MIN_VALUE);
++    }
++
++    protected Chunk[] chunks = new Chunk[16];
++    protected int count;
++
++    public int size() {
++        return this.count;
++    }
++
++    public boolean contains(final Chunk chunk) {
++        return this.chunkToIndex.containsKey(Util.getCoordinateKey(chunk.getPos()));
++    }
++
++    public boolean remove(final Chunk chunk) {
++        final int index = this.chunkToIndex.remove(Util.getCoordinateKey(chunk.getPos()));
++        if (index == Integer.MIN_VALUE) {
++            return false;
++        }
++
++        // move the entity at the end to this index
++        final int endIndex = --this.count;
++        final Chunk end = this.chunks[endIndex];
++        if (index != endIndex) {
++            // not empty after this call
++            this.chunkToIndex.put(Util.getCoordinateKey(end.getPos()), index); // update index
++        }
++        this.chunks[index] = end;
++        this.chunks[endIndex] = null;
++
++        return true;
++    }
++
++    public boolean add(final Chunk chunk) {
++        final int count = this.count;
++        final int currIndex = this.chunkToIndex.putIfAbsent(Util.getCoordinateKey(chunk.getPos()), count);
++
++        if (currIndex != Integer.MIN_VALUE) {
++            return false; // already in this list
++        }
++
++        Chunk[] list = this.chunks;
++
++        if (list.length == count) {
++            // resize required
++            list = this.chunks = Arrays.copyOf(list, count * 2); // overflow results in negative
++        }
++
++        list[count] = chunk;
++        this.count = count + 1;
++
++        return true;
++    }
++
++    public Chunk getChecked(final int index) {
++        if (index < 0 || index >= this.count) {
++            throw new IndexOutOfBoundsException("Index: " + index + " is out of bounds, size: " + this.count);
++        }
++        return this.chunks[index];
++    }
++
++    public Chunk getUnchecked(final int index) {
++        return this.chunks[index];
++    }
++
++    public Chunk[] getRawData() {
++        return this.chunks;
++    }
++
++    @Override
++    public Iterator<Chunk> iterator() {
++        return new Iterator<>() {
++
++            Chunk lastRet;
++            int current;
++
++            @Override
++            public boolean hasNext() {
++                return this.current < ChunkList.this.count;
++            }
++
++            @Override
++            public Chunk next() {
++                if (this.current >= ChunkList.this.count) {
++                    throw new NoSuchElementException();
++                }
++                return this.lastRet = ChunkList.this.chunks[this.current++];
++            }
++
++            @Override
++            public void remove() {
++                final Chunk lastRet = this.lastRet;
++
++                if (lastRet == null) {
++                    throw new IllegalStateException();
++                }
++                this.lastRet = null;
++
++                ChunkList.this.remove(lastRet);
++                --this.current;
++            }
++        };
++    }
++
++}
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/EntityList.java b/src/main/java/ca/spottedleaf/concrete/util/EntityList.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..28ea9b9eac928a2366e4448468dc7c7793a34399
@@ -1351,7 +1476,7 @@ index ddec62fbf591ba06ee1fdf9fbbc0a6122a1dfb9d..1d5b346be8a8549856f42aa9ecf3db0c
          doChunkUnload = Timings.ofSafe(name + "doChunkUnload");
          scheduledBlocks = Timings.ofSafe(name + "Scheduled Blocks");
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 67dc837f4325db11dedf05259549dfeb9f651c5b..77631a6090fc41fff51e233143d81237c7864dd0 100644
+index 67dc837f4325db11dedf05259549dfeb9f651c5b..496969c8fd71a7d78bacb49cd4a33f9157a74fa7 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -49,7 +49,7 @@ public class Chunk implements IChunkAccess {
@@ -1437,11 +1562,14 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..77631a6090fc41fff51e233143d81237
      public Chunk(World world, ProtoChunk protochunk) {
          this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.q(), protochunk.getSections(), (Consumer) null);
          Iterator iterator = protochunk.y().iterator();
-@@ -634,6 +692,23 @@ public class Chunk implements IChunkAccess {
+@@ -633,7 +691,26 @@ public class Chunk implements IChunkAccess {
+     }
  
      // CraftBukkit start
++    public PlayerChunk playerChunk; /* Concrete - cache PlayerChunk per Chunk */
      public void loadCallback() {
 +        /* Concrete start - neighbour cache */
++        this.playerChunk = ((WorldServer)this.world).getChunkProvider().playerChunkMap.updatingChunks.get(this.coordinateKey);
 +        int chunkX = this.loc.x;
 +        int chunkZ = this.loc.z;
 +        ChunkProviderServer chunkProvider = ((WorldServer)this.world).getChunkProvider();
@@ -1461,7 +1589,7 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..77631a6090fc41fff51e233143d81237
          org.bukkit.Server server = this.world.getServer();
          if (server != null) {
              /*
-@@ -675,6 +750,22 @@ public class Chunk implements IChunkAccess {
+@@ -675,6 +752,22 @@ public class Chunk implements IChunkAccess {
          server.getPluginManager().callEvent(unloadEvent);
          // note: saving can be prevented, but not forced if no saving is actually required
          this.mustNotSave = !unloadEvent.isSaveChunk();
@@ -1743,7 +1871,7 @@ index fa79d0bed626f837f0d882d5b8c8abd533cb1209..5a990f0294f14ef5d7adbbcf51a53496
  
      // Yes, this doesn't match Vanilla, but it's the best we can do for now.
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..9c09be2aca363d31c35b51a2da67ca0c5d1a8fe5 100644
+index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..28ee5399b68b61238921f10acf06b7aa758da8c2 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -20,8 +20,8 @@ public class PlayerChunk {
@@ -1757,7 +1885,26 @@ index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..9c09be2aca363d31c35b51a2da67ca0c
      private CompletableFuture<IChunkAccess> chunkSave;
      public int oldTicketLevel;
      private int ticketLevel;
-@@ -84,6 +84,31 @@ public class PlayerChunk {
+@@ -38,6 +38,10 @@ public class PlayerChunk {
+     public final PlayerChunk.d players;
+     private boolean hasBeenLoaded;
+ 
++    /* Concrete start */
++    private final PlayerChunkMap chunkMap;
++    /* Concrete end */
++
+     public PlayerChunk(ChunkCoordIntPair chunkcoordintpair, int i, LightEngine lightengine, PlayerChunk.c playerchunk_c, PlayerChunk.d playerchunk_d) {
+         this.statusFutures = new AtomicReferenceArray(PlayerChunk.CHUNK_STATUSES.size());
+         this.fullChunkFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
+@@ -53,6 +57,7 @@ public class PlayerChunk {
+         this.ticketLevel = this.oldTicketLevel;
+         this.n = this.oldTicketLevel;
+         this.a(i);
++        this.chunkMap = (PlayerChunkMap)playerchunk_d; /* Concrete  */
+     }
+ 
+     // CraftBukkit start
+@@ -84,6 +89,31 @@ public class PlayerChunk {
          return null;
      }
      // Paper end
@@ -1789,7 +1936,7 @@ index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..9c09be2aca363d31c35b51a2da67ca0c
  
      public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getStatusFutureUnchecked(ChunkStatus chunkstatus) {
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(chunkstatus.c());
-@@ -379,11 +404,19 @@ public class PlayerChunk {
+@@ -379,11 +409,19 @@ public class PlayerChunk {
  
          if (!flag4 && flag5) {
              this.tickingFuture = playerchunkmap.a(this);
@@ -1809,7 +1956,7 @@ index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..9c09be2aca363d31c35b51a2da67ca0c
              this.tickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
          }
  
-@@ -396,11 +429,19 @@ public class PlayerChunk {
+@@ -396,11 +434,19 @@ public class PlayerChunk {
              }
  
              this.entityTickingFuture = playerchunkmap.b(this.location);
@@ -2016,5 +2163,5 @@ index 1aec70a1f1a9d8fd2cd06bde4033e19e769ab331..b3b0974365cf338a4b5a82a4eb5d257a
      private int initialCapacity;
  
 -- 
-2.22.1
+2.24.0
 

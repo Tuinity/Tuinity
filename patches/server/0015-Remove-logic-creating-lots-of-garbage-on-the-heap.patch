@@ -364,6 +364,19 @@ index 16f0930404457772838e246d237e44c17e006764..e2bb63cc93fbda26f046592d02677fbd
          public BlockPosition.MutableBlockPosition g(BaseBlockPosition baseblockposition) {
              return this.d(baseblockposition.getX(), baseblockposition.getY(), baseblockposition.getZ());
          }
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index c2b0679e5925aae7c74299a0c7bbf93921661fac..c29d85f22d6ea6bdc5751df42edb59ff015d4f1e 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -696,7 +696,7 @@ public class Chunk implements IChunkAccess {
+     public PlayerChunk playerChunk; /* Concrete - cache PlayerChunk per Chunk */
+     public void loadCallback() {
+         /* Concrete start - neighbour cache */
+-        this.playerChunk = ((WorldServer)this.world).getChunkProvider().playerChunkMap.updatingChunks.get(this.coordinateKey);
++        this.playerChunk = ((WorldServer)this.world).getChunkProvider().playerChunkMap.chunkMap.getUpdating(this.coordinateKey); /* Concrete */
+         int chunkX = this.loc.x;
+         int chunkZ = this.loc.z;
+         ChunkProviderServer chunkProvider = ((WorldServer)this.world).getChunkProvider();
 diff --git a/src/main/java/net/minecraft/server/ChunkMap.java b/src/main/java/net/minecraft/server/ChunkMap.java
 index 55f9f4e6e7fddb2fcdbc1877d1bdfe8d3c9eff6f..50444a2f49f07e66ff9ea55dacc1819023ea6624 100644
 --- a/src/main/java/net/minecraft/server/ChunkMap.java
@@ -473,33 +486,59 @@ index 851bb2f01b1f59cf9d3fbd78c36d155b17efa1ab..7c5649de63d125e699bae4c3a91ac0ae
  
          protected b(int i) {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index e5b892bb3192aee3e5c6f17ac957c20a91fe6905..d7853daefca759588b2881eb18dc06b33422600c 100644
+index e5b892bb3192aee3e5c6f17ac957c20a91fe6905..d0b87c72112a7bc02e8c6b643c4d7a38048c8965 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -607,6 +607,8 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -607,6 +607,12 @@ public class ChunkProviderServer extends IChunkProvider {
          this.clearCache();
      }
  
-+    private final List<PlayerChunk> chunksCopy = new java.util.ArrayList<>(8192); /* Concrete - replace chunk map */
++    /* Concrete start */
++    final ca.spottedleaf.concrete.util.ChunkList entityTickingChunks = new ca.spottedleaf.concrete.util.ChunkList();
++    boolean isTickingChunks;
++    final it.unimi.dsi.fastutil.objects.Object2BooleanLinkedOpenHashMap<Chunk> pendingEntityTickingChunkChanges = new it.unimi.dsi.fastutil.objects.Object2BooleanLinkedOpenHashMap<>(16, 0.8f);
++    /* Concrete end */
 +
      private void tickChunks() {
          long i = this.world.getTime();
          long j = i - this.lastTickTime;
-@@ -644,7 +646,8 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -644,11 +650,12 @@ public class ChunkProviderServer extends IChunkProvider {
  
              this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
              this.world.getMethodProfiler().exit();
 -            this.playerChunkMap.f().forEach((playerchunk) -> {
-+            this.chunksCopy.addAll(this.playerChunkMap.chunkMap.getVisibleValues()); /* Concrete - replace chunk map */
-+            this.chunksCopy.forEach((playerchunk) -> { /* Concrete - replace chunk map */
-                 Optional<Chunk> optional = ((Either) playerchunk.b().getNow(PlayerChunk.UNLOADED_CHUNK)).left();
+-                Optional<Chunk> optional = ((Either) playerchunk.b().getNow(PlayerChunk.UNLOADED_CHUNK)).left();
+-
+-                if (optional.isPresent()) {
+-                    Chunk chunk = (Chunk) optional.get();
++            /* Concrete start - replace chunk map */
++            this.isTickingChunks = true;
++            for (Chunk chunk : this.entityTickingChunks) {
++                PlayerChunk playerchunk = chunk.playerChunk;
++                if (true) { // keep indentation
++                    /* Concrete end */
  
-                 if (optional.isPresent()) {
-@@ -750,6 +753,7 @@ public class ChunkProviderServer extends IChunkProvider {
+                     this.world.getMethodProfiler().enter("broadcast");
+                     this.world.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
+@@ -749,7 +756,20 @@ public class ChunkProviderServer extends IChunkProvider {
+                         this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
                      }
                  }
-             });
-+            this.chunksCopy.clear(); /* Concrete - replace chunk map */
+-            });
++            }; /* Concrete */
++            /* Concrete start - replace chunk map */
++            this.isTickingChunks = false;
++            for (java.util.Iterator<it.unimi.dsi.fastutil.objects.Object2BooleanMap.Entry<Chunk>> iterator = this.pendingEntityTickingChunkChanges.object2BooleanEntrySet().fastIterator(); iterator.hasNext();) {
++                it.unimi.dsi.fastutil.objects.Object2BooleanMap.Entry<Chunk> entry = iterator.next();
++                iterator.remove();
++
++                if (entry.getBooleanValue()) {
++                    this.entityTickingChunks.add(entry.getKey());
++                } else {
++                    this.entityTickingChunks.remove(entry.getKey());
++                }
++            }
++            /* Concrete end - replace chunk map */
              this.world.getMethodProfiler().enter("customSpawners");
              if (flag1) {
                  try (co.aikar.timings.Timing ignored = this.world.timings.miscMobSpawning.startTiming()) { // Paper - timings
@@ -1298,6 +1337,42 @@ index 45fd135034de668c1f4282fe538e8d352db49278..d871ac2ad1ae38a160f8cb4e3f158c2e
          IBlockData iblockdata = iblockaccess.getTypeIfLoaded(blockposition); // Paper
          if (iblockdata == null) return PathType.BLOCKED; // Paper
          Block block = iblockdata.getBlock();
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index 28ee5399b68b61238921f10acf06b7aa758da8c2..5867ea066b3d7451b8d9a873413e889114f616fd 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -438,6 +438,13 @@ public class PlayerChunk {
+             this.entityTickingFuture.thenAccept((either) -> {
+                 if (either.left().isPresent()) {
+                     PlayerChunk.this.isEntityTickingReady = true;
++                    ChunkProviderServer chunkProvder = PlayerChunk.this.chunkMap.world.getChunkProvider();
++                    Chunk chunk = either.left().get();
++                    if (chunkProvder.isTickingChunks) {
++                        chunkProvder.pendingEntityTickingChunkChanges.put(chunk, true);
++                    } else {
++                        chunkProvder.entityTickingChunks.add(chunk);
++                    }
+                 }
+             });
+             /* Concrete end - cache chunk ticking stage */
+@@ -447,6 +454,17 @@ public class PlayerChunk {
+         if (flag6 && !flag7) {
+             this.entityTickingFuture.complete(PlayerChunk.UNLOADED_CHUNK);
+             this.isEntityTickingReady = false; /* Concrete - cache chunk ticking stage */
++            /* Concrete start */
++            ChunkProviderServer chunkProvder = PlayerChunk.this.chunkMap.world.getChunkProvider();
++            Chunk chunk = this.getFullChunkIfCached();
++            if (chunk != null) {
++                if (chunkProvder.isTickingChunks) {
++                    chunkProvder.pendingEntityTickingChunkChanges.put(chunk, false);
++                } else {
++                    chunkProvder.entityTickingChunks.remove(chunk);
++                }
++            }
++            /* Concrete end */
+             this.entityTickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
+         }
+ 
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 index 7512660a5b94b04cd48a8ff824b50499120bd8fc..07256c6497a6479ce988a6800de7045215338481 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
@@ -1750,5 +1825,5 @@ index f33d9c8b44294dfa2f94e7bdfd1dca599755928b..78ea65707432be1d78d2090be6997d48
  
      @Override
 -- 
-2.22.1
+2.24.0
 

@@ -1,0 +1,128 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Mon, 25 Nov 2019 03:46:45 -0800
+Subject: [PATCH] Improve autosave performance
+
+Autosave performance is improved since we spend less iterations looking
+for a chunk to save, as we only iterate on chunks that could be saved
+and were ordered by last save / load time
+
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index aa97afeb7602ab320aa180777bd8f4840ac7e75b..4f017c051bf18780361f4e16c4598ed2f1d2ba6d 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -433,7 +433,13 @@ public class PlayerChunk {
+         boolean flag2 = playerchunk_state.isAtLeast(PlayerChunk.State.BORDER);
+         boolean flag3 = playerchunk_state1.isAtLeast(PlayerChunk.State.BORDER);
+ 
++        boolean prevHasBeenLoaded = this.hasBeenLoaded; /* Concrete */
+         this.hasBeenLoaded |= flag3;
++        /* Concrete start */
++        if (this.hasBeenLoaded & !prevHasBeenLoaded) {
++            this.chunkMap.hasBeenLoadedMap.putAndMoveToLast(this.location.pair(), this);
++        }
++        /* Concrete end */
+         if (!flag2 && flag3) {
+             this.fullChunkFuture = playerchunkmap.b(this);
+             this.a(this.fullChunkFuture);
+@@ -543,8 +549,25 @@ public class PlayerChunk {
+     }
+ 
+     public void m() {
++        boolean prev = this.hasBeenLoaded; /* Concrete */
++        this.hasBeenLoaded = getChunkState(this.ticketLevel).isAtLeast(PlayerChunk.State.BORDER);
++        /* Concrete start */
++        if (prev != this.hasBeenLoaded) {
++            if (this.hasBeenLoaded) {
++                this.chunkMap.hasBeenLoadedMap.putAndMoveToLast(this.location.pair(), this);
++            } else {
++                this.chunkMap.hasBeenLoadedMap.remove(this.location.pair());
++            }
++        }
++        /* Concrete end */
++    }
++
++    /* Concrete start */
++    public boolean setHasBeenLoaded() {
+         this.hasBeenLoaded = getChunkState(this.ticketLevel).isAtLeast(PlayerChunk.State.BORDER);
++        return this.hasBeenLoaded;
+     }
++    /* Concrete end */
+ 
+     public void a(ProtoChunkExtension protochunkextension) {
+         for (int i = 0; i < this.statusFutures.length(); ++i) {
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index f16e828f2613387419cabee156a89cba03d43590..e0592e25b6839330a7098135905c96cb8c3fb46a 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -200,6 +200,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             this.playerEntityTrackerUntrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerUntrackRange, effectiveViewDistance));
+         }
+     }
++
++    final Long2ObjectLinkedOpenHashMap<PlayerChunk> hasBeenLoadedMap = new Long2ObjectLinkedOpenHashMap<>(8192, 0.5f);
+     /* Concrete end */
+ 
+     public PlayerChunkMap(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, IAsyncTaskHandler<Runnable> iasynctaskhandler, ILightAccess ilightaccess, ChunkGenerator<?> chunkgenerator, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier, int i) {
+@@ -540,8 +542,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     // Paper start - derived from below
+     protected void saveIncrementally() {
+         int savedThisTick = 0;
+-        for (PlayerChunk playerchunk : this.chunkMap.getVisibleValues()) { /* Concrete - replace chunk map */
+-            if (playerchunk.hasBeenLoaded()) {
++        /* Concrete start - optimize */
++        // optimized since we search far less chunks to hit ones that need to be saved
++        it.unimi.dsi.fastutil.longs.LongArrayList moveToEnd = new it.unimi.dsi.fastutil.longs.LongArrayList(world.paperConfig.maxAutoSaveChunksPerTick);
++        for (Iterator<PlayerChunk> iterator = this.hasBeenLoadedMap.values().iterator(); iterator.hasNext();) { /* Concrete - replace chunk map */
++            PlayerChunk playerchunk = iterator.next();
++            if (true || playerchunk.hasBeenLoaded()) { // always true
++                /* Concrete end - Optimize */
+ 
+                 IChunkAccess ichunkaccess = (IChunkAccess) playerchunk.getChunkSave().getNow(null); // CraftBukkit - decompile error
+ 
+@@ -555,15 +562,31 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+                     if (shouldSave && this.saveChunk(ichunkaccess, true)) { // Paper - async chunk io
+                         ++savedThisTick;
+-                        playerchunk.m();
++                        /* Concrete start */
++                        if (!playerchunk.setHasBeenLoaded()) {
++                            iterator.remove();
++                        } else {
++                            // this way we wont waste iterations on the following ticks for this
++                            moveToEnd.add(playerchunk.location.pair());
++                        }
++                        /* Concrete end */
+                     }
++                    /* Concrete start */
++                } else {
++                    moveToEnd.add(playerchunk.location.pair());
++                    /* Concrete end */
+                 }
+ 
+                 if (savedThisTick >= world.paperConfig.maxAutoSaveChunksPerTick) {
+-                    return;
++                    break; /* Concrete */
+                 }
+             }
+         }
++        /* Concrete start */
++        for (int i = 0, len = moveToEnd.size(); i < len; ++i) {
++            this.hasBeenLoadedMap.getAndMoveToLast(moveToEnd.getLong(i));
++        }
++        /* Concrete end */
+     }
+     // paper end
+ 
+@@ -738,6 +761,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                         this.world.unloadChunk(chunk);
+                     }
+ 
++                    this.hasBeenLoadedMap.remove(i); /* Concrete */
++
+                     try {
+                         this.asyncSave(ichunkaccess); // Paper - async chunk saving
+                     } catch (Throwable ex) {
+-- 
+2.24.0
+
