@@ -665,16 +665,26 @@ index 0000000000000000000000000000000000000000..0105b191a55229e52a269e2b90e5c0cf
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/Util.java b/src/main/java/ca/spottedleaf/concrete/util/Util.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..9ca138aebfd573ccf0e4f9c745ed8fb869959c56
+index 0000000000000000000000000000000000000000..8a591f8d89b8681098af02ec93bad8edf1d949e3
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/Util.java
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,95 @@
 +package ca.spottedleaf.concrete.util;
 +
++import it.unimi.dsi.fastutil.objects.ObjectRBTreeSet;
 +import net.minecraft.server.BlockPosition;
 +import net.minecraft.server.ChunkCoordIntPair;
 +import net.minecraft.server.Entity;
 +import org.bukkit.Bukkit;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.Comparator;
++import java.util.Iterator;
++import java.util.List;
++import java.util.SortedSet;
++import java.util.function.BiPredicate;
++import java.util.function.Consumer;
++import java.util.function.Predicate;
 +
 +public final class Util {
 +
@@ -722,6 +732,36 @@ index 0000000000000000000000000000000000000000..9ca138aebfd573ccf0e4f9c745ed8fb8
 +
 +    public static int getChunkCoordinate(final double coordinate) {
 +        return Util.fastFloor(coordinate) >> 4;
++    }
++
++    public static int getBlockCoordinate(final double coordinate) {
++        return Util.fastFloor(coordinate);
++    }
++
++    public static long getBlockKey(final int x, final int y, final int z) {
++        return ((long)x & 0x7FFFFFF) | (((long)z & 0x7FFFFFF) << 27) | ((long)y << 54);
++    }
++
++    public static long getBlockKey(final BlockPosition pos) {
++        return getBlockKey(pos.getX(), pos.getY(), pos.getZ());
++    }
++
++    public static long getBlockKey(final Entity entity) {
++        return getBlockKey(getBlockCoordinate(entity.locX), getBlockCoordinate(entity.locY), getBlockCoordinate(entity.locZ));
++    }
++
++    // assumes the sets have the same comparator, and if this comparator is null then assume T is Comparable
++    public static <T> void mergeSortedSets(final Consumer<T> consumer, final SortedSet<T>...sets) {
++        Comparator<? super T> comparator = sets[0].comparator();
++        if (comparator == null) {
++            comparator = (Comparator)Comparator.naturalOrder();
++        }
++        final ObjectRBTreeSet<T> all = new ObjectRBTreeSet<>(comparator);
++        // note: this is done in log(n!) ~ nlogn time. It could be improved if it were to mimick what mergesort does.
++        for (SortedSet<T> set : sets) {
++            all.addAll(all);
++        }
++        all.forEach(consumer);
 +    }
 +}
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java b/src/main/java/ca/spottedleaf/concrete/util/map/AreaMap.java
@@ -1846,7 +1886,7 @@ index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..e5b892bb3192aee3e5c6f17ac957c20a
                                      }
  
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index fa79d0bed626f837f0d882d5b8c8abd533cb1209..5a990f0294f14ef5d7adbbcf51a53496ae6f1134 100644
+index c747b5deb3a9e347940a7cdc589fe62c71b7f65c..6f13ef6cb93f32370fd175bc6b05a02a991d9915 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
 @@ -100,6 +100,10 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
@@ -1871,7 +1911,7 @@ index fa79d0bed626f837f0d882d5b8c8abd533cb1209..5a990f0294f14ef5d7adbbcf51a53496
  
      // Yes, this doesn't match Vanilla, but it's the best we can do for now.
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..28ee5399b68b61238921f10acf06b7aa758da8c2 100644
+index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..9106dd45baa0e76ea605fc083d5e126e5c2a1ba2 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -20,8 +20,8 @@ public class PlayerChunk {
@@ -1936,15 +1976,17 @@ index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..28ee5399b68b61238921f10acf06b7aa
  
      public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getStatusFutureUnchecked(ChunkStatus chunkstatus) {
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(chunkstatus.c());
-@@ -379,11 +409,19 @@ public class PlayerChunk {
+@@ -378,12 +408,20 @@ public class PlayerChunk {
+         boolean flag5 = playerchunk_state1.isAtLeast(PlayerChunk.State.TICKING);
  
          if (!flag4 && flag5) {
-             this.tickingFuture = playerchunkmap.a(this);
+-            this.tickingFuture = playerchunkmap.a(this);
 +            /* Concrete start - cache chunk ticking stage */
-+            this.tickingFuture.thenAccept((either) -> {
++            this.tickingFuture = playerchunkmap.a(this).thenApply((either) -> {
 +                if (either.left().isPresent()) {
 +                    PlayerChunk.this.isTickingReady = true;
 +                }
++                return either;
 +            });
 +            /* Concrete end - cache chunk ticking stage */
              this.a(this.tickingFuture);
@@ -1956,15 +1998,17 @@ index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..28ee5399b68b61238921f10acf06b7aa
              this.tickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
          }
  
-@@ -396,11 +434,19 @@ public class PlayerChunk {
+@@ -395,12 +433,20 @@ public class PlayerChunk {
+                 throw new IllegalStateException();
              }
  
-             this.entityTickingFuture = playerchunkmap.b(this.location);
+-            this.entityTickingFuture = playerchunkmap.b(this.location);
 +            /* Concrete start - cache chunk ticking stage */
-+            this.entityTickingFuture.thenAccept((either) -> {
++            this.entityTickingFuture = playerchunkmap.b(this.location).thenApply((either) -> {
 +                if (either.left().isPresent()) {
 +                    PlayerChunk.this.isEntityTickingReady = true;
 +                }
++                return either;
 +            });
 +            /* Concrete end - cache chunk ticking stage */
              this.a(this.entityTickingFuture);
