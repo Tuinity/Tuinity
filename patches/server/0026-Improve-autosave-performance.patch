@@ -8,7 +8,7 @@ for a chunk to save, as we only iterate on chunks that could be saved
 and were ordered by last save / load time
 
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index aa97afeb7602ab320aa180777bd8f4840ac7e75b..4f017c051bf18780361f4e16c4598ed2f1d2ba6d 100644
+index 6919cf17b8aadfae4312a7c3028e1d73f9f93e32..50363e884c8a62c21c46b6fe50d0d0e56b538c95 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -433,7 +433,13 @@ public class PlayerChunk {
@@ -52,7 +52,7 @@ index aa97afeb7602ab320aa180777bd8f4840ac7e75b..4f017c051bf18780361f4e16c4598ed2
      public void a(ProtoChunkExtension protochunkextension) {
          for (int i = 0; i < this.statusFutures.length(); ++i) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index f16e828f2613387419cabee156a89cba03d43590..e0592e25b6839330a7098135905c96cb8c3fb46a 100644
+index f16e828f2613387419cabee156a89cba03d43590..dc98996faea7348cab62741c155a6256334cd452 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -200,6 +200,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -64,7 +64,7 @@ index f16e828f2613387419cabee156a89cba03d43590..e0592e25b6839330a7098135905c96cb
      /* Concrete end */
  
      public PlayerChunkMap(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, IAsyncTaskHandler<Runnable> iasynctaskhandler, ILightAccess ilightaccess, ChunkGenerator<?> chunkgenerator, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier, int i) {
-@@ -540,8 +542,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -540,13 +542,18 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      // Paper start - derived from below
      protected void saveIncrementally() {
          int savedThisTick = 0;
@@ -80,6 +80,12 @@ index f16e828f2613387419cabee156a89cba03d43590..e0592e25b6839330a7098135905c96cb
  
                  IChunkAccess ichunkaccess = (IChunkAccess) playerchunk.getChunkSave().getNow(null); // CraftBukkit - decompile error
  
+ 
+-                if (ichunkaccess instanceof ProtoChunkExtension || ichunkaccess instanceof Chunk) {
++                if (ichunkaccess instanceof Chunk) { /* Concrete - only save non-readonly chunks... */
+                     boolean shouldSave = true;
+ 
+                     if (ichunkaccess instanceof Chunk) {
 @@ -555,15 +562,31 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
                      if (shouldSave && this.saveChunk(ichunkaccess, true)) { // Paper - async chunk io
