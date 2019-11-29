@@ -37,10 +37,10 @@ to ticking, the items are re-scheduled.
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..25682c84500e3d234bc075c5abee2db84dd24d57
+index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc606ee19969
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
-@@ -0,0 +1,575 @@
+@@ -0,0 +1,579 @@
 +package ca.spottedleaf.concrete.server;
 +
 +import ca.spottedleaf.concrete.util.Util;
@@ -122,6 +122,8 @@ index 0000000000000000000000000000000000000000..25682c84500e3d234bc075c5abee2db8
 +    }
 +    private int shortScheduledIndex;
 +
++    private long nextTick;
++
 +    // assume index < length
 +    private static int getWrappedIndex(final int start, final int length, final int index) {
 +        final int next = start + index;
@@ -144,6 +146,7 @@ index 0000000000000000000000000000000000000000..25682c84500e3d234bc075c5abee2db8
 +        this.timingCleanup = co.aikar.timings.WorldTimingsHandler.getTickList(world, timingsType + " - Cleanup"); // Paper
 +        this.timingTicking = co.aikar.timings.WorldTimingsHandler.getTickList(world, timingsType + " - Ticking"); // Paper
 +        this.timingFinished = co.aikar.timings.WorldTimingsHandler.getTickList(world, timingsType + " - Finish");
++        this.nextTick = this.world.getTime();
 +    }
 +
 +    private void queueEntryForTick(final NextTickListEntry<T> entry, final ChunkProviderServer chunkProvider) {
@@ -167,7 +170,7 @@ index 0000000000000000000000000000000000000000..25682c84500e3d234bc075c5abee2db8
 +    }
 +
 +    private void addToSchedule(final NextTickListEntry<T> entry) {
-+        long delay = entry.getTargetTick() - this.world.getTime();
++        long delay = entry.getTargetTick() - this.nextTick;
 +        if (delay < SHORT_SCHEDULE_TICK_THRESHOLD) {
 +            if (delay < 0) {
 +                // longScheduled orders by tick time, short scheduled does not
@@ -274,6 +277,7 @@ index 0000000000000000000000000000000000000000..25682c84500e3d234bc075c5abee2db8
 +        // this must be done here in case something schedules in the tick code
 +        this.shortScheduled[this.shortScheduledIndex].clear();
 +        this.shortScheduledIndex = getNextIndex(this.shortScheduledIndex, SHORT_SCHEDULE_TICK_THRESHOLD);
++        this.nextTick = this.world.getTime() + 1;
 +
 +        this.timingCleanup.stopTiming();
 +        this.world.getMethodProfiler().exitEnter("ticking");
