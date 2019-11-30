@@ -486,7 +486,7 @@ index 851bb2f01b1f59cf9d3fbd78c36d155b17efa1ab..7c5649de63d125e699bae4c3a91ac0ae
  
          protected b(int i) {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index e5b892bb3192aee3e5c6f17ac957c20a91fe6905..41a06387f52222391d562c47517be77a46d611d7 100644
+index e5b892bb3192aee3e5c6f17ac957c20a91fe6905..552cd42588e8aa770b4143d5cdc121ed77b4353b 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -607,6 +607,12 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -520,7 +520,7 @@ index e5b892bb3192aee3e5c6f17ac957c20a91fe6905..41a06387f52222391d562c47517be77a
  
                      this.world.getMethodProfiler().enter("broadcast");
                      this.world.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
-@@ -749,7 +756,20 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -749,7 +756,22 @@ public class ChunkProviderServer extends IChunkProvider {
                          this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
                      }
                  }
@@ -528,14 +528,16 @@ index e5b892bb3192aee3e5c6f17ac957c20a91fe6905..41a06387f52222391d562c47517be77a
 +            }; /* Concrete */
 +            /* Concrete start - replace chunk map */
 +            this.isTickingChunks = false;
-+            for (it.unimi.dsi.fastutil.objects.ObjectBidirectionalIterator<it.unimi.dsi.fastutil.objects.Object2BooleanMap.Entry<Chunk>> iterator = this.pendingEntityTickingChunkChanges.object2BooleanEntrySet().fastIterator(this.pendingEntityTickingChunkChanges.object2BooleanEntrySet().last()); iterator.hasPrevious();) {
-+                it.unimi.dsi.fastutil.objects.Object2BooleanMap.Entry<Chunk> entry = iterator.previous();
-+                iterator.remove();
++            if (!this.pendingEntityTickingChunkChanges.isEmpty()) {
++                for (it.unimi.dsi.fastutil.objects.ObjectBidirectionalIterator<it.unimi.dsi.fastutil.objects.Object2BooleanMap.Entry<Chunk>> iterator = this.pendingEntityTickingChunkChanges.object2BooleanEntrySet().fastIterator(this.pendingEntityTickingChunkChanges.object2BooleanEntrySet().last()); iterator.hasPrevious(); ) {
++                    it.unimi.dsi.fastutil.objects.Object2BooleanMap.Entry<Chunk> entry = iterator.previous();
++                    iterator.remove();
 +
-+                if (entry.getBooleanValue()) {
-+                    this.entityTickingChunks.add(entry.getKey());
-+                } else {
-+                    this.entityTickingChunks.remove(entry.getKey());
++                    if (entry.getBooleanValue()) {
++                        this.entityTickingChunks.add(entry.getKey());
++                    } else {
++                        this.entityTickingChunks.remove(entry.getKey());
++                    }
 +                }
 +            }
 +            /* Concrete end - replace chunk map */
