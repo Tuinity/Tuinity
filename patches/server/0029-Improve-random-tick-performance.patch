@@ -363,7 +363,7 @@ index 21f734a73c485b37315d59e8a4d5bcf27989fea4..9df30e217a15ec5508fd960a10892686
  
      public final SoundEffectType getStepSound() { return this.r(); } // Paper - OBFHELPER
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..5f9253e50e7e5a071a7e9b7a4fd0ab79cddf26ae 100644
+index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..f087beacf2b2fd5554d6b2b18192c6d9ab13d67e 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -524,6 +524,9 @@ public class WorldServer extends World {
@@ -385,7 +385,7 @@ index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..5f9253e50e7e5a071a7e9b7a4fd0ab79
              blockposition.setValues(this.a(this.getRandomBlockPosition(j, 0, k, 15, blockposition))); /* Concrete - use mutable to reduce allocation rate */
              if (this.isRainingAt(blockposition)) {
                  DifficultyDamageScaler difficultydamagescaler = this.getDamageScaler(blockposition);
-@@ -555,60 +558,63 @@ public class WorldServer extends World {
+@@ -555,61 +558,65 @@ public class WorldServer extends World {
          }
  
          gameprofilerfiller.exitEnter("iceandsnow");
@@ -418,7 +418,7 @@ index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..5f9253e50e7e5a071a7e9b7a4fd0ab79
              }
          }
  
-         gameprofilerfiller.exitEnter("tickBlocks");
+-        gameprofilerfiller.exitEnter("tickBlocks");
 -        timings.chunkTicksBlocks.startTiming(); // Paper
 -        if (i > 0) {
 -            ChunkSection[] achunksection = chunk.getSections();
@@ -432,9 +432,7 @@ index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..5f9253e50e7e5a071a7e9b7a4fd0ab79
 -
 -                    for (int k1 = 0; k1 < i; ++k1) {
 -                        BlockPosition blockposition2 = this.getRandomBlockPosition(j, j1, k, 15, blockposition); /* Concrete - use mutable to reduce allocation rate */
--
--                        gameprofilerfiller.enter("randomTick");
--                        IBlockData iblockdata = chunksection.getType(blockposition2.getX() - j, blockposition2.getY() - j1, blockposition2.getZ() - k);
++        gameprofilerfiller.exit();
 +        /* Concrete start - optimise random block tick */
 +        int blocks = chunk.tickingList.size();
 +        if (i > 0 && blocks > 0) { /* Concrete */
@@ -445,16 +443,18 @@ index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..5f9253e50e7e5a071a7e9b7a4fd0ab79
 +                // Note: The number of blocks that get ticked per tick still REMAIN the same.
 +                return;
 +            }
++            gameprofilerfiller.enter("tickBlocks");
 +            timings.chunkTicksBlocks.startTiming(); // Paper
+ 
+-                        gameprofilerfiller.enter("randomTick");
+-                        IBlockData iblockdata = chunksection.getType(blockposition2.getX() - j, blockposition2.getY() - j1, blockposition2.getZ() - k);
++            int toTick = i << 4; // i * 16
  
 -                        if (iblockdata.q()) {
 -                            iblockdata.getBlock().randomTick = true; // Paper - fix MC-113809
 -                            iblockdata.b((World) this, blockposition2, this.random);
 -                            iblockdata.getBlock().randomTick = false; // Paper - fix MC-113809
 -                        }
-+            int toTick = i << 4; // i * 16
- 
--                        Fluid fluid = iblockdata.p();
 +            gameprofilerfiller.enter("randomTick");
 +            for (int tick = 0; tick < toTick; ++tick) {
 +                int index = ((char)this.randomTickRandom.nextInt()) % (char)chunk.tickingList.size();
@@ -466,13 +466,15 @@ index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..5f9253e50e7e5a071a7e9b7a4fd0ab79
 +                BlockPosition blockposition2 = blockposition.setValues(j + randomX, randomY, k + randomZ);
 +                IBlockData iblockdata = ca.spottedleaf.concrete.util.IBlockDataList.getBlockDataFromRaw(raw);
  
--                        if (fluid.h()) {
--                            fluid.b(this, blockposition2, this.random);
--                        }
+-                        Fluid fluid = iblockdata.p();
 +                iblockdata.getBlock().randomTick = true; // Paper - fix MC-113809
 +                iblockdata.b(this, blockposition2, this.randomTickRandom);
 +                iblockdata.getBlock().randomTick = false; // Paper - fix MC-113809
  
+-                        if (fluid.h()) {
+-                            fluid.b(this, blockposition2, this.random);
+-                        }
+-
 -                        gameprofilerfiller.exit();
 -                    }
 -                }
@@ -480,13 +482,15 @@ index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..5f9253e50e7e5a071a7e9b7a4fd0ab79
 +                // TODO THIS NEEDS TO BE CHECKED ON UPDATE
              }
 +            gameprofilerfiller.exit();
-+            /* Concrete end - optimise random block tick */
 +            timings.chunkTicksBlocks.stopTiming(); // Paper
++            gameprofilerfiller.exit();
++            /* Concrete end - optimise random block tick */
          }
 -        timings.chunkTicksBlocks.stopTiming(); // Paper
-         gameprofilerfiller.exit();
+-        gameprofilerfiller.exit();
      }
  
+     protected BlockPosition a(BlockPosition blockposition) {
 -- 
-2.24.0
+2.24.0.windows.2
 
