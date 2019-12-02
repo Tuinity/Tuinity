@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Mon, 2 Dec 2019 05:15:55 -0800
+Subject: [PATCH] Optimise ActivationRange#activateEntities(World)
+
+By using our Chunk#forEachEntity method, the time trimmed was
+approximately 2-5x in my testing.
+
+diff --git a/src/main/java/org/spigotmc/ActivationRange.java b/src/main/java/org/spigotmc/ActivationRange.java
+index 0e36fca47dc32b9fb747a7f42a2164fb3570eaa2..7f792aa98abb51c492dcae3e548f34bf6dfd7580 100644
+--- a/src/main/java/org/spigotmc/ActivationRange.java
++++ b/src/main/java/org/spigotmc/ActivationRange.java
+@@ -163,24 +163,15 @@ public class ActivationRange
+      */
+     private static void activateChunkEntities(Chunk chunk)
+     {
+-        for ( List<Entity> slice : chunk.entitySlices )
+-        {
+-            for ( Entity entity : (Collection<Entity>) slice )
+-            {
++        chunk.forEachEntity((entity) -> { /* Concrete - optimise this call */
+                 if ( MinecraftServer.currentTick > entity.activatedTick )
+                 {
+-                    if ( entity.defaultActivationState )
+-                    {
+-                        entity.activatedTick = MinecraftServer.currentTick;
+-                        continue;
+-                    }
+-                    if ( entity.activationType.boundingBox.c( entity.getBoundingBox() ) )
++                    if ( entity.defaultActivationState || entity.activationType.boundingBox.intersects(entity.getBoundingBox())) /* Concrete - optimise this call */
+                     {
+                         entity.activatedTick = MinecraftServer.currentTick;
+-                    }
++                    } /* Concrete - optimise this call */
+                 }
+-            }
+-        }
++        }); /* Concrete - optimise this call */
+     }
+ 
+     /**
+-- 
+2.24.0.windows.2
+
