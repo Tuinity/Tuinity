@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sat, 30 Nov 2019 22:58:47 -0800
+Subject: [PATCH] Configurable player chunk loading
+
+I found in my testing that chunks would load very slowly on
+large playercounts. This was because we weren't queueing
+enough loads. Our system is capable enough to load
+something on the order of 100x more chunks than
+vanilla due to the async loading.
+
+diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
+index 99fbaa015d2875ee24933774cbd43771f9900066..9e5f0630b612c992a412be1a6db0750aea3862e1 100644
+--- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
++++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
+@@ -157,6 +157,7 @@ public abstract class ChunkMapDistance {
+     public boolean a(PlayerChunkMap playerchunkmap) {
+         //this.f.a(); /* Concrete - no longer used */
+         //this.g.a(); /* Concrete - no longer used */
++        this.playerTicketHandler.tick(); /* Concrete */
+         int i = Integer.MAX_VALUE - this.e.a(Integer.MAX_VALUE);
+         boolean flag = i != 0;
+ 
+@@ -431,6 +432,9 @@ public abstract class ChunkMapDistance {
+     /* Concrete start - Per player view distance */
+     class TicketTracker {
+ 
++        private final it.unimi.dsi.fastutil.longs.Long2BooleanLinkedOpenHashMap pendingTicketUpdates = new it.unimi.dsi.fastutil.longs.Long2BooleanLinkedOpenHashMap();
++        private int maxChunkLoadsPerTick = -1;
++
+         // this is copied from ChunkMapDistance.c(long, int, boolean, boolean)
+ 
+         // this is invoked if and only if there are no other players in range of the chunk.
+@@ -440,19 +444,12 @@ public abstract class ChunkMapDistance {
+             final int dist = Math.max(Math.abs(chunkX - fromX), Math.abs(chunkZ - fromZ));
+             Ticket<?> ticket = new Ticket<>(TicketType.PLAYER, ChunkMapDistance.b, new ChunkCoordIntPair(chunkX, chunkZ), ChunkMapDistance.this.currentTick);
+ 
+-            ChunkMapDistance.this.j.a(ChunkTaskQueueSorter.a(() -> { // Craftbukkit - decompile error
+-                ChunkMapDistance.this.m.execute(() -> {
+-                    if (ChunkMapDistance.this.chunkMap.playerViewDistanceTicketMap.getObjectsInRange(coordinate) != null) {
+-                        ChunkMapDistance.this.addTicket(coordinate, ticket);
+-                        ChunkMapDistance.this.l.add(coordinate);
+-                    } else {
+-                        ChunkMapDistance.this.k.a(ChunkTaskQueueSorter.a(() -> { // Craftbukkit - decompile error
+-                        }, coordinate, false));
+-                    }
+-                });
+-            }, coordinate, () -> {
+-                return dist;
+-            }));
++            if (this.maxChunkLoadsPerTick == -1 || ChunkMapDistance.this.chunkMap.world.isChunkLoaded(chunkX, chunkZ)) {
++                ChunkMapDistance.this.addTicket(coordinate, ticket);
++                this.pendingTicketUpdates.remove(coordinate);
++            } else {
++                this.pendingTicketUpdates.putAndMoveToLast(coordinate, true);
++            }
+         }
+ 
+         // this is invoked if and only if there are no other players in range of the chunk.
+@@ -461,11 +458,32 @@ public abstract class ChunkMapDistance {
+ 
+             Ticket<?> ticket = new Ticket<>(TicketType.PLAYER, ChunkMapDistance.b, new ChunkCoordIntPair(chunkX, chunkZ), ChunkMapDistance.this.currentTick);
+ 
+-            ChunkMapDistance.this.k.a(ChunkTaskQueueSorter.a(() -> { // Craftbukkit - decompile error
+-                ChunkMapDistance.this.m.execute(() -> {
+-                    ChunkMapDistance.this.removeTicket(coordinate, ticket);
+-                });
+-            }, coordinate, true));
++            if (this.maxChunkLoadsPerTick == -1 || !ChunkMapDistance.this.chunkMap.world.isChunkLoaded(chunkX, chunkZ)) {
++                ChunkMapDistance.this.removeTicket(coordinate, ticket);
++                this.pendingTicketUpdates.remove(coordinate);
++            } else {
++                this.pendingTicketUpdates.putAndMoveToLast(coordinate, false);
++            }
++        }
++
++        public void tick() {
++            if (this.maxChunkLoadsPerTick == -1) {
++                return;
++            }
++
++            java.util.Iterator<it.unimi.dsi.fastutil.longs.Long2BooleanMap.Entry> iterator = this.pendingTicketUpdates.long2BooleanEntrySet().fastIterator();
++            for (int i = 0, max = this.maxChunkLoadsPerTick; i < max && iterator.hasNext(); ++i)  {
++                it.unimi.dsi.fastutil.longs.Long2BooleanMap.Entry entry = iterator.next();
++                iterator.remove();
++
++                Ticket<?> ticket = new Ticket<>(TicketType.PLAYER, ChunkMapDistance.b, new ChunkCoordIntPair(entry.getLongKey()), ChunkMapDistance.this.currentTick);
++
++                if (entry.getBooleanValue()) {
++                    ChunkMapDistance.this.addTicket(entry.getLongKey(), ticket);
++                } else {
++                    ChunkMapDistance.this.removeTicket(entry.getLongKey(), ticket);
++                }
++            }
+         }
+     }
+     /* Concrete end - per player view distance */
+-- 
+2.24.0
+

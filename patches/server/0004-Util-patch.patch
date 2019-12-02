@@ -469,7 +469,7 @@ index 0000000000000000000000000000000000000000..f2096ef11b8da2307621dfad0120e8e2
 +}
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/EntityList.java b/src/main/java/ca/spottedleaf/concrete/util/EntityList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..28ea9b9eac928a2366e4448468dc7c7793a34399
+index 0000000000000000000000000000000000000000..e0128ad08d71fe51b03086db3b020fca91190862
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/EntityList.java
 @@ -0,0 +1,118 @@
@@ -483,7 +483,7 @@ index 0000000000000000000000000000000000000000..28ea9b9eac928a2366e4448468dc7c77
 +import java.util.NoSuchElementException;
 +
 +// list with O(1) remove & contains
-+public class EntityList implements Iterable<Entity> {
++public final class EntityList implements Iterable<Entity> {
 +
 +    protected final Int2IntOpenHashMap entityToIndex = new Int2IntOpenHashMap();
 +    {
@@ -591,6 +591,136 @@ index 0000000000000000000000000000000000000000..28ea9b9eac928a2366e4448468dc7c77
 +        };
 +    }
 +}
+diff --git a/src/main/java/ca/spottedleaf/concrete/util/IBlockDataList.java b/src/main/java/ca/spottedleaf/concrete/util/IBlockDataList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c0c40479c4dcccd80a60042605c0ce4a8eda1f3b
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/concrete/util/IBlockDataList.java
+@@ -0,0 +1,123 @@
++package ca.spottedleaf.concrete.util;
++
++import it.unimi.dsi.fastutil.longs.LongIterator;
++import it.unimi.dsi.fastutil.shorts.Short2LongOpenHashMap;
++import net.minecraft.server.ChunkSection;
++import net.minecraft.server.DataPaletteGlobal;
++import net.minecraft.server.IBlockData;
++import java.util.Arrays;
++
++public final class IBlockDataList {
++
++    static final DataPaletteGlobal<IBlockData> GLOBAL_PALETTE = (DataPaletteGlobal)ChunkSection.GLOBAL_PALETTE;
++
++    // map of location -> (index | (location << 16) | (palette id << 32))
++    private final Short2LongOpenHashMap map = new Short2LongOpenHashMap(16, 0.7f);
++    {
++        this.map.defaultReturnValue(Long.MAX_VALUE);
++    }
++
++    private long[] byIndex = new long[16];
++    private int size;
++
++    public static int getLocationKey(final int x, final int y, final int z) {
++        return (x & 15) | (((z & 15) << 4)) | ((y & 255) << (4 + 4));
++    }
++
++    public static IBlockData getBlockDataFromRaw(final long raw) {
++        return GLOBAL_PALETTE.getObject((int)(raw >>> 32));
++    }
++
++    public static int getIndexFromRaw(final long raw) {
++        return (int)(raw & 0xFFFF);
++    }
++
++    public static int getLocationFromRaw(final long raw) {
++        return (int)((raw >>> 16) & 0xFFFF);
++    }
++
++    public static long getRawFromValues(final int index, final int location, final IBlockData data) {
++        return (long)index | ((long)location << 16) | (((long)GLOBAL_PALETTE.getOrCreateIdFor(data)) << 32);
++    }
++
++    public static long setIndexRawValues(final long value, final int index) {
++        return value & ~(0xFFFF) | (index);
++    }
++
++    public long add(final int x, final int y, final int z, final IBlockData data) {
++        return this.add(getLocationKey(x, y, z), data);
++    }
++
++    public long add(final int location, final IBlockData data) {
++        final long curr = this.map.get((short)location);
++
++        if (curr == Long.MAX_VALUE) {
++            final int index = this.size++;
++            final long raw = getRawFromValues(index, location, data);
++            this.map.put((short)location, raw);
++
++            if (index >= this.byIndex.length) {
++                this.byIndex = Arrays.copyOf(this.byIndex, this.byIndex.length * 2);
++            }
++
++            this.byIndex[index] = raw;
++            return raw;
++        } else {
++            final int index = getIndexFromRaw(curr);
++            final long raw = this.byIndex[index] = getRawFromValues(index, location, data);
++
++            this.map.put((short)location, raw);
++
++            return raw;
++        }
++    }
++
++    public long remove(final int x, final int y, final int z) {
++        return this.remove(getLocationKey(x, y, z));
++    }
++
++    public long remove(final int location) {
++        final long ret = this.map.remove((short)location);
++        final int index = getIndexFromRaw(ret);
++        if (ret == Long.MAX_VALUE) {
++            return ret;
++        }
++
++        // move the entry at the end to this index
++        final int endIndex = --this.size;
++        final long end = this.byIndex[endIndex];
++        if (index != endIndex) {
++            // not empty after this call
++            this.map.put((short)getLocationFromRaw(end), setIndexRawValues(end, index));
++        }
++        this.byIndex[index] = end;
++        this.byIndex[endIndex] = 0L;
++
++        return ret;
++    }
++
++    public int size() {
++        return this.size;
++    }
++
++    public long getRaw(final int index) {
++        return this.byIndex[index];
++    }
++
++    public int getLocation(final int index) {
++        return getLocationFromRaw(this.getRaw(index));
++    }
++
++    public IBlockData getData(final int index) {
++        return getBlockDataFromRaw(this.getRaw(index));
++    }
++
++    public void clear() {
++        this.size = 0;
++        this.map.clear();
++    }
++
++    public LongIterator getRawIterator() {
++        return this.map.values().iterator();
++    }
++}
+\ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/OptimizedSmallEnumSet.java b/src/main/java/ca/spottedleaf/concrete/util/OptimizedSmallEnumSet.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..0105b191a55229e52a269e2b90e5c0cf288bed7a
@@ -1515,8 +1645,31 @@ index ddec62fbf591ba06ee1fdf9fbbc0a6122a1dfb9d..1d5b346be8a8549856f42aa9ecf3db0c
          mobSpawn = Timings.ofSafe(name + "mobSpawn");
          doChunkUnload = Timings.ofSafe(name + "doChunkUnload");
          scheduledBlocks = Timings.ofSafe(name + "Scheduled Blocks");
+diff --git a/src/main/java/net/minecraft/server/BlockPosition.java b/src/main/java/net/minecraft/server/BlockPosition.java
+index 16f0930404457772838e246d237e44c17e006764..d7e742df32609346343854afc2eefd8dc97fa3d0 100644
+--- a/src/main/java/net/minecraft/server/BlockPosition.java
++++ b/src/main/java/net/minecraft/server/BlockPosition.java
+@@ -473,6 +473,18 @@ public class BlockPosition extends BaseBlockPosition implements MinecraftSeriali
+             return this.d(this.x + i, this.y + j, this.z + k);
+         }
+ 
++        /* Concrete start */
++        public final void setX(int x) {
++            this.x = x;
++        }
++        public final void setY(int y) {
++            this.y = y;
++        }
++        public final void setZ(int z) {
++            this.z = z;
++        }
++        /* Concrete end */
++
+         public void o(int i) {
+             this.x = i; // Paper change to x
+         }
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 67dc837f4325db11dedf05259549dfeb9f651c5b..496969c8fd71a7d78bacb49cd4a33f9157a74fa7 100644
+index 67dc837f4325db11dedf05259549dfeb9f651c5b..53bde5ab8c0853b8d1d6429dd16d6d00f932adfe 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -49,7 +49,7 @@ public class Chunk implements IChunkAccess {
@@ -1602,7 +1755,20 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..496969c8fd71a7d78bacb49cd4a33f91
      public Chunk(World world, ProtoChunk protochunk) {
          this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.q(), protochunk.getSections(), (Consumer) null);
          Iterator iterator = protochunk.y().iterator();
-@@ -633,7 +691,26 @@ public class Chunk implements IChunkAccess {
+@@ -492,6 +550,12 @@ public class Chunk implements IChunkAccess {
+         return ((HeightMap) this.heightMap.get(heightmap_type)).a(i & 15, j & 15) - 1;
+     }
+ 
++    /* Concrete start */
++    public final int getHighestBlockYAt(HeightMap.Type type, int x, int z) {
++        return this.heightMap.get(type).a(x & 15, z & 15); // TODO obfhelper
++    }
++    /* Concrete end */
++
+     @Nullable
+     private TileEntity k(BlockPosition blockposition) {
+         IBlockData iblockdata = this.getType(blockposition);
+@@ -633,7 +697,26 @@ public class Chunk implements IChunkAccess {
      }
  
      // CraftBukkit start
@@ -1629,7 +1795,7 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..496969c8fd71a7d78bacb49cd4a33f91
          org.bukkit.Server server = this.world.getServer();
          if (server != null) {
              /*
-@@ -675,6 +752,22 @@ public class Chunk implements IChunkAccess {
+@@ -675,6 +758,22 @@ public class Chunk implements IChunkAccess {
          server.getPluginManager().callEvent(unloadEvent);
          // note: saving can be prevented, but not forced if no saving is actually required
          this.mustNotSave = !unloadEvent.isSaveChunk();
