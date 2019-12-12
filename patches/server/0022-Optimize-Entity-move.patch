@@ -94,10 +94,10 @@ index 0000000000000000000000000000000000000000..45415e45da4274a1e1db482a5d5d3abb
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/pool/CachedLists.java b/src/main/java/ca/spottedleaf/concrete/util/pool/CachedLists.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..ebdbac75ceb16d4bda9ad3c26997b0d076bfb72b
+index 0000000000000000000000000000000000000000..cdd83833688f983441aa2235d3b3eeffe1289bb7
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/pool/CachedLists.java
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,21 @@
 +package ca.spottedleaf.concrete.util.pool;
 +
 +import net.minecraft.server.Entity;
@@ -106,9 +106,11 @@ index 0000000000000000000000000000000000000000..ebdbac75ceb16d4bda9ad3c26997b0d0
 +
 +public final class CachedLists {
 +
-+    public static final UnsafeList<VoxelShape> TEMP_COLLISION_LIST = new UnsafeList<>(1024); /* Concrete - optimize Entity#move */
-+    public static final UnsafeList<Entity> TEMP_ENTITY_LIST = new UnsafeList<>(1024); /* Concrete - optimize Entity#move */
++    public static final UnsafeList<VoxelShape> TEMP_COLLISION_LIST = new UnsafeList<>(1024);
++    public static final UnsafeList<Entity> TEMP_ENTITY_LIST = new UnsafeList<>(1024);
 +    public static final UnsafeList<Entity> TEMP_COLLIDE_NEARBY_LIST = new UnsafeList<>(1024);
++
++
 +
 +    public static void reset() {
 +        TEMP_COLLISION_LIST.completeReset();
@@ -825,14 +827,14 @@ index a25736e23deeff460224eea7a580d1f8cb1a6428..c9bf1f1352200600bcb7be6788197044
          int i = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
          int j = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 3a08e7e3ca4c16cf70802e27471d2af2d8c0b957..932adbb7f33f094ca9dbcc2def9bd9a1d524d05a 100644
+index 3a08e7e3ca4c16cf70802e27471d2af2d8c0b957..b04e933359b010fed089d1fbb30b3c23d5de5369 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
 @@ -1163,6 +1163,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          long remaining = (TICK_TIME - (endTime - lastTick)) - catchupTime;
          new com.destroystokyo.paper.event.server.ServerTickEndEvent(this.ticks, ((double)(endTime - lastTick) / 1000000D), remaining).callEvent();
          // Paper end
-+        ca.spottedleaf.concrete.util.pool.CachedLists.reset();
++        ca.spottedleaf.concrete.util.pool.CachedLists.reset(); /* Concrete */
          co.aikar.timings.TimingsManager.FULL_SERVER_TICK.stopTiming(); // Paper
      }
  

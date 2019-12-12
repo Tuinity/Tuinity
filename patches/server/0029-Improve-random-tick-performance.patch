@@ -40,15 +40,15 @@ index 0000000000000000000000000000000000000000..e8accbe0a9c52f173a532cf4efe8694e
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/BiomeBase.java b/src/main/java/net/minecraft/server/BiomeBase.java
-index a86ece8344539368ec1f1f238605747c4e575216..9c53ddf954fd0a2580a25f3dffbde9888ad5fcb3 100644
+index a86ece8344539368ec1f1f238605747c4e575216..1b0c85e69956885a916d8566fef7a087f1d69887 100644
 --- a/src/main/java/net/minecraft/server/BiomeBase.java
 +++ b/src/main/java/net/minecraft/server/BiomeBase.java
-@@ -162,12 +162,17 @@ public abstract class BiomeBase {
+@@ -162,12 +162,18 @@ public abstract class BiomeBase {
      }
  
      public boolean a(IWorldReader iworldreader, BlockPosition blockposition, boolean flag) {
 +        /* Concrete start - Add Chunk parameter */
-+        return this.transformWater(iworldreader, blockposition, flag, iworldreader.getChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4));
++        return this.transformWater(iworldreader, blockposition, flag, null);
 +    }
 +    public boolean transformWater(IWorldReader iworldreader, BlockPosition blockposition, boolean flag, IChunkAccess chunk) {
 +        /* Concrete end - Add Chunk parameter */
@@ -58,17 +58,18 @@ index a86ece8344539368ec1f1f238605747c4e575216..9c53ddf954fd0a2580a25f3dffbde988
              if (blockposition.getY() >= 0 && blockposition.getY() < 256 && iworldreader.getBrightness(EnumSkyBlock.BLOCK, blockposition) < 10) {
 -                IBlockData iblockdata = iworldreader.getType(blockposition);
 -                Fluid fluid = iworldreader.getFluid(blockposition);
++                if (chunk == null) chunk = iworldreader.getChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4); /* Concrete - Add Chunk parameter */
 +                IBlockData iblockdata = chunk.getType(blockposition); /* Concrete - avoid chunk lookup */
 +                Fluid fluid = iblockdata.getFluid(); /* Concrete - avoid chunk lookup + IBlockData lookup */
  
                  if (fluid.getType() == FluidTypes.WATER && iblockdata.getBlock() instanceof BlockFluids) {
                      if (!flag) {
-@@ -187,11 +192,16 @@ public abstract class BiomeBase {
+@@ -187,11 +193,17 @@ public abstract class BiomeBase {
      }
  
      public boolean b(IWorldReader iworldreader, BlockPosition blockposition) {
 +        /* Concrete start - add Chunk parameter */
-+        return this.canPlaceSnow(iworldreader, blockposition, iworldreader.getChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4));
++        return this.canPlaceSnow(iworldreader, blockposition, null);
 +    }
 +    public boolean canPlaceSnow(IWorldReader iworldreader, BlockPosition blockposition, IChunkAccess chunk) {
 +        /* Concrete end - add Chunk parameter */
@@ -77,6 +78,7 @@ index a86ece8344539368ec1f1f238605747c4e575216..9c53ddf954fd0a2580a25f3dffbde988
          } else {
              if (blockposition.getY() >= 0 && blockposition.getY() < 256 && iworldreader.getBrightness(EnumSkyBlock.BLOCK, blockposition) < 10) {
 -                IBlockData iblockdata = iworldreader.getType(blockposition);
++                if (chunk == null) chunk = iworldreader.getChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4); /* Concrete - Add Chunk parameter */
 +                IBlockData iblockdata = chunk.getType(blockposition); /* Concrete - avoid chunk lookup */
  
                  if (iblockdata.isAir() && Blocks.SNOW.getBlockData().canPlace(iworldreader, blockposition)) {
@@ -363,7 +365,7 @@ index 21f734a73c485b37315d59e8a4d5bcf27989fea4..9df30e217a15ec5508fd960a10892686
  
      public final SoundEffectType getStepSound() { return this.r(); } // Paper - OBFHELPER
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..f087beacf2b2fd5554d6b2b18192c6d9ab13d67e 100644
+index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..c56fcf85f385d641fb17e660371ca5d38aa1e3d3 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -524,6 +524,9 @@ public class WorldServer extends World {
@@ -385,7 +387,7 @@ index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..f087beacf2b2fd5554d6b2b18192c6d9
              blockposition.setValues(this.a(this.getRandomBlockPosition(j, 0, k, 15, blockposition))); /* Concrete - use mutable to reduce allocation rate */
              if (this.isRainingAt(blockposition)) {
                  DifficultyDamageScaler difficultydamagescaler = this.getDamageScaler(blockposition);
-@@ -555,61 +558,65 @@ public class WorldServer extends World {
+@@ -555,61 +558,70 @@ public class WorldServer extends World {
          }
  
          gameprofilerfiller.exitEnter("iceandsnow");
@@ -393,19 +395,23 @@ index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..f087beacf2b2fd5554d6b2b18192c6d9
 -            blockposition.setValues(this.getHighestBlockYAt(HeightMap.Type.MOTION_BLOCKING, this.getRandomBlockPosition(j, 0, k, 15, blockposition))); /* Concrete - use mutable to reduce allocation rate */
 -            BlockPosition blockposition1 = blockposition.down();
 -            BiomeBase biomebase = this.getBiome(blockposition);
-+        if (!this.paperConfig.disableIceAndSnow && this.randomTickRandom.nextInt(16) == 0) { // Paper - Disable ice and snow /* Concrete */
++        /* Concrete start */
++        if (!this.paperConfig.disableIceAndSnow && this.randomTickRandom.nextInt(16) == 0) { // Paper - Disable ice and snow
 +            this.getRandomBlockPosition(j, 0, k, 15, blockposition);
-+            blockposition.setY(chunk.getHighestBlockYAt(HeightMap.Type.MOTION_BLOCKING, blockposition.getX(), blockposition.getZ()) - 1);
-+            BiomeBase biomebase = chunk.getBiome(blockposition); // this code will break anyways once biomes have y values, however just in case TODO check on update
++            int normalY = chunk.getHighestBlockYAt(HeightMap.Type.MOTION_BLOCKING, blockposition.getX(), blockposition.getZ());
++            int downY = normalY - 1;
++            blockposition.setY(normalY);
++            BiomeBase biomebase = chunk.getBiome(blockposition);
  
 -            if (biomebase.a((IWorldReader) this, blockposition1)) {
 -                org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(this, blockposition1, Blocks.ICE.getBlockData(), null); // CraftBukkit
++            blockposition.setY(downY);
 +            if (biomebase.transformWater((IWorldReader) this, blockposition, true, chunk)) {
 +                org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(this, blockposition, Blocks.ICE.getBlockData(), null); // CraftBukkit
              }
  
 -            if (flag && biomebase.b(this, blockposition)) {
-+            blockposition.setY(blockposition.getY() + 1);
++            blockposition.setY(normalY);
 +            if (flag && biomebase.canPlaceSnow(this, blockposition, chunk)) {
                  org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(this, blockposition, Blocks.SNOW.getBlockData(), null); // CraftBukkit
              }
@@ -413,9 +419,10 @@ index d1092d77dcf6ed8a5466fafbbf7bbaa16939b474..f087beacf2b2fd5554d6b2b18192c6d9
  
 -            if (flag && this.getBiome(blockposition1).b() == BiomeBase.Precipitation.RAIN) {
 -                this.getType(blockposition1).getBlock().c((World) this, blockposition1);
-+            if (flag && this.getBiome(blockposition).b() == BiomeBase.Precipitation.RAIN) {
++            if (flag && chunk.getBiome(blockposition).b() == BiomeBase.Precipitation.RAIN) {
 +                chunk.getType(blockposition).getBlock().c((World) this, blockposition);
              }
++            /* Concrete end */
          }
  
 -        gameprofilerfiller.exitEnter("tickBlocks");

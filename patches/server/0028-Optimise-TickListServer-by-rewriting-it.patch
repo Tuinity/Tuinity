@@ -37,10 +37,10 @@ to ticking, the items are re-scheduled.
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc606ee19969
+index 0000000000000000000000000000000000000000..d9672806f2232ee12145dd3d026fa0c7d23edc22
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
-@@ -0,0 +1,579 @@
+@@ -0,0 +1,577 @@
 +package ca.spottedleaf.concrete.server;
 +
 +import ca.spottedleaf.concrete.util.Util;
@@ -81,9 +81,7 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +
 +public final class ConcreteTickList<T> extends TickListServer<T> { // extend to avoid breaking ABI
 +
-+    // TODO obfhelpers
-+
-+    // in the order the state is expected to change
++    // in the order the state is expected to change (mostly)
 +    public static final int STATE_UNSCHEDULED    = 1 << 0;
 +    public static final int STATE_SCHEDULED      = 1 << 1; // scheduled for some tick
 +    public static final int STATE_PENDING_TICK   = 1 << 2; // for this tick
@@ -299,7 +297,7 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +                    this.addToNotTickingReady(toTick);
 +                }
 +            } catch (final Throwable thr) {
-+                // start copy from TickListServer
++                // start copy from TickListServer // TODO check on update
 +                CrashReport crashreport = CrashReport.a(thr, "Exception while ticking");
 +                CrashReportSystemDetails crashreportsystemdetails = crashreport.a("Block being ticked");
 +
@@ -317,7 +315,8 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +        for (int i = 0, len = this.toTickThisTick.size(); i < len; ++i) {
 +            final NextTickListEntry<T> entry = this.toTickThisTick.poll();
 +            if (entry.tickState != STATE_SCHEDULED) {
-+                // some entries get re-scheduled due to their chunk not being loaded/at correct status
++                // some entries get re-scheduled due to their chunk not being loaded/at correct status, so do not
++                // call onTickEnd for them
 +                this.onTickEnd(entry);
 +            }
 +        }
@@ -373,7 +372,7 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +
 +        for (int i = 0, size = entries.size(); i < size; ++i) {
 +            final NextTickListEntry<T> entry = entries.get(i);
-+            if (entry != null && entry.getData() == data && entry.tickState == STATE_PENDING_TICK) {
++            if (entry.getData() == data && entry.tickState == STATE_PENDING_TICK) {
 +                return true;
 +            }
 +        }
@@ -394,7 +393,7 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +
 +        for (int i = 0, size = entries.size(); i < size; ++i) {
 +            final NextTickListEntry<T> entry = entries.get(i);
-+            if (entry != null && entry.getData() == data && entry.tickState == STATE_SCHEDULED) {
++            if (entry.getData() == data && entry.tickState == STATE_SCHEDULED) {
 +                return true;
 +            }
 +        }
@@ -459,8 +458,7 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +    // i.e the y value is ignored? the x, z calc isn't correct?
 +    // however for the copy op they use the correct intersection, after using this one of course...
 +    private static boolean isBlockInSortof(final StructureBoundingBox boundingBox, final BlockPosition pos) {
-+        // todo obfhelpers
-+        return pos.getX() >= boundingBox.a && pos.getX() < boundingBox.d && pos.getZ() >= boundingBox.c && pos.getZ() < boundingBox.f;
++        return pos.getX() >= boundingBox.getMinX() && pos.getX() < boundingBox.getMaxX() && pos.getZ() >= boundingBox.getMinZ() && pos.getZ() < boundingBox.getMinZ();
 +    }
 +
 +    @Override
@@ -468,14 +466,14 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +        return this.getEntriesInBoundingBox(structureboundingbox, removeReturned, excludeTicked);
 +    }
 +    public List<NextTickListEntry<T>> getEntriesInBoundingBox(final StructureBoundingBox structureboundingbox, final boolean removeReturned, final boolean excludeTicked) {
-+        if (structureboundingbox.a == structureboundingbox.d || structureboundingbox.c == structureboundingbox.f) {
++        if (structureboundingbox.getMinX() == structureboundingbox.getMaxX() || structureboundingbox.getMinZ() == structureboundingbox.getMaxZ()) {
 +            return Collections.emptyList(); // vanilla behaviour, check isBlockInSortof above
 +        }
 +
-+        final int lowerChunkX = structureboundingbox.a >> 4;
-+        final int upperChunkX = (structureboundingbox.d - 1) >> 4; // subtract 1 since maxX is exclusive
-+        final int lowerChunkZ = structureboundingbox.c >> 4;
-+        final int upperChunkZ = (structureboundingbox.f - 1) >> 4; // subtract 1 since maxZ is exclusive
++        final int lowerChunkX = structureboundingbox.getMinX() >> 4;
++        final int upperChunkX = (structureboundingbox.getMaxX() - 1) >> 4; // subtract 1 since maxX is exclusive
++        final int lowerChunkZ = structureboundingbox.getMinZ() >> 4;
++        final int upperChunkZ = (structureboundingbox.getMaxZ() - 1) >> 4; // subtract 1 since maxZ is exclusive
 +
 +        final int xChunksLength = (upperChunkX - lowerChunkX + 1);
 +        final int zChunksLength = (upperChunkZ - lowerChunkZ + 1);
@@ -522,7 +520,7 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +
 +    @Override
 +    public void a(StructureBoundingBox structureboundingbox, BlockPosition blockposition) {
-+        // start copy from TickListServer
++        // start copy from TickListServer // TODO check on update
 +        List<NextTickListEntry<T>> list = this.a(structureboundingbox, false, false);
 +        Iterator iterator = list.iterator();
 +
@@ -576,7 +574,7 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +        return this.serialize(chunkcoordintpair);
 +    }
 +    public NBTTagList serialize(ChunkCoordIntPair chunkcoordintpair) {
-+        // start copy from TickListServer
++        // start copy from TickListServer  // TODO check on update
 +        List<NextTickListEntry<T>> list = this.a(chunkcoordintpair, false, true);
 +
 +        return TickListServer.a(this.getMinecraftKeyFrom, list, this.world.getTime());
@@ -588,7 +586,7 @@ index 0000000000000000000000000000000000000000..19cf83531496d0c5c2d0d6905ee5fc60
 +        return this.getTotalScheduledEntries();
 +    }
 +    public int getTotalScheduledEntries() {
-+        // good thing this is only used in debug reports
++        // good thing this is only used in debug reports // TODO check on update
 +        int ret = 0;
 +
 +        for (NextTickListEntry<T> entry : this.longScheduled) {
@@ -817,7 +815,7 @@ index 0000000000000000000000000000000000000000..ccfe3732d9f2d123e296ab5839e439e0
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index d2f3a2190b27022c956aa5cb24f976d7d9f6fc95..a68461589e94c7b3330e3514740b366693555b5c 100644
+index 70f2a272ea4d57f9eeebd40e32b88ea5aa58e5f2..bb0e90069def3b1074d3f63a6794988772325cdd 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -117,6 +117,11 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -904,6 +902,37 @@ index b9352c2ae0ff3caa5f38d27f71b00aaca5ab77b3..a1fc4bbeeb465b8e64eb774281bcbdd3
                  }
                  return either;
              });
+diff --git a/src/main/java/net/minecraft/server/StructureBoundingBox.java b/src/main/java/net/minecraft/server/StructureBoundingBox.java
+index dbb565e74d211ef35d5d40b3d024e2f07cef9031..6b7c9fd7c50d11a78499501fb2f9d6c688ed0469 100644
+--- a/src/main/java/net/minecraft/server/StructureBoundingBox.java
++++ b/src/main/java/net/minecraft/server/StructureBoundingBox.java
+@@ -4,12 +4,12 @@ import com.google.common.base.MoreObjects;
+ 
+ public class StructureBoundingBox {
+ 
+-    public int a;
+-    public int b;
+-    public int c;
+-    public int d;
+-    public int e;
+-    public int f;
++    public int a; public final int getMinX() { return this.a; } /* Concrete - OBFHELPER */
++    public int b; public final int getMinY() { return this.b; } /* Concrete - OBFHELPER */
++    public int c; public final int getMinZ() { return this.c; } /* Concrete - OBFHELPER */
++    public int d; public final int getMaxX() { return this.d; } /* Concrete - OBFHELPER */
++    public int e; public final int getMaxY() { return this.e; } /* Concrete - OBFHELPER */
++    public int f; public final int getMaxZ() { return this.f; } /* Concrete - OBFHELPER */
+ 
+     public StructureBoundingBox() {}
+ 
+@@ -84,6 +84,7 @@ public class StructureBoundingBox {
+         this.e = 512;
+     }
+ 
++    public final boolean intersects(StructureBoundingBox boundingBox) { return this.b(boundingBox); } /* Concrete - OBFHELPER */
+     public boolean b(StructureBoundingBox structureboundingbox) {
+         return this.d >= structureboundingbox.a && this.a <= structureboundingbox.d && this.f >= structureboundingbox.c && this.c <= structureboundingbox.f && this.e >= structureboundingbox.b && this.b <= structureboundingbox.e;
+     }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
 index 109b502b47f982b77b0a3f499842ebd8b826b096..d1092d77dcf6ed8a5466fafbbf7bbaa16939b474 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
@@ -934,5 +963,5 @@ index 109b502b47f982b77b0a3f499842ebd8b826b096..d1092d77dcf6ed8a5466fafbbf7bbaa1
          }, IRegistry.FLUID::getKey, IRegistry.FLUID::get, this::a, "Fluids"); // Paper - Timings
          this.H = Sets.newHashSet();
 -- 
-2.24.0
+2.24.0.windows.2
 
