@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sat, 14 Dec 2019 05:48:56 -0800
+Subject: [PATCH] Optimise ArraySetSorted#removeIf
+
+Remove iterator allocation and ensure the call is always O(n)
+
+diff --git a/src/main/java/net/minecraft/server/ArraySetSorted.java b/src/main/java/net/minecraft/server/ArraySetSorted.java
+index 4c6d42bdc97a1104bdfa562ea6c5b82a660d10f4..9314fb998a2fc73160d7b2d65aed68aa01e47d03 100644
+--- a/src/main/java/net/minecraft/server/ArraySetSorted.java
++++ b/src/main/java/net/minecraft/server/ArraySetSorted.java
+@@ -6,12 +6,13 @@ import java.util.Arrays;
+ import java.util.Comparator;
+ import java.util.Iterator;
+ import java.util.NoSuchElementException;
++import java.util.function.Predicate; /* Concrete */
+ 
+ public class ArraySetSorted<T> extends AbstractSet<T> {
+ 
+     private final Comparator<T> a;
+-    private T[] b;
+-    private int c;
++    private T[] b; private final T[] getBackingArray() { return this.b; } /* Concrete - OBFHELPER */
++    private int c; private final int getSize() { return this.c; } private final void setSize(int value) { this.c = value; } /* Concrete - OBFHELPER */
+ 
+     private ArraySetSorted(int i, Comparator<T> comparator) {
+         this.a = comparator;
+@@ -22,6 +23,42 @@ public class ArraySetSorted<T> extends AbstractSet<T> {
+         }
+     }
+ 
++    /* Concrete start - optimise removeIf */
++    @Override
++    public boolean removeIf(Predicate<? super T> filter) {
++        // prev. impl used an iterator, which could be n^2
++        int i = 0, len = this.getSize();
++        T[] backingArray = this.getBackingArray();
++
++        for (;;) {
++            if (i >= len) {
++                return false;
++            }
++            if (!filter.test(backingArray[i])) {
++                ++i;
++                continue;
++            }
++            break;
++        }
++
++        // we only want to write back to backingArray if we really need to
++
++        int lastIndex = i; // this is where new elements are shifted to
++
++        for (; i < len; ++i) {
++            T curr = backingArray[i];
++            if (!filter.test(curr)) { // if test throws we're screwed
++                backingArray[lastIndex++] = curr;
++            }
++        }
++
++        // cleanup end
++        Arrays.fill(backingArray, lastIndex, len, null);
++        this.setSize(lastIndex);
++        return true;
++    }
++    /* Concrete end - optimise removeIf */
++
+     public static <T extends Comparable<T>> ArraySetSorted<T> a(int i) {
+         return new ArraySetSorted<>(i, (Comparator)Comparator.naturalOrder()); /* Concrete - decompile fix */
+     }
+-- 
+2.24.0.windows.2
+

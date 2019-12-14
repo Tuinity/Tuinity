@@ -4,8 +4,53 @@ Date: Wed, 19 Jun 2019 13:21:17 -0700
 Subject: [PATCH] MC-Dev fixes
 
 
+diff --git a/src/main/java/net/minecraft/server/ArraySetSorted.java b/src/main/java/net/minecraft/server/ArraySetSorted.java
+index a3afe60b0d85cf90bf7a170dc0a0b61a796381a7..4c6d42bdc97a1104bdfa562ea6c5b82a660d10f4 100644
+--- a/src/main/java/net/minecraft/server/ArraySetSorted.java
++++ b/src/main/java/net/minecraft/server/ArraySetSorted.java
+@@ -23,11 +23,11 @@ public class ArraySetSorted<T> extends AbstractSet<T> {
+     }
+ 
+     public static <T extends Comparable<T>> ArraySetSorted<T> a(int i) {
+-        return new ArraySetSorted<>(i, Comparator.naturalOrder());
++        return new ArraySetSorted<>(i, (Comparator)Comparator.naturalOrder()); /* Concrete - decompile fix */
+     }
+ 
+     private static <T> T[] a(Object[] aobject) {
+-        return (Object[]) aobject;
++        return (T[])aobject; /* Concrete - decompile fix */
+     }
+ 
+     private int c(T t0) {
+@@ -101,7 +101,7 @@ public class ArraySetSorted<T> extends AbstractSet<T> {
+     }
+ 
+     public boolean remove(Object object) {
+-        int i = this.c(object);
++        int i = this.c((T)object); /* Concrete - decompile fix */
+ 
+         if (i >= 0) {
+             this.d(i);
+@@ -116,7 +116,7 @@ public class ArraySetSorted<T> extends AbstractSet<T> {
+     }
+ 
+     public boolean contains(Object object) {
+-        int i = this.c(object);
++        int i = this.c((T)object); /* Concrete - decompile fix */
+ 
+         return i >= 0;
+     }
+@@ -135,7 +135,7 @@ public class ArraySetSorted<T> extends AbstractSet<T> {
+ 
+     public <U> U[] toArray(U[] au) {
+         if (au.length < this.c) {
+-            return (Object[]) Arrays.copyOf(this.b, this.c, au.getClass());
++            return (U[])Arrays.copyOf(this.b, this.c, au.getClass()); /* Concrete - decompile fix */
+         } else {
+             System.arraycopy(this.b, 0, au, 0, this.c);
+             if (au.length > this.c) {
 diff --git a/src/main/java/net/minecraft/server/Fluid.java b/src/main/java/net/minecraft/server/Fluid.java
-index 4a61cab2b80a7037fd418ec269630b74cab535b2..beec09e226093ddec91ed4fef0b0fb8db95b7f6c 100644
+index 035f05e82769445f213c225a731db6d95626f6cd..d596585fda891f217665985da10f6ffec4f6c362 100644
 --- a/src/main/java/net/minecraft/server/Fluid.java
 +++ b/src/main/java/net/minecraft/server/Fluid.java
 @@ -74,7 +74,7 @@ public interface Fluid extends IBlockDataHolder<Fluid> {
@@ -18,7 +63,7 @@ index 4a61cab2b80a7037fd418ec269630b74cab535b2..beec09e226093ddec91ed4fef0b0fb8d
              }).collect(Collectors.toMap(Pair::getFirst, Pair::getSecond)))));
          }
 diff --git a/src/main/java/net/minecraft/server/LightEngineStorageSky.java b/src/main/java/net/minecraft/server/LightEngineStorageSky.java
-index 499cb079ec6ccd73e3f0f67757cc305828e0c087..b240261bdc6c941ed4a480be7d23f2b9346da788 100644
+index 1e1f7ec6e6e6fc698a8a5118ce21321d104dc5eb..4c11a7c62176e1006da5e89836335395f6d80527 100644
 --- a/src/main/java/net/minecraft/server/LightEngineStorageSky.java
 +++ b/src/main/java/net/minecraft/server/LightEngineStorageSky.java
 @@ -28,10 +28,10 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
@@ -35,7 +80,7 @@ index 499cb079ec6ccd73e3f0f67757cc305828e0c087..b240261bdc6c941ed4a480be7d23f2b9
                      ++k;
                      if (k >= l) {
 diff --git a/src/main/java/net/minecraft/server/ThreadedMailbox.java b/src/main/java/net/minecraft/server/ThreadedMailbox.java
-index 70b4212792cbb53871bcd896e0694f3ccb789b4a..464391c0cdc81e29804c559f5d9246bdc327cc4e 100644
+index 52a562cfa7d566e79191bfd14d2e133388233a08..aed8277ceb873431a008b45a1b2125553c6fd114 100644
 --- a/src/main/java/net/minecraft/server/ThreadedMailbox.java
 +++ b/src/main/java/net/minecraft/server/ThreadedMailbox.java
 @@ -83,7 +83,7 @@ public class ThreadedMailbox<T> implements Mailbox<T>, AutoCloseable, Runnable {
@@ -61,5 +106,5 @@ index e8daa74986f07163fd5318f431398b4f0efde6e8..550620b5fe441d9b7438f334c5997a83
                      this.c.add(j - 1);
                      this.a.add(d1);
 -- 
-2.24.0
+2.24.0.windows.2
 
