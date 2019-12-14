@@ -795,7 +795,7 @@ index 0000000000000000000000000000000000000000..0105b191a55229e52a269e2b90e5c0cf
 \ No newline at end of file
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/Util.java b/src/main/java/ca/spottedleaf/concrete/util/Util.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..8a591f8d89b8681098af02ec93bad8edf1d949e3
+index 0000000000000000000000000000000000000000..f0f5278cddde91b3ecec2b8a1fd6e50c18dd7c9a
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/Util.java
 @@ -0,0 +1,95 @@
@@ -831,7 +831,7 @@ index 0000000000000000000000000000000000000000..8a591f8d89b8681098af02ec93bad8ed
 +    }
 +
 +    public static long getCoordinateKey(final Entity entity) {
-+        return getCoordinateKey(getChunkCoordinate(entity.locX), getChunkCoordinate(entity.locZ));
++        return getCoordinateKey(getChunkCoordinate(entity.locX()), getChunkCoordinate(entity.locZ()));
 +    }
 +
 +    public static int fastFloor(double x) {
@@ -877,7 +877,7 @@ index 0000000000000000000000000000000000000000..8a591f8d89b8681098af02ec93bad8ed
 +    }
 +
 +    public static long getBlockKey(final Entity entity) {
-+        return getBlockKey(getBlockCoordinate(entity.locX), getBlockCoordinate(entity.locY), getBlockCoordinate(entity.locZ));
++        return getBlockKey(getBlockCoordinate(entity.locX()), getBlockCoordinate(entity.locY()), getBlockCoordinate(entity.locZ()));
 +    }
 +
 +    // assumes the sets have the same comparator, and if this comparator is null then assume T is Comparable
@@ -1616,7 +1616,7 @@ index 0000000000000000000000000000000000000000..b929f6d9b4d39b9b46e324be3a6f09ea
 +}
 \ No newline at end of file
 diff --git a/src/main/java/co/aikar/timings/WorldTimingsHandler.java b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-index ddec62fbf591ba06ee1fdf9fbbc0a6122a1dfb9d..1d5b346be8a8549856f42aa9ecf3db0c33aa6c8e 100644
+index e25544f116fe38cb340c6b2dc99045f6fd132d1c..fd3776d6f013f79c692bc217315683e15cd616a6 100644
 --- a/src/main/java/co/aikar/timings/WorldTimingsHandler.java
 +++ b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
 @@ -43,6 +43,12 @@ public class WorldTimingsHandler {
@@ -1632,7 +1632,7 @@ index ddec62fbf591ba06ee1fdf9fbbc0a6122a1dfb9d..1d5b346be8a8549856f42aa9ecf3db0c
      public final Timing syncChunkLoadTimer;
      public final Timing syncChunkLoadDataTimer;
      public final Timing syncChunkLoadStructuresTimer;
-@@ -79,6 +85,12 @@ public class WorldTimingsHandler {
+@@ -78,6 +84,12 @@ public class WorldTimingsHandler {
      public WorldTimingsHandler(World server) {
          String name = server.worldData.getName() +" - ";
  
@@ -1646,10 +1646,10 @@ index ddec62fbf591ba06ee1fdf9fbbc0a6122a1dfb9d..1d5b346be8a8549856f42aa9ecf3db0c
          doChunkUnload = Timings.ofSafe(name + "doChunkUnload");
          scheduledBlocks = Timings.ofSafe(name + "Scheduled Blocks");
 diff --git a/src/main/java/net/minecraft/server/BlockPosition.java b/src/main/java/net/minecraft/server/BlockPosition.java
-index 16f0930404457772838e246d237e44c17e006764..d7e742df32609346343854afc2eefd8dc97fa3d0 100644
+index 142476395429a1d3bcbdc98fa0821a447319ef52..f6c917e38838fb4d8ba964edb36af50d931b706f 100644
 --- a/src/main/java/net/minecraft/server/BlockPosition.java
 +++ b/src/main/java/net/minecraft/server/BlockPosition.java
-@@ -473,6 +473,18 @@ public class BlockPosition extends BaseBlockPosition implements MinecraftSeriali
+@@ -474,6 +474,18 @@ public class BlockPosition extends BaseBlockPosition implements MinecraftSeriali
              return this.d(this.x + i, this.y + j, this.z + k);
          }
  
@@ -1669,7 +1669,7 @@ index 16f0930404457772838e246d237e44c17e006764..d7e742df32609346343854afc2eefd8d
              this.x = i; // Paper change to x
          }
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 67dc837f4325db11dedf05259549dfeb9f651c5b..53bde5ab8c0853b8d1d6429dd16d6d00f932adfe 100644
+index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..c35c165195e09734a6dcaa16b8a804754f032d96 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -49,7 +49,7 @@ public class Chunk implements IChunkAccess {
@@ -1680,7 +1680,7 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..53bde5ab8c0853b8d1d6429dd16d6d00
 +    private final ChunkCoordIntPair loc; public final long coordinateKey; /* Concrete - Cache coordinate key */
      private volatile boolean x;
  
-     public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeBase[] abiomebase) {
+     public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeStorage biomestorage) {
 @@ -100,7 +100,7 @@ public class Chunk implements IChunkAccess {
          this.n = new ShortList[16];
          this.entitySlices = (List[]) (new List[16]); // Spigot
@@ -1753,9 +1753,9 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..53bde5ab8c0853b8d1d6429dd16d6d00
 +    /* Concrete end */
 +
      public Chunk(World world, ProtoChunk protochunk) {
-         this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.q(), protochunk.getSections(), (Consumer) null);
+         this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.getInhabitedTime(), protochunk.getSections(), (Consumer) null);
          Iterator iterator = protochunk.y().iterator();
-@@ -492,6 +550,12 @@ public class Chunk implements IChunkAccess {
+@@ -486,6 +544,12 @@ public class Chunk implements IChunkAccess {
          return ((HeightMap) this.heightMap.get(heightmap_type)).a(i & 15, j & 15) - 1;
      }
  
@@ -1766,9 +1766,9 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..53bde5ab8c0853b8d1d6429dd16d6d00
 +    /* Concrete end */
 +
      @Nullable
-     private TileEntity k(BlockPosition blockposition) {
+     private TileEntity j(BlockPosition blockposition) {
          IBlockData iblockdata = this.getType(blockposition);
-@@ -633,7 +697,26 @@ public class Chunk implements IChunkAccess {
+@@ -626,7 +690,26 @@ public class Chunk implements IChunkAccess {
      }
  
      // CraftBukkit start
@@ -1795,7 +1795,7 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..53bde5ab8c0853b8d1d6429dd16d6d00
          org.bukkit.Server server = this.world.getServer();
          if (server != null) {
              /*
-@@ -675,6 +758,22 @@ public class Chunk implements IChunkAccess {
+@@ -668,6 +751,22 @@ public class Chunk implements IChunkAccess {
          server.getPluginManager().callEvent(unloadEvent);
          // note: saving can be prevented, but not forced if no saving is actually required
          this.mustNotSave = !unloadEvent.isSaveChunk();
@@ -1819,7 +1819,7 @@ index 67dc837f4325db11dedf05259549dfeb9f651c5b..53bde5ab8c0853b8d1d6429dd16d6d00
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..e5b892bb3192aee3e5c6f17ac957c20a91fe6905 100644
+index cbe4b23e16b5e07669b65eff30a82741fdfb06ce..3c8f3d1c57b9cfee7666850feda4dbdc32625d5c 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -26,7 +26,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -1971,7 +1971,7 @@ index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..e5b892bb3192aee3e5c6f17ac957c20a
              IChunkAccess ichunkaccess;
  
              for (int l = 0; l < 4; ++l) {
-@@ -306,38 +408,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -305,38 +407,7 @@ public class ChunkProviderServer extends IChunkProvider {
          if (Thread.currentThread() != this.serverThread) {
              return null;
          } else {
@@ -2011,7 +2011,7 @@ index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..e5b892bb3192aee3e5c6f17ac957c20a
          }
      }
  
-@@ -557,11 +628,10 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -556,11 +627,10 @@ public class ChunkProviderServer extends IChunkProvider {
              EnumCreatureType[] aenumcreaturetype = EnumCreatureType.values();
              // Paper start - per player mob spawning
              int[] worldMobCount;
@@ -2026,7 +2026,7 @@ index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..e5b892bb3192aee3e5c6f17ac957c20a
                  // re-set mob counts
                  for (EntityPlayer player : this.world.players) {
                      Arrays.fill(player.mobCounts, 0);
-@@ -641,9 +711,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -640,9 +710,23 @@ public class ChunkProviderServer extends IChunkProvider {
  
                                      if (this.world.paperConfig.perPlayerMobSpawns) {
                                          int minDiff = Integer.MAX_VALUE;
@@ -2052,7 +2052,7 @@ index e7539dd791c48a2d61ebaa81eb9b9abbf36ef712..e5b892bb3192aee3e5c6f17ac957c20a
                                      }
  
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index c747b5deb3a9e347940a7cdc589fe62c71b7f65c..6f13ef6cb93f32370fd175bc6b05a02a991d9915 100644
+index 30380c8db4a4d2b6a390c9ffd990122a13f394b5..cc20227f3097abb9cccf4f6111ac561704773af2 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
 @@ -100,6 +100,10 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
@@ -2077,7 +2077,7 @@ index c747b5deb3a9e347940a7cdc589fe62c71b7f65c..6f13ef6cb93f32370fd175bc6b05a02a
  
      // Yes, this doesn't match Vanilla, but it's the best we can do for now.
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..9106dd45baa0e76ea605fc083d5e126e5c2a1ba2 100644
+index 0fb9c1e441b5a6f71c86db3e90bb3509c409f11e..d520890ab77bda6e6d7b4d9db073cd89bb9dee67 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -20,8 +20,8 @@ public class PlayerChunk {
@@ -2165,7 +2165,7 @@ index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..9106dd45baa0e76ea605fc083d5e126e
          }
  
 @@ -395,12 +433,20 @@ public class PlayerChunk {
-                 throw new IllegalStateException();
+                 throw (IllegalStateException) SystemUtils.c(new IllegalStateException());
              }
  
 -            this.entityTickingFuture = playerchunkmap.b(this.location);
@@ -2187,19 +2187,19 @@ index 34d0ab0d5e145bd7cd14348adda54eea8b43d175..9106dd45baa0e76ea605fc083d5e126e
          }
  
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 642c0888a9fb798409135cfb2545b285c2d3c856..5ed976807416d6dc46f4724b5db954ab6ec31741 100644
+index b37c1161d1e1b9018c15e95d95737368778fdbbd..734f372669f9f29ac5e01b0a3760b4caafaa93d6 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -78,7 +78,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -79,7 +79,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      public final Int2ObjectMap<PlayerChunkMap.EntityTracker> trackedEntities;
-     private final Queue<Runnable> A;
+     private final Queue<Runnable> z;
      int viewDistance; // Paper - private -> package private
 -    public final com.destroystokyo.paper.util.PlayerMobDistanceMap playerMobDistanceMap; // Paper
 +    //public final com.destroystokyo.paper.util.PlayerMobDistanceMap playerMobDistanceMap; // Paper /* Concrete - replaced by view distance map */
  
      // CraftBukkit start - recursion-safe executor for Chunk loadCallback() and unloadCallback()
      public final CallbackExecutor callbackExecutor = new CallbackExecutor();
-@@ -105,6 +105,35 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -106,6 +106,35 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      };
      // CraftBukkit end
  
@@ -2225,8 +2225,8 @@ index 642c0888a9fb798409135cfb2545b285c2d3c856..5ed976807416d6dc46f4724b5db954ab
 +    }
 +
 +    private void updateMaps(EntityPlayer player) {
-+        int chunkX = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locX);
-+        int chunkZ = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locZ);
++        int chunkX = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locX());
++        int chunkZ = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locZ());
 +
 +        this.playerViewDistanceMap.update(player, chunkX, chunkZ, this.viewDistance);
 +    }
@@ -2235,9 +2235,9 @@ index 642c0888a9fb798409135cfb2545b285c2d3c856..5ed976807416d6dc46f4724b5db954ab
      public PlayerChunkMap(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, IAsyncTaskHandler<Runnable> iasynctaskhandler, ILightAccess ilightaccess, ChunkGenerator<?> chunkgenerator, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier, int i) {
          super(new File(worldserver.getWorldProvider().getDimensionManager().a(file), "region"), datafixer);
          this.visibleChunks = this.updatingChunks.clone();
-@@ -136,7 +165,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-         this.m = supplier;
-         this.n = new VillagePlace(new File(this.x, "poi"), datafixer, this.world); // Paper
+@@ -137,7 +166,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         this.l = supplier;
+         this.m = new VillagePlace(new File(this.w, "poi"), datafixer, this.world); // Paper
          this.setViewDistance(i);
 -        this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper
 +        //this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper /* Concrete - use the distance map */
@@ -2245,8 +2245,8 @@ index 642c0888a9fb798409135cfb2545b285c2d3c856..5ed976807416d6dc46f4724b5db954ab
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -147,9 +177,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-         int chunkZ = (int)Math.floor(entity.locZ) >> 4;
+@@ -148,9 +178,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         int chunkZ = (int)Math.floor(entity.locZ()) >> 4;
          int index = entity.getEntityType().getEnumCreatureType().ordinal();
  
 -        for (EntityPlayer player : this.playerMobDistanceMap.getPlayersInRange(chunkX, chunkZ)) {
@@ -2270,7 +2270,7 @@ index 642c0888a9fb798409135cfb2545b285c2d3c856..5ed976807416d6dc46f4724b5db954ab
      }
  
      public int getMobCountNear(EntityPlayer entityPlayer, EnumCreatureType enumCreatureType) {
-@@ -1276,6 +1320,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1263,6 +1307,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public void movePlayer(EntityPlayer entityplayer) {
@@ -2279,10 +2279,10 @@ index 642c0888a9fb798409135cfb2545b285c2d3c856..5ed976807416d6dc46f4724b5db954ab
  
          while (objectiterator.hasNext()) {
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 1bea6dffea917490e1306d97441110046ce05234..ef56b2f8ed53b6b87d5885d057445f2697071fc2 100644
+index 985f3037267d3aae5098d8098edcb9e362506ad0..a251d6f040b6e17ee3a1f4fd0e2b609f65ba739d 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -331,7 +331,16 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+@@ -263,7 +263,16 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
  
      @Override
      public Chunk getChunkAt(int i, int j) {
@@ -2300,7 +2300,7 @@ index 1bea6dffea917490e1306d97441110046ce05234..ef56b2f8ed53b6b87d5885d057445f26
      }
  
      // Paper start - if loaded
-@@ -1247,9 +1256,11 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+@@ -1176,9 +1185,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
          int l = MathHelper.floor((axisalignedbb.maxZ + 2.0D) / 16.0D);
  
@@ -2308,25 +2308,25 @@ index 1bea6dffea917490e1306d97441110046ce05234..ef56b2f8ed53b6b87d5885d057445f26
 +
          for (int i1 = i; i1 <= j; ++i1) {
              for (int j1 = k; j1 <= l; ++j1) {
--                Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
-+                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper /* Concrete - optimize for loaded chunks */
+-                Chunk chunk = this.getChunkProvider().getChunkAt(i1, j1, false);
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); /* Concrete - optimize for loaded chunks */
  
                  if (chunk != null) {
                      chunk.a(entity, axisalignedbb, list, predicate);
-@@ -1267,9 +1278,11 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+@@ -1196,9 +1207,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          int l = MathHelper.f((axisalignedbb.maxZ + 2.0D) / 16.0D);
-         List<Entity> list = Lists.newArrayList();
+         List<T> list = Lists.newArrayList();
  
 +        ChunkProviderServer chunkProvider = ((ChunkProviderServer)this.chunkProvider); /* Concrete - optimize for loaded chunks */
 +
          for (int i1 = i; i1 < j; ++i1) {
              for (int j1 = k; j1 < l; ++j1) {
--                Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
-+                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper /* Concrete - optimize for loaded chunks */
+-                Chunk chunk = this.getChunkProvider().getChunkAt(i1, j1, false);
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); /* Concrete - optimize for loaded chunks */
  
                  if (chunk != null) {
                      chunk.a(entitytypes, axisalignedbb, list, predicate);
-@@ -1288,10 +1301,11 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+@@ -1217,10 +1230,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          int l = MathHelper.f((axisalignedbb.maxZ + 2.0D) / 16.0D);
          List<T> list = Lists.newArrayList();
          IChunkProvider ichunkprovider = this.getChunkProvider();
@@ -2334,13 +2334,13 @@ index 1bea6dffea917490e1306d97441110046ce05234..ef56b2f8ed53b6b87d5885d057445f26
  
          for (int i1 = i; i1 < j; ++i1) {
              for (int j1 = k; j1 < l; ++j1) {
--                Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
-+                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper /* Concrete - optimize for loaded chunks */
+-                Chunk chunk = ichunkprovider.getChunkAt(i1, j1, false);
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); /* Concrete - optimize for loaded chunks */
  
                  if (chunk != null) {
                      chunk.a(oclass, axisalignedbb, list, predicate);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 5b18f4bd521085bf431e55d0730f5471d96d2407..686e832808ab9ddd58c644a4d1467634f0226d8a 100644
+index 83fb8737ab70fdf93eb77b08d0cf3c2bf69bb6b2..8d91fe3ba4db251746f1c966245d3e77d77c97c4 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -1118,6 +1118,7 @@ public class WorldServer extends World {

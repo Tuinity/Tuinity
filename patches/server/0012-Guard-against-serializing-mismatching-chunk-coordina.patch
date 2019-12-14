@@ -5,7 +5,7 @@ Subject: [PATCH] Guard against serializing mismatching chunk coordinate
 
 
 diff --git a/src/main/java/net/minecraft/server/ChunkRegionLoader.java b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-index 98cc4efcf50258eba8426b4656fd90a05d585ae4..dfeec8ceaab50a4ad5ba63f27cf0bab882e65691 100644
+index 26f1a4b0953c71bbef7a299fc4a62fc8b4f9ada2..d28ccee02f658d17f0045daa639266667c9ebce6 100644
 --- a/src/main/java/net/minecraft/server/ChunkRegionLoader.java
 +++ b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
 @@ -23,6 +23,14 @@ public class ChunkRegionLoader {
@@ -35,13 +35,13 @@ index 98cc4efcf50258eba8426b4656fd90a05d585ae4..dfeec8ceaab50a4ad5ba63f27cf0bab8
          if (!Objects.equals(chunkcoordintpair, chunkcoordintpair1)) {
              ChunkRegionLoader.LOGGER.error("Chunk file at {} is in the wrong location; relocating. (Expected {}, got {})", chunkcoordintpair, chunkcoordintpair, chunkcoordintpair1);
 diff --git a/src/main/java/net/minecraft/server/IChunkLoader.java b/src/main/java/net/minecraft/server/IChunkLoader.java
-index 39f6ddb1d20a264f4df1bded63b800f53e140879..3efdcc18bf0d2aa1b7ea162fb901dfc2c4daf116 100644
+index 134c76065bf382912e6c28d15449db3f9827f848..488ea0dba4ea07c5e53b90816bfa03de94bb39e4 100644
 --- a/src/main/java/net/minecraft/server/IChunkLoader.java
 +++ b/src/main/java/net/minecraft/server/IChunkLoader.java
-@@ -100,6 +100,13 @@ public class IChunkLoader extends RegionFileCache {
-     @Override
-     public void write(ChunkCoordIntPair chunkcoordintpair, NBTTagCompound nbttagcompound) throws IOException {
-         super.write(chunkcoordintpair, nbttagcompound);
+@@ -106,6 +106,13 @@ public class IChunkLoader extends RegionFileCache implements AutoCloseable {
+ //
+     public void a(ChunkCoordIntPair chunkcoordintpair, NBTTagCompound nbttagcompound) throws IOException { write(chunkcoordintpair, nbttagcompound); } // Paper OBFHELPER
+     public void write(ChunkCoordIntPair chunkcoordintpair, NBTTagCompound nbttagcompound) throws IOException { // Paper - OBFHELPER - (Switched around for safety)
 +        /* Concrete start */
 +        if (!chunkcoordintpair.equals(ChunkRegionLoader.getChunkCoordinate(nbttagcompound))) {
 +            String world = (this instanceof PlayerChunkMap) ? ((PlayerChunkMap)this).world.getWorld().getName() : null;
@@ -49,9 +49,9 @@ index 39f6ddb1d20a264f4df1bded63b800f53e140879..3efdcc18bf0d2aa1b7ea162fb901dfc2
 +                    + " but compound says coordinate is " + ChunkRegionLoader.getChunkCoordinate(nbttagcompound).toString() + (world == null ? " for an unknown world" : (" for world: " + world)));
 +        }
 +        /* Concrete end */
-         if (this.a != null) {
+         super.write(chunkcoordintpair, nbttagcompound);
+         if (this.c != null) {
              synchronized (this.persistentDataLock) { // Paper - Async chunk loading
-             this.a.a(chunkcoordintpair.pair());
 -- 
-2.22.1
+2.24.0.windows.2
 

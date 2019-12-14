@@ -132,7 +132,7 @@ index c950139c0f819e87ded97dc8fb915b6755e51e71..d5ed9a9ee051c784b262d3cdcc1ecb30
          return this.a(axisalignedbb.minX, axisalignedbb.minY, axisalignedbb.minZ, axisalignedbb.maxX, axisalignedbb.maxY, axisalignedbb.maxZ);
      }
 diff --git a/src/main/java/net/minecraft/server/DataPaletteBlock.java b/src/main/java/net/minecraft/server/DataPaletteBlock.java
-index 8fba1e2f3d61887f4d1395582a5f4fd2e5ed83f0..71c555b00d554a69c226196d7809e3d6b30fad59 100644
+index 44aed67274b1a10726ad91b261b159289f36b6d9..0fc826da5959179f3c0bce005324f4b157d93723 100644
 --- a/src/main/java/net/minecraft/server/DataPaletteBlock.java
 +++ b/src/main/java/net/minecraft/server/DataPaletteBlock.java
 @@ -170,6 +170,7 @@ public class DataPaletteBlock<T> implements DataPaletteExpandable<T> {
@@ -144,10 +144,10 @@ index 8fba1e2f3d61887f4d1395582a5f4fd2e5ed83f0..71c555b00d554a69c226196d7809e3d6
          T t0 = this.h.a(this.a.a(i));
  
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index d4bad0fcecb970964f29180b76c09e883abfe2d4..1abae24250b06a1b2f8c070ea191c8d002d457cc 100644
+index 427160fd5b649648edf8ce302dd62111e3e40bbb..9fb84236c09933a8e46f2f6a35e78a3361a6558f 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -826,25 +826,31 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -815,25 +815,31 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return d0;
      }
  
@@ -159,7 +159,7 @@ index d4bad0fcecb970964f29180b76c09e883abfe2d4..1abae24250b06a1b2f8c070ea191c8d0
          VoxelShapeCollision voxelshapecollision = VoxelShapeCollision.a(this);
          VoxelShape voxelshape = this.world.getWorldBorder().a();
 -        Stream<VoxelShape> stream = VoxelShapes.c(voxelshape, VoxelShapes.a(axisalignedbb.shrink(1.0E-7D)), OperatorBoolean.AND) ? Stream.empty() : Stream.of(voxelshape);
--        Stream<VoxelShape> stream1 = this.world.a(this, axisalignedbb.a(vec3d), (Set) ImmutableSet.of());
+-        Stream<VoxelShape> stream1 = this.world.b(this, axisalignedbb.a(vec3d), (Set) ImmutableSet.of());
 -        StreamAccumulator<VoxelShape> streamaccumulator = new StreamAccumulator<>(Stream.concat(stream1, stream));
 -        Vec3D vec3d1 = vec3d.g() == 0.0D ? vec3d : a(this, vec3d, axisalignedbb, this.world, voxelshapecollision, streamaccumulator);
 +        /* Concrete start - optimize Entity#move */
@@ -174,19 +174,19 @@ index d4bad0fcecb970964f29180b76c09e883abfe2d4..1abae24250b06a1b2f8c070ea191c8d0
          boolean flag2 = vec3d.z != vec3d1.z;
          boolean flag3 = this.onGround || flag1 && vec3d.y < 0.0D;
  
-         if (this.K > 0.0F && flag3 && (flag || flag2)) {
--            Vec3D vec3d2 = a(this, new Vec3D(vec3d.x, (double) this.K, vec3d.z), axisalignedbb, this.world, voxelshapecollision, streamaccumulator);
--            Vec3D vec3d3 = a(this, new Vec3D(0.0D, (double) this.K, 0.0D), axisalignedbb.b(vec3d.x, 0.0D, vec3d.z), this.world, voxelshapecollision, streamaccumulator);
-+            Vec3D vec3d2 = calculateCollision(this, new Vec3D(vec3d.x, (double) this.K, vec3d.z), axisalignedbb, this.world, voxelshapecollision, TEMP_COLLISION_LIST); /* Concrete - optimize Entity#move */
-+            Vec3D vec3d3 = calculateCollision(this, new Vec3D(0.0D, (double) this.K, 0.0D), axisalignedbb.b(vec3d.x, 0.0D, vec3d.z), this.world, voxelshapecollision, TEMP_COLLISION_LIST); /* Concrete - optimize Entity#move */
+         if (this.H > 0.0F && flag3 && (flag || flag2)) {
+-            Vec3D vec3d2 = a(this, new Vec3D(vec3d.x, (double) this.H, vec3d.z), axisalignedbb, this.world, voxelshapecollision, streamaccumulator);
+-            Vec3D vec3d3 = a(this, new Vec3D(0.0D, (double) this.H, 0.0D), axisalignedbb.b(vec3d.x, 0.0D, vec3d.z), this.world, voxelshapecollision, streamaccumulator);
++            Vec3D vec3d2 = calculateCollision(this, new Vec3D(vec3d.x, (double) this.H, vec3d.z), axisalignedbb, this.world, voxelshapecollision, TEMP_COLLISION_LIST); /* Concrete - optimize Entity#move */
++            Vec3D vec3d3 = calculateCollision(this, new Vec3D(0.0D, (double) this.H, 0.0D), axisalignedbb.b(vec3d.x, 0.0D, vec3d.z), this.world, voxelshapecollision, TEMP_COLLISION_LIST); /* Concrete - optimize Entity#move */
  
-             if (vec3d3.y < (double) this.K) {
+             if (vec3d3.y < (double) this.H) {
 -                Vec3D vec3d4 = a(this, new Vec3D(vec3d.x, 0.0D, vec3d.z), axisalignedbb.b(vec3d3), this.world, voxelshapecollision, streamaccumulator).e(vec3d3);
 +                Vec3D vec3d4 = calculateCollision(this, new Vec3D(vec3d.x, 0.0D, vec3d.z), axisalignedbb.b(vec3d3), this.world, voxelshapecollision, TEMP_COLLISION_LIST).e(vec3d3); /* Concrete - optimize Entity#move */
  
                  if (b(vec3d4) > b(vec3d2)) {
                      vec3d2 = vec3d4;
-@@ -852,16 +858,112 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -841,16 +847,112 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
              }
  
              if (b(vec3d2) > b(vec3d1)) {
@@ -300,18 +300,18 @@ index d4bad0fcecb970964f29180b76c09e883abfe2d4..1abae24250b06a1b2f8c070ea191c8d0
  
      public static Vec3D a(@Nullable Entity entity, Vec3D vec3d, AxisAlignedBB axisalignedbb, World world, VoxelShapeCollision voxelshapecollision, StreamAccumulator<VoxelShape> streamaccumulator) {
          boolean flag = vec3d.x == 0.0D;
-@@ -1124,8 +1226,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -1111,8 +1213,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
  
      }
  
 -    @Nullable
--    public AxisAlignedBB aq() {
-+    @Nullable public final AxisAlignedBB getHardCollisionBox() { return this.aq(); } /* Concrete - OBFHELPER */
-+    @Nullable public AxisAlignedBB aq() { /* Concrete - OBFHELPER */
+-    public AxisAlignedBB au() {
++    @Nullable public final AxisAlignedBB getHardCollisionBox() { return this.au(); } /* Concrete - OBFHELPER */
++    @Nullable public AxisAlignedBB au() { /* Concrete - OBFHELPER */
          return null;
      }
  
-@@ -2039,8 +2141,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -2017,8 +2119,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return false;
      }
  
@@ -322,7 +322,7 @@ index d4bad0fcecb970964f29180b76c09e883abfe2d4..1abae24250b06a1b2f8c070ea191c8d0
          return null;
      }
  
-@@ -3106,6 +3208,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -3122,6 +3224,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return entity;
      }
  
@@ -331,10 +331,10 @@ index d4bad0fcecb970964f29180b76c09e883abfe2d4..1abae24250b06a1b2f8c070ea191c8d0
          return this.getRootVehicle() == entity.getRootVehicle();
      }
 diff --git a/src/main/java/net/minecraft/server/EntityLiving.java b/src/main/java/net/minecraft/server/EntityLiving.java
-index c508bd17ac98bb59cc93847c5642541d9a5811f5..87e18d58cac838220b73cc68ffcfeb74bcfe6fb4 100644
+index 3c6c96745454c4758977bccda1bdc5e8ec44acce..3c93a78fe66461701be9ec0f60b7be38e46f1e11 100644
 --- a/src/main/java/net/minecraft/server/EntityLiving.java
 +++ b/src/main/java/net/minecraft/server/EntityLiving.java
-@@ -2598,8 +2598,13 @@ public abstract class EntityLiving extends Entity {
+@@ -2658,8 +2658,13 @@ public abstract class EntityLiving extends Entity {
  
      protected void doTick() {}
  
@@ -349,8 +349,8 @@ index c508bd17ac98bb59cc93847c5642541d9a5811f5..87e18d58cac838220b73cc68ffcfeb74
  
          if (!list.isEmpty()) {
              int i = this.world.getGameRules().getInt(GameRules.MAX_ENTITY_CRAMMING);
-@@ -2628,7 +2633,12 @@ public abstract class EntityLiving extends Entity {
-                 this.D(entity);
+@@ -2688,7 +2693,12 @@ public abstract class EntityLiving extends Entity {
+                 this.C(entity);
              }
          }
 -
@@ -364,7 +364,7 @@ index c508bd17ac98bb59cc93847c5642541d9a5811f5..87e18d58cac838220b73cc68ffcfeb74
  
      protected void a(AxisAlignedBB axisalignedbb, AxisAlignedBB axisalignedbb1) {
 diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
-index dca18afdbb588cf5ac7bbaa54c7deb52241b550c..903b7314b8efbc9d4752fe053398d43d7da93232 100644
+index c8512f9f414413bc4f717c291180114e782e6a43..9215bcc13b99f2d7444f50e498d6ff93e5533c21 100644
 --- a/src/main/java/net/minecraft/server/IEntityAccess.java
 +++ b/src/main/java/net/minecraft/server/IEntityAccess.java
 @@ -14,6 +14,14 @@ public interface IEntityAccess {
@@ -487,56 +487,22 @@ index dca18afdbb588cf5ac7bbaa54c7deb52241b550c..903b7314b8efbc9d4752fe053398d43d
 +    }
 +    /* Concrete end */
 +
-     default Stream<VoxelShape> a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
+     default Stream<VoxelShape> b(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
          if (axisalignedbb.a() < 1.0E-7D) {
              return Stream.empty();
 diff --git a/src/main/java/net/minecraft/server/IWorldReader.java b/src/main/java/net/minecraft/server/IWorldReader.java
-index a25736e23deeff460224eea7a580d1f8cb1a6428..c9bf1f1352200600bcb7be67881970448e5c3412 100644
+index cbe2aa4c0acbdcc0b453fdad9a192a3e264406c6..9ffa9f2ade847cdf8c737cd440593796e22a6a8a 100644
 --- a/src/main/java/net/minecraft/server/IWorldReader.java
 +++ b/src/main/java/net/minecraft/server/IWorldReader.java
-@@ -99,15 +99,37 @@ public interface IWorldReader extends IIBlockAccess {
+@@ -87,12 +87,291 @@ public interface IWorldReader extends IBlockLightAccess, ICollisionAccess, Biome
+         return this.getChunkAt(i, j, chunkstatus, true);
      }
  
-     default boolean getCubes(Entity entity) {
--        return this.b(entity, entity.getBoundingBox(), Collections.emptySet());
-+        return this.getCubes(entity, entity.getBoundingBox()); /* Concrete - optimize this call */
-     }
- 
-     default boolean getCubes(Entity entity, AxisAlignedBB axisalignedbb) {
--        return this.b(entity, axisalignedbb, Collections.emptySet());
-+        /* Concrete start - optimize this call */
-+        if (!this.collidingBlocksMatchAll(entity, axisalignedbb, VoxelShape::isEmpty)) {
-+            return false;
-+        }
-+        if (this instanceof IEntityAccess) {
-+            if (!((IEntityAccess)this).entityShapesCollidingAllMatch(entity, axisalignedbb, null, null, VoxelShape::isEmpty)) {
-+                return false;
-+            }
-+        }
-+
-+        return true;
-+        /* Concrete end - optimize this call */
-     }
- 
-     default boolean b(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
--        return this.c(entity, axisalignedbb, set).allMatch(VoxelShape::isEmpty);
-+        /* Concrete start - optimize this call */
-+        if (!this.collidingBlocksMatchAll(entity, axisalignedbb, VoxelShape::isEmpty)) {
-+            return false;
-+        }
-+        if (this instanceof IEntityAccess) {
-+            if (!((IEntityAccess)this).entityShapesCollidingAllMatch(entity, axisalignedbb, set, null, VoxelShape::isEmpty)) {
-+                return false;
-+            }
-+        }
-+
-+        return true;
-+        /* Concrete end - optimize this call */
-     }
- 
-     default Stream<VoxelShape> a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
-@@ -118,6 +140,290 @@ public interface IWorldReader extends IIBlockAccess {
-         return Streams.concat(new Stream[]{this.b(entity, axisalignedbb), this.a(entity, axisalignedbb, set)});
+-    @Nullable
+-    @Override
+-    default IBlockAccess c(int i, int j) {
++    @Nullable default IBlockAccess getHighestStatusChunkAt(int x, int z) { return this.c(x, z); } @Override @Nullable default IBlockAccess c(int i, int j) { /* Concrete - OBFHELPER */
+         return this.getChunkAt(i, j, ChunkStatus.EMPTY, false);
      }
  
 +    /* Concrete start */
@@ -580,8 +546,7 @@ index a25736e23deeff460224eea7a580d1f8cb1a6428..c9bf1f1352200600bcb7be6788197044
 +        BlockPosition.MutableBlockPosition mutableBlockPosition = new BlockPosition.MutableBlockPosition();
 +        VoxelShape voxelshape = VoxelShapes.of(axisalignedbb);
 +
-+        ChunkStatus requiredStatus = IWorldReader.this.O();
-+        boolean useOptimizedGet = requiredStatus == ChunkStatus.FULL && this instanceof WorldServer;
++        boolean useOptimizedGet = this instanceof WorldServer;
 +        ChunkProviderServer chunkProvider = !useOptimizedGet ? null : ((WorldServer)this).getChunkProvider();
 +
 +        if (maxBlockY < 0) {
@@ -602,7 +567,7 @@ index a25736e23deeff460224eea7a580d1f8cb1a6428..c9bf1f1352200600bcb7be6788197044
 +                    int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
 +
 +                    IChunkAccess chunk = useOptimizedGet ? chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ) : // avoid loading chunks
-+                            this.getChunkAt(currChunkX, currChunkZ, requiredStatus, false);
++                            (IChunkAccess)this.getHighestStatusChunkAt(currChunkX, currChunkZ);
 +
 +                    if (chunk == null) {
 +                        continue;
@@ -718,8 +683,7 @@ index a25736e23deeff460224eea7a580d1f8cb1a6428..c9bf1f1352200600bcb7be6788197044
 +        BlockPosition.MutableBlockPosition mutableBlockPosition = new BlockPosition.MutableBlockPosition();
 +        VoxelShape voxelshape = VoxelShapes.of(axisalignedbb);
 +
-+        ChunkStatus requiredStatus = IWorldReader.this.O();
-+        boolean useOptimizedGet = requiredStatus == ChunkStatus.FULL && this instanceof WorldServer;
++        boolean useOptimizedGet = this instanceof WorldServer;
 +        ChunkProviderServer chunkProvider = !useOptimizedGet ? null : ((WorldServer)this).getChunkProvider();
 +
 +        if (maxBlockY < 0) {
@@ -740,7 +704,7 @@ index a25736e23deeff460224eea7a580d1f8cb1a6428..c9bf1f1352200600bcb7be6788197044
 +                    int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
 +
 +                    IChunkAccess chunk = useOptimizedGet ? chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ) : // avoid loading chunks
-+                            this.getChunkAt(currChunkX, currChunkZ, requiredStatus, false);
++                            (IChunkAccess)this.getHighestStatusChunkAt(currChunkX, currChunkZ);
 +
 +                    if (chunk == null) {
 +                        continue;
@@ -820,17 +784,16 @@ index a25736e23deeff460224eea7a580d1f8cb1a6428..c9bf1f1352200600bcb7be6788197044
 +
 +        return true;
 +    }
-+
 +    /* Concrete end */
 +
-     default Stream<VoxelShape> b(@Nullable final Entity entity, AxisAlignedBB axisalignedbb) {
-         int i = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
-         int j = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
+     default boolean y(BlockPosition blockposition) {
+         return this.getFluid(blockposition).a(TagsFluid.WATER);
+     }
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 3a08e7e3ca4c16cf70802e27471d2af2d8c0b957..b04e933359b010fed089d1fbb30b3c23d5de5369 100644
+index a192abc0c90625bb8d017b6c7f3bb45f5e1c31e1..2b346ca838d271619d65326006224b4acc6173a6 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -1163,6 +1163,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1171,6 +1171,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          long remaining = (TICK_TIME - (endTime - lastTick)) - catchupTime;
          new com.destroystokyo.paper.event.server.ServerTickEndEvent(this.ticks, ((double)(endTime - lastTick) / 1000000D), remaining).callEvent();
          // Paper end
@@ -839,7 +802,7 @@ index 3a08e7e3ca4c16cf70802e27471d2af2d8c0b957..b04e933359b010fed089d1fbb30b3c23
      }
  
 diff --git a/src/main/java/net/minecraft/server/VoxelShape.java b/src/main/java/net/minecraft/server/VoxelShape.java
-index 092f02cc2fe3f3df1a38b33c3db8c934c8db0a5a..34a7b87eb96fe96f71bf0d595083c61c6f22544b 100644
+index 0f95bcbccb96f9d525583f6bb6c0c0ed7fb7561b..82233166359f429e59433b9a3ece8b2a9b6cba5d 100644
 --- a/src/main/java/net/minecraft/server/VoxelShape.java
 +++ b/src/main/java/net/minecraft/server/VoxelShape.java
 @@ -145,7 +145,7 @@ public abstract class VoxelShape {
@@ -852,7 +815,7 @@ index 092f02cc2fe3f3df1a38b33c3db8c934c8db0a5a..34a7b87eb96fe96f71bf0d595083c61c
              return d0;
          } else if (Math.abs(d0) < 1.0E-7D) {
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
-index 811ff0331c6fc63264c4862bf16724c564cc6577..0fa96a0c617c87a89542968fcac20d48de0b8886 100644
+index 731ed7a7a6e9784719e18806b37e1c401ddacd45..f3ae06b80dbaae3602948ac254af6da8c59f9881 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java
 +++ b/src/main/java/net/minecraft/server/VoxelShapes.java
 @@ -184,11 +184,32 @@ public final class VoxelShapes {
@@ -912,10 +875,10 @@ index 811ff0331c6fc63264c4862bf16724c564cc6577..0fa96a0c617c87a89542968fcac20d48
          } else {
              return d0;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index a1ba1116fb0458bbd20241c1517b888bc1f0736d..c566b601a500301145c48240bf871d7ce9fed58f 100644
+index c252664bc5d9c4ea60b3ae8045442e4f98097c8b..726976763f0c3940f947ec694b09d8a2e3ac8237 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -1255,7 +1255,12 @@ public abstract class World implements IIBlockAccess, GeneratorAccess, AutoClose
+@@ -1184,7 +1184,12 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
  
      @Override
      public List<Entity> getEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Predicate<? super Entity> predicate) {

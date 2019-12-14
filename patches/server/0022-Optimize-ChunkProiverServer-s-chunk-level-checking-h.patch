@@ -9,14 +9,14 @@ so inline where possible, and avoid the abstraction of the
 Either class.
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 5c1bb14761ba6b75b89ee87abe88d6616ab99d8a..9df6bcb40636ef80206b17ea20abc2bb7ba2120a 100644
+index 3f1a8c5ee689744f6372539881ed0345d1e2d650..cf77c8b3409166df682ebfd23be963ac3c87aea5 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -511,27 +511,39 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -510,27 +510,39 @@ public class ChunkProviderServer extends IChunkProvider {
  
      @Override
      public boolean a(Entity entity) {
--        long i = ChunkCoordIntPair.pair(MathHelper.floor(entity.locX) >> 4, MathHelper.floor(entity.locZ) >> 4);
+-        long i = ChunkCoordIntPair.pair(MathHelper.floor(entity.locX()) >> 4, MathHelper.floor(entity.locZ()) >> 4);
 -
 -        return this.a(i, PlayerChunk::b);
 +        /* Concrete start - optimize is ticking ready type functions */
@@ -49,19 +49,19 @@ index 5c1bb14761ba6b75b89ee87abe88d6616ab99d8a..9df6bcb40636ef80206b17ea20abc2bb
      }
  
      public boolean b(Entity entity) {
--        long i = ChunkCoordIntPair.pair(MathHelper.floor(entity.locX) >> 4, MathHelper.floor(entity.locZ) >> 4);
+-        long i = ChunkCoordIntPair.pair(MathHelper.floor(entity.locX()) >> 4, MathHelper.floor(entity.locZ()) >> 4);
 -
 -        return this.a(i, PlayerChunk::c);
 +        /* Concrete start - optimize is ticking ready type functions */
 +        // is full chunk ready
 +        if (Thread.currentThread() == this.serverThread) {
-+            return this.getChunkAtIfLoadedMainThreadNoCache(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locZ)) != null;
++            return this.getChunkAtIfLoadedMainThreadNoCache(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locX()), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locZ())) != null;
 +        }
-+        return this.getChunkAtIfLoadedImmediately(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locZ)) != null;
++        return this.getChunkAtIfLoadedImmediately(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locX()), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locZ())) != null;
 +        /* Concrete end - optimize is ticking ready type functions */
      }
  
      private boolean a(long i, Function<PlayerChunk, CompletableFuture<Either<Chunk, PlayerChunk.Failure>>> function) {
 -- 
-2.22.1
+2.24.0.windows.2
 

@@ -815,7 +815,7 @@ index 0000000000000000000000000000000000000000..ccfe3732d9f2d123e296ab5839e439e0
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 70f2a272ea4d57f9eeebd40e32b88ea5aa58e5f2..bb0e90069def3b1074d3f63a6794988772325cdd 100644
+index cf77c8b3409166df682ebfd23be963ac3c87aea5..1eb370feb1d20dc1e1f55eda5deec612c8855873 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -117,6 +117,11 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -830,7 +830,7 @@ index 70f2a272ea4d57f9eeebd40e32b88ea5aa58e5f2..bb0e90069def3b1074d3f63a67949887
      /* Concrete end - loaded chunk cache for fast getIfLoaded calls */
  
      public ChunkProviderServer(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator<?> chunkgenerator, int i, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
-@@ -527,8 +532,8 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -526,8 +531,8 @@ public class ChunkProviderServer extends IChunkProvider {
          /* Concrete end - optimize is ticking ready type functions */
      }
  
@@ -842,7 +842,7 @@ index 70f2a272ea4d57f9eeebd40e32b88ea5aa58e5f2..bb0e90069def3b1074d3f63a67949887
          // is ticking ready
          PlayerChunk playerChunk = this.getChunk(ca.spottedleaf.concrete.util.Util.getCoordinateKey(blockposition));
 diff --git a/src/main/java/net/minecraft/server/NextTickListEntry.java b/src/main/java/net/minecraft/server/NextTickListEntry.java
-index 53a290e8b549d5d7d467a4bfd100ff3745b75b29..90d8a3620ee630ddde137c0cb799eb432400992f 100644
+index 33cfeabdee03195a294f303f28044a313cb1c4ed..1697b589b21b5c8411ab99928725d816b82f85b6 100644
 --- a/src/main/java/net/minecraft/server/NextTickListEntry.java
 +++ b/src/main/java/net/minecraft/server/NextTickListEntry.java
 @@ -5,11 +5,13 @@ import java.util.Comparator;
@@ -872,7 +872,7 @@ index 53a290e8b549d5d7d467a4bfd100ff3745b75b29..90d8a3620ee630ddde137c0cb799eb43
      }
  
      public boolean equals(Object object) {
-@@ -33,10 +36,17 @@ public class NextTickListEntry<T> {
+@@ -33,19 +36,31 @@ public class NextTickListEntry<T> {
          }
      }
  
@@ -886,12 +886,34 @@ index 53a290e8b549d5d7d467a4bfd100ff3745b75b29..90d8a3620ee630ddde137c0cb799eb43
          return this.a.hashCode();
      }
  
-+    public static <T> Comparator<NextTickListEntry<T>> comparator() { return NextTickListEntry.a(); } /* Concrete - OBFHELPER */
-     public static <T> Comparator<NextTickListEntry<T>> a() {
-         return (nextticklistentry, nextticklistentry1) -> {
-             int i = Long.compare(nextticklistentry.b, nextticklistentry1.b);
+-    public static <T> Comparator<Object> a() { // Paper - decompile fix
+-        return Comparator.comparingLong((nextticklistentry) -> {
+-            return ((NextTickListEntry<T>) nextticklistentry).b; // Paper - decompile fix
+-        }).thenComparing((nextticklistentry) -> {
+-            return ((NextTickListEntry<T>) nextticklistentry).c; // Paper - decompile fix
+-        }).thenComparingLong((nextticklistentry) -> {
+-            return ((NextTickListEntry<T>) nextticklistentry).f; // Paper - decompile fix
+-        });
++    /* Concrete start - let's not use more functional code for no reason. */
++    public static <T> Comparator<Object> comparator() { return NextTickListEntry.a(); } /* Concrete - OBFHELPER */
++    public static <T> Comparator<Object> a() {
++        return (Comparator)(Comparator<NextTickListEntry>)(NextTickListEntry nextticklistentry, NextTickListEntry nextticklistentry1) -> {
++            int i = Long.compare(nextticklistentry.getTargetTick(), nextticklistentry1.getTargetTick());
++
++            if (i != 0) {
++                return i;
++            } else {
++                i = nextticklistentry.getPriority().compareTo(nextticklistentry1.getPriority());
++                return i != 0 ? i : Long.compare(nextticklistentry.getId(), nextticklistentry1.getId());
++            }
++        };
+     }
++    /* Concrete end - let's not use more functional code for no reason. */
+ 
+     public String toString() {
+         return this.e + ": " + this.a + ", " + this.b + ", " + this.c + ", " + this.f;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index b9352c2ae0ff3caa5f38d27f71b00aaca5ab77b3..a1fc4bbeeb465b8e64eb774281bcbdd3094944fc 100644
+index 53630caec4631e913637d34db5c8dd909a30f0f0..c556ecdf84be64b44d6ba231f2010300e518e9f7 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -471,6 +471,7 @@ public class PlayerChunk {
@@ -934,10 +956,10 @@ index dbb565e74d211ef35d5d40b3d024e2f07cef9031..6b7c9fd7c50d11a78499501fb2f9d6c6
          return this.d >= structureboundingbox.a && this.a <= structureboundingbox.d && this.f >= structureboundingbox.c && this.c <= structureboundingbox.f && this.e >= structureboundingbox.b && this.b <= structureboundingbox.e;
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 109b502b47f982b77b0a3f499842ebd8b826b096..d1092d77dcf6ed8a5466fafbbf7bbaa16939b474 100644
+index 85d94b2dc3d4d01272b97cc6e6332870940db250..1f0bad357045974448e1e395cee52f3e6e6bd446 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -174,6 +174,11 @@ public class WorldServer extends World {
+@@ -172,6 +172,11 @@ public class WorldServer extends World {
              this.loadedEntities.remove(entities[i]);
          }
      }
@@ -949,7 +971,7 @@ index 109b502b47f982b77b0a3f499842ebd8b826b096..d1092d77dcf6ed8a5466fafbbf7bbaa1
      /* Concrete end */
  
      // Add env and gen to constructor
-@@ -196,10 +201,10 @@ public class WorldServer extends World {
+@@ -194,10 +199,10 @@ public class WorldServer extends World {
          this.pvpMode = minecraftserver.getPVP();
          worlddata.world = this;
          // CraftBukkit end
@@ -961,7 +983,7 @@ index 109b502b47f982b77b0a3f499842ebd8b826b096..d1092d77dcf6ed8a5466fafbbf7bbaa1
 +        this.nextTickListFluid = new ca.spottedleaf.concrete.server.ConcreteTickList<>(this, (fluidtype) -> { /* Concrete - optimise TickListServer */
              return fluidtype == null || fluidtype == FluidTypes.EMPTY;
          }, IRegistry.FLUID::getKey, IRegistry.FLUID::get, this::a, "Fluids"); // Paper - Timings
-         this.H = Sets.newHashSet();
+         this.navigators = Sets.newHashSet();
 -- 
 2.24.0.windows.2
 

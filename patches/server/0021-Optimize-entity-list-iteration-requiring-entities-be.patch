@@ -7,7 +7,7 @@ Subject: [PATCH] Optimize entity list iteration requiring entities be in
 We retain a list of loaded entities specifically for this usage
 
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index a6bf0e8e1b1d50f6d5ec07647551d6d27522f18b..e2dcec480eaf74c71a44061bde384df7041dd0e0 100644
+index 1d49034b803a051440766a4b62a2616cb31a1ed2..474c7370041972688d09d8a2d05ae4683cdb96df 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -144,20 +144,11 @@ public class Chunk implements IChunkAccess {
@@ -35,7 +35,7 @@ index a6bf0e8e1b1d50f6d5ec07647551d6d27522f18b..e2dcec480eaf74c71a44061bde384df7
          }
      }
  
-@@ -499,6 +490,12 @@ public class Chunk implements IChunkAccess {
+@@ -493,6 +484,12 @@ public class Chunk implements IChunkAccess {
          entity.chunkY = k;
          entity.chunkZ = this.loc.z;
          this.entitySlices[k].add(entity);
@@ -48,7 +48,7 @@ index a6bf0e8e1b1d50f6d5ec07647551d6d27522f18b..e2dcec480eaf74c71a44061bde384df7
          // Paper start
          if (entity instanceof EntityItem) {
              itemCounts[k]++;
-@@ -537,6 +534,7 @@ public class Chunk implements IChunkAccess {
+@@ -531,6 +528,7 @@ public class Chunk implements IChunkAccess {
          if (!this.entitySlices[i].remove(entity)) {
              return;
          }
@@ -56,7 +56,7 @@ index a6bf0e8e1b1d50f6d5ec07647551d6d27522f18b..e2dcec480eaf74c71a44061bde384df7
          if (entity instanceof EntityItem) {
              itemCounts[i]--;
          } else if (entity instanceof IInventory) {
-@@ -718,6 +716,7 @@ public class Chunk implements IChunkAccess {
+@@ -711,6 +709,7 @@ public class Chunk implements IChunkAccess {
          }
          this.loadedTicketLevel = true;
          chunkProvider.addLoadedChunk(this);
@@ -64,7 +64,7 @@ index a6bf0e8e1b1d50f6d5ec07647551d6d27522f18b..e2dcec480eaf74c71a44061bde384df7
          /* Concrete end - neighbour cache */
          org.bukkit.Server server = this.world.getServer();
          if (server != null) {
-@@ -774,6 +773,7 @@ public class Chunk implements IChunkAccess {
+@@ -767,6 +766,7 @@ public class Chunk implements IChunkAccess {
          }
          this.loadedTicketLevel = false;
          chunkProvider.removeLoadedChunk(this);
@@ -73,13 +73,14 @@ index a6bf0e8e1b1d50f6d5ec07647551d6d27522f18b..e2dcec480eaf74c71a44061bde384df7
          /* Concrete end - neighbour cache */
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 71202701808f6abbc0538745fe231fae3cfa880b..109b502b47f982b77b0a3f499842ebd8b826b096 100644
+index f5b5d5dce5105dd1128a228b2df6494643f6e74d..85d94b2dc3d4d01272b97cc6e6332870940db250 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -157,6 +157,24 @@ public class WorldServer extends World {
-         return this.getChunkProvider().getChunkAtIfLoadedImmediately(x, z) != null;
-     }
+@@ -154,6 +154,26 @@ public class WorldServer extends World {
+     public final com.destroystokyo.paper.io.chunk.ChunkTaskManager asyncChunkTaskManager;
      // Paper end
+ 
++
 +    /* Concrete start */
 +    public final ca.spottedleaf.concrete.util.EntityList loadedEntities = new ca.spottedleaf.concrete.util.EntityList();
 +    void onChunkLoad(final Chunk chunk) {
@@ -98,10 +99,11 @@ index 71202701808f6abbc0538745fe231fae3cfa880b..109b502b47f982b77b0a3f499842ebd8
 +        }
 +    }
 +    /* Concrete end */
- 
++
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
-@@ -439,14 +457,13 @@ public class WorldServer extends World {
+         super(worlddata, dimensionmanager, (world, worldprovider) -> {
+@@ -434,14 +454,13 @@ public class WorldServer extends World {
  
              gameprofilerfiller.exitEnter("regular");
              this.tickingEntities = true;
@@ -118,7 +120,7 @@ index 71202701808f6abbc0538745fe231fae3cfa880b..109b502b47f982b77b0a3f499842ebd8
                  Entity entity2 = entity1.getVehicle();
  
                  /* CraftBukkit start - We prevent spawning in general, so this butchering is not needed
-@@ -477,7 +494,7 @@ public class WorldServer extends World {
+@@ -478,7 +497,7 @@ public class WorldServer extends World {
                  gameprofilerfiller.enter("remove");
                  if (entity1.dead) {
                      this.removeEntityFromChunk(entity1);
@@ -127,20 +129,20 @@ index 71202701808f6abbc0538745fe231fae3cfa880b..109b502b47f982b77b0a3f499842ebd8
                      this.unregisterEntity(entity1);
                  }
  
-@@ -1394,6 +1411,7 @@ public class WorldServer extends World {
+@@ -1394,6 +1413,7 @@ public class WorldServer extends World {
          if (entity instanceof EntityInsentient) {
-             this.H.remove(((EntityInsentient) entity).getNavigation());
+             this.navigators.remove(((EntityInsentient) entity).getNavigation());
          }
 +        this.loadedEntities.remove(entity); /* Concrete - loaded entity list */
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
          entity.valid = false; // CraftBukkit
      }
-@@ -1450,6 +1468,11 @@ public class WorldServer extends World {
+@@ -1450,6 +1470,11 @@ public class WorldServer extends World {
              }
              // Paper end
              entity.shouldBeRemoved = false; // Paper - shouldn't be removed after being re-added
 +            /* Concrete start - loaded entity list */
-+            if (this.isChunkLoaded(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locZ))) {
++            if (this.isChunkLoaded(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locX()), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locZ()))) {
 +                this.loadedEntities.add(entity);
 +            }
 +            /* Concrete end - loaded entity list */
@@ -148,10 +150,10 @@ index 71202701808f6abbc0538745fe231fae3cfa880b..109b502b47f982b77b0a3f499842ebd8
          }
  
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index c4769046cbcd9c01e1801a12759c3147c14cecd0..67c39d2ef24c5542f6abbd9e90b529e6408d61ee 100644
+index e2f24e5693e8d90894affd9974914e8e819cfb17..ab0d0da09f378265e7cef6ee0862aab9650acc18 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-@@ -1035,16 +1035,16 @@ public class CraftWorld implements World {
+@@ -1073,16 +1073,16 @@ public class CraftWorld implements World {
  
      @Override
      public List<Entity> getEntities() {
@@ -171,7 +173,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..67c39d2ef24c5542f6abbd9e90b529e6
                      list.add(bukkitEntity);
                  }
              }
-@@ -1055,16 +1055,16 @@ public class CraftWorld implements World {
+@@ -1093,16 +1093,16 @@ public class CraftWorld implements World {
  
      @Override
      public List<LivingEntity> getLivingEntities() {
@@ -191,7 +193,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..67c39d2ef24c5542f6abbd9e90b529e6
                      list.add((LivingEntity) bukkitEntity);
                  }
              }
-@@ -1085,7 +1085,7 @@ public class CraftWorld implements World {
+@@ -1123,7 +1123,7 @@ public class CraftWorld implements World {
      public <T extends Entity> Collection<T> getEntitiesByClass(Class<T> clazz) {
          Collection<T> list = new ArrayList<T>();
  
@@ -200,7 +202,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..67c39d2ef24c5542f6abbd9e90b529e6
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
-@@ -1096,7 +1096,7 @@ public class CraftWorld implements World {
+@@ -1134,7 +1134,7 @@ public class CraftWorld implements World {
  
                  Class<?> bukkitClass = bukkitEntity.getClass();
  
@@ -209,7 +211,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..67c39d2ef24c5542f6abbd9e90b529e6
                      list.add((T) bukkitEntity);
                  }
              }
-@@ -1109,7 +1109,7 @@ public class CraftWorld implements World {
+@@ -1147,7 +1147,7 @@ public class CraftWorld implements World {
      public Collection<Entity> getEntitiesByClasses(Class<?>... classes) {
          Collection<Entity> list = new ArrayList<Entity>();
  
@@ -218,7 +220,7 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..67c39d2ef24c5542f6abbd9e90b529e6
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
-@@ -1122,7 +1122,7 @@ public class CraftWorld implements World {
+@@ -1160,7 +1160,7 @@ public class CraftWorld implements World {
  
                  for (Class<?> clazz : classes) {
                      if (clazz.isAssignableFrom(bukkitClass)) {
@@ -228,10 +230,10 @@ index c4769046cbcd9c01e1801a12759c3147c14cecd0..67c39d2ef24c5542f6abbd9e90b529e6
                          }
                          break;
 diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
-index 31db42e9fb24d76f48bfaf65700422472db915fc..9225a7a6b19ac1c60c575f370cbfd166fb90723a 100644
+index dfa15372b8bbe0f53a1ec8bd40934ed4ce6f43e1..51930897a3db20d2a1bf28340d3d510070420a3b 100644
 --- a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
 +++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
-@@ -179,6 +179,18 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
+@@ -180,6 +180,18 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
          this.entity = entity;
      }
  
@@ -251,5 +253,5 @@ index 31db42e9fb24d76f48bfaf65700422472db915fc..9225a7a6b19ac1c60c575f370cbfd166
      public Chunk getChunk() {
          net.minecraft.server.Chunk currentChunk = entity.getCurrentChunk();
 -- 
-2.24.0
+2.24.0.windows.2
 
