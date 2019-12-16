@@ -1819,7 +1819,7 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..c35c165195e09734a6dcaa16b8a80475
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index cbe4b23e16b5e07669b65eff30a82741fdfb06ce..3c8f3d1c57b9cfee7666850feda4dbdc32625d5c 100644
+index 8a35e2994d1a2df822239dcfead717c1bbffc399..e19ff330db07fb0a1dcd250c9d46153869eec12f 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -26,7 +26,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -1971,7 +1971,7 @@ index cbe4b23e16b5e07669b65eff30a82741fdfb06ce..3c8f3d1c57b9cfee7666850feda4dbdc
              IChunkAccess ichunkaccess;
  
              for (int l = 0; l < 4; ++l) {
-@@ -305,38 +407,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -306,38 +408,7 @@ public class ChunkProviderServer extends IChunkProvider {
          if (Thread.currentThread() != this.serverThread) {
              return null;
          } else {
@@ -2011,7 +2011,7 @@ index cbe4b23e16b5e07669b65eff30a82741fdfb06ce..3c8f3d1c57b9cfee7666850feda4dbdc
          }
      }
  
-@@ -556,11 +627,10 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -557,11 +628,10 @@ public class ChunkProviderServer extends IChunkProvider {
              EnumCreatureType[] aenumcreaturetype = EnumCreatureType.values();
              // Paper start - per player mob spawning
              int[] worldMobCount;
@@ -2026,7 +2026,7 @@ index cbe4b23e16b5e07669b65eff30a82741fdfb06ce..3c8f3d1c57b9cfee7666850feda4dbdc
                  // re-set mob counts
                  for (EntityPlayer player : this.world.players) {
                      Arrays.fill(player.mobCounts, 0);
-@@ -640,9 +710,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -641,9 +711,23 @@ public class ChunkProviderServer extends IChunkProvider {
  
                                      if (this.world.paperConfig.perPlayerMobSpawns) {
                                          int minDiff = Integer.MAX_VALUE;
@@ -2052,7 +2052,7 @@ index cbe4b23e16b5e07669b65eff30a82741fdfb06ce..3c8f3d1c57b9cfee7666850feda4dbdc
                                      }
  
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index 30380c8db4a4d2b6a390c9ffd990122a13f394b5..cc20227f3097abb9cccf4f6111ac561704773af2 100644
+index ed6f1b1a3ef9fee52ebd62444f32dcb25b358c16..7e5b4c6aa02202e675c0e88823dd55419313affd 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
 @@ -100,6 +100,10 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
@@ -2279,10 +2279,10 @@ index b37c1161d1e1b9018c15e95d95737368778fdbbd..734f372669f9f29ac5e01b0a3760b4ca
  
          while (objectiterator.hasNext()) {
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 985f3037267d3aae5098d8098edcb9e362506ad0..a251d6f040b6e17ee3a1f4fd0e2b609f65ba739d 100644
+index 3c3a504991a5325377855981d2b9d4ba36741f40..0e7882a96c0d08e505af2e91bf415eeffcee3b75 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -263,7 +263,16 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -271,7 +271,16 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
  
      @Override
      public Chunk getChunkAt(int i, int j) {
@@ -2300,7 +2300,7 @@ index 985f3037267d3aae5098d8098edcb9e362506ad0..a251d6f040b6e17ee3a1f4fd0e2b609f
      }
  
      // Paper start - if loaded
-@@ -1176,9 +1185,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1192,9 +1201,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
          int l = MathHelper.floor((axisalignedbb.maxZ + 2.0D) / 16.0D);
  
@@ -2308,12 +2308,12 @@ index 985f3037267d3aae5098d8098edcb9e362506ad0..a251d6f040b6e17ee3a1f4fd0e2b609f
 +
          for (int i1 = i; i1 <= j; ++i1) {
              for (int j1 = k; j1 <= l; ++j1) {
--                Chunk chunk = this.getChunkProvider().getChunkAt(i1, j1, false);
-+                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); /* Concrete - optimize for loaded chunks */
+-                Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper /* Concrete - optimize for loaded chunks */
  
                  if (chunk != null) {
                      chunk.a(entity, axisalignedbb, list, predicate);
-@@ -1196,9 +1207,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1212,9 +1223,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          int l = MathHelper.f((axisalignedbb.maxZ + 2.0D) / 16.0D);
          List<T> list = Lists.newArrayList();
  
@@ -2321,12 +2321,12 @@ index 985f3037267d3aae5098d8098edcb9e362506ad0..a251d6f040b6e17ee3a1f4fd0e2b609f
 +
          for (int i1 = i; i1 < j; ++i1) {
              for (int j1 = k; j1 < l; ++j1) {
--                Chunk chunk = this.getChunkProvider().getChunkAt(i1, j1, false);
-+                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); /* Concrete - optimize for loaded chunks */
+-                Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper /* Concrete - optimize for loaded chunks */
  
                  if (chunk != null) {
                      chunk.a(entitytypes, axisalignedbb, list, predicate);
-@@ -1217,10 +1230,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1233,10 +1246,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          int l = MathHelper.f((axisalignedbb.maxZ + 2.0D) / 16.0D);
          List<T> list = Lists.newArrayList();
          IChunkProvider ichunkprovider = this.getChunkProvider();
@@ -2334,16 +2334,16 @@ index 985f3037267d3aae5098d8098edcb9e362506ad0..a251d6f040b6e17ee3a1f4fd0e2b609f
  
          for (int i1 = i; i1 < j; ++i1) {
              for (int j1 = k; j1 < l; ++j1) {
--                Chunk chunk = ichunkprovider.getChunkAt(i1, j1, false);
-+                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); /* Concrete - optimize for loaded chunks */
+-                Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper /* Concrete - optimize for loaded chunks */
  
                  if (chunk != null) {
                      chunk.a(oclass, axisalignedbb, list, predicate);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 83fb8737ab70fdf93eb77b08d0cf3c2bf69bb6b2..8d91fe3ba4db251746f1c966245d3e77d77c97c4 100644
+index 1e00908671dad38cdf8dacb0818664747b2c550c..789ecbbda68c3bcd35a67e3dc06747c2e1232ee1 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -1118,6 +1118,7 @@ public class WorldServer extends World {
+@@ -1124,6 +1124,7 @@ public class WorldServer extends World {
          }
  
          this.registerEntity(entityplayer);
@@ -2351,7 +2351,7 @@ index 83fb8737ab70fdf93eb77b08d0cf3c2bf69bb6b2..8d91fe3ba4db251746f1c966245d3e77
      }
  
      // CraftBukkit start
-@@ -1299,6 +1300,7 @@ public class WorldServer extends World {
+@@ -1305,6 +1306,7 @@ public class WorldServer extends World {
              EntityPlayer entityplayer = (EntityPlayer) entity;
  
              this.players.remove(entityplayer);
