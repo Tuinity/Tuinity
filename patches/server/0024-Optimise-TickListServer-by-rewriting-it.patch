@@ -37,19 +37,18 @@ to ticking, the items are re-scheduled.
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42bb3af6bd6
+index 0000000000000000000000000000000000000000..13d22fcefa9894c7142d3180dddcb8f3fe8443cf
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
-@@ -0,0 +1,577 @@
+@@ -0,0 +1,582 @@
 +package ca.spottedleaf.concrete.server;
 +
++import ca.spottedleaf.concrete.util.TickThread;
 +import ca.spottedleaf.concrete.util.Util;
-+import ca.spottedleaf.concrete.util.set.LinkedSortedSet;
 +import ca.spottedleaf.concurrentutil.util.Validate;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.ObjectRBTreeSet;
-+import it.unimi.dsi.fastutil.objects.ObjectSortedSet;
 +import net.minecraft.server.BaseBlockPosition;
 +import net.minecraft.server.BlockPosition;
 +import net.minecraft.server.ChunkCoordIntPair;
@@ -58,12 +57,10 @@ index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42b
 +import net.minecraft.server.CrashReportSystemDetails;
 +import net.minecraft.server.IBlockData;
 +import net.minecraft.server.MinecraftKey;
-+import net.minecraft.server.MinecraftServer;
 +import net.minecraft.server.NBTTagList;
 +import net.minecraft.server.NextTickListEntry;
 +import net.minecraft.server.ReportedException;
 +import net.minecraft.server.StructureBoundingBox;
-+import net.minecraft.server.TickList;
 +import net.minecraft.server.TickListPriority;
 +import net.minecraft.server.TickListServer;
 +import net.minecraft.server.WorldServer;
@@ -182,6 +179,7 @@ index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42b
 +    }
 +
 +    public void onChunkSetTicking(final int chunkX, final int chunkZ) {
++        TickThread.softEnsureTickThread("async tick list chunk ticking update");
 +        final ArrayList<NextTickListEntry<T>> pending = this.pendingChunkTickLoad.remove(Util.getCoordinateKey(chunkX, chunkZ));
 +        if (pending == null) {
 +            return;
@@ -265,6 +263,7 @@ index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42b
 +        this.tick();
 +    }
 +    public void tick() {
++        TickThread.softEnsureTickThread("async tick list tick");
 +        final ChunkProviderServer chunkProvider = this.world.getChunkProvider();
 +
 +        this.world.getMethodProfiler().enter("cleaning");
@@ -410,6 +409,7 @@ index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42b
 +    }
 +
 +    public void schedule(final NextTickListEntry<T> entry) {
++        TickThread.softEnsureTickThread("async tick list schedule");
 +        Validate.notNull(entry, "null entry");
 +        if (this.excludeFromScheduling.test(entry.getData())) {
 +            return;
@@ -466,6 +466,7 @@ index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42b
 +        return this.getEntriesInBoundingBox(structureboundingbox, removeReturned, excludeTicked);
 +    }
 +    public List<NextTickListEntry<T>> getEntriesInBoundingBox(final StructureBoundingBox structureboundingbox, final boolean removeReturned, final boolean excludeTicked) {
++        TickThread.softEnsureTickThread("async tick list get");
 +        if (structureboundingbox.getMinX() == structureboundingbox.getMaxX() || structureboundingbox.getMinZ() == structureboundingbox.getMaxZ()) {
 +            return Collections.emptyList(); // vanilla behaviour, check isBlockInSortof above
 +        }
@@ -520,6 +521,7 @@ index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42b
 +
 +    @Override
 +    public void a(StructureBoundingBox structureboundingbox, BlockPosition blockposition) {
++        TickThread.softEnsureTickThread("async tick list copy");
 +        // start copy from TickListServer // TODO check on update
 +        List<NextTickListEntry<T>> list = this.a(structureboundingbox, false, false);
 +        Iterator iterator = list.iterator();
@@ -542,6 +544,7 @@ index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42b
 +        return this.getEntriesInChunk(chunkPos, removeReturned, excludeTicked);
 +    }
 +    public List<NextTickListEntry<T>> getEntriesInChunk(ChunkCoordIntPair chunkPos, boolean removeReturned, boolean excludeTicked) {
++        TickThread.softEnsureTickThread("async tick list get");
 +        // Vanilla DOES get the entries 2 blocks out of the chunk too, but that doesn't matter since we ignore chunks
 +        // not at ticking status, and ticking status requires neighbours loaded
 +        // so with this method we will reduce scheduler churning
@@ -574,6 +577,7 @@ index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42b
 +        return this.serialize(chunkcoordintpair);
 +    }
 +    public NBTTagList serialize(ChunkCoordIntPair chunkcoordintpair) {
++        TickThread.softEnsureTickThread("async tick list serialize");
 +        // start copy from TickListServer  // TODO check on update
 +        List<NextTickListEntry<T>> list = this.a(chunkcoordintpair, false, true);
 +
@@ -586,6 +590,7 @@ index 0000000000000000000000000000000000000000..ff270f77074f210c32770e66614fb42b
 +        return this.getTotalScheduledEntries();
 +    }
 +    public int getTotalScheduledEntries() {
++        TickThread.softEnsureTickThread("async tick list get size");
 +        // good thing this is only used in debug reports // TODO check on update
 +        int ret = 0;
 +
