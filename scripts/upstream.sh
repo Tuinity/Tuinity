@@ -8,6 +8,8 @@ while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symli
 done
 . $(dirname $SOURCE)/init.sh
 
+git submodule update --init --recursive
+
 if [[ "$1" == up* ]]; then
     (
         cd "$basedir/Paper/"

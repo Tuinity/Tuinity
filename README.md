@@ -10,7 +10,7 @@ https://github.com/starlis/empirecraft
 
 ## License
 The PATCHES-LICENSE file describes the license for api & server patches, 
-found in `./patches/api` and `./patches/server` except when noted otherwise.
+found in `./patches` and its subdirectories except when noted otherwise.
 
 Everything else is licensed under the MIT license, except when note otherwise. 
 See https://github.com/starlis/empirecraft and https://github.com/electronicboy/byof 
@@ -26,7 +26,7 @@ Concrete-API maven dependency:
 <dependency>
     <groupId>ca.spottedleaf.concrete</groupId>
     <artifactId>concrete-api</artifactId>
-    <version>1.14.4-R0.1-SNAPSHOT</version>
+    <version>1.15.1-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
  </dependency>
  ```
@@ -36,7 +36,7 @@ Concrete-API maven dependency:
  <dependency>
      <groupId>ca.spottedleaf.concrete</groupId>
      <artifactId>concrete</artifactId>
-     <version>1.14.4-R0.1-SNAPSHOT</version>
+     <version>1.15.1-R0.1-SNAPSHOT</version>
      <scope>provided</scope>
   </dependency>
   ```
@@ -48,9 +48,6 @@ via building concrete.
 Run the following commands in the root directory:
 
 ```
-git submodule init
-git submodule update
-./concrete up
 ./concrete patch
 ```
 
@@ -79,3 +76,5 @@ corresponding patch file.
 
 Use the command `./concrete build` to build the api and server. Compiled jars
 will be placed under `Concrete-API/target` and `Concrete-Server/target`.
+
+To get paperclip jars, run `./concrete jar`.
