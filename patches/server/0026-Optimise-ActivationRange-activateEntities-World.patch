@@ -7,19 +7,51 @@ By using our Chunk#forEachEntity method, the time trimmed was
 approximately 2-5x in my testing.
 
 diff --git a/src/main/java/org/spigotmc/ActivationRange.java b/src/main/java/org/spigotmc/ActivationRange.java
-index 0e36fca47dc32b9fb747a7f42a2164fb3570eaa2..7f792aa98abb51c492dcae3e548f34bf6dfd7580 100644
+index 0e36fca47dc32b9fb747a7f42a2164fb3570eaa2..f4a5a7e3399ce11cfbacc17bb70729646a06991f 100644
 --- a/src/main/java/org/spigotmc/ActivationRange.java
 +++ b/src/main/java/org/spigotmc/ActivationRange.java
-@@ -163,24 +163,15 @@ public class ActivationRange
+@@ -4,6 +4,7 @@ import java.util.Collection;
+ import java.util.List;
+ import net.minecraft.server.AxisAlignedBB;
+ import net.minecraft.server.Chunk;
++import net.minecraft.server.ChunkProviderServer; /* Concrete */
+ import net.minecraft.server.Entity;
+ import net.minecraft.server.EntityAmbient;
+ import net.minecraft.server.EntityAnimal;
+@@ -125,6 +126,8 @@ public class ActivationRange
+         maxRangeTemp = Math.max( maxRangeTemp, raiderActivationRange );
+         maxRangeTemp = Math.max( maxRangeTemp, miscActivationRange );
+ 
++        ChunkProviderServer chunkProviderServer = (ChunkProviderServer)world.getChunkProvider();
++
+         for ( EntityHuman player : world.getPlayers() )
+         {
+             final int maxRange = Math.min( ( ( player instanceof net.minecraft.server.EntityPlayer ? ((net.minecraft.server.EntityPlayer)player).getEffectiveViewDistance(((WorldServer)world).getChunkProvider().playerChunkMap) : world.spigotConfig.viewDistance ) << 4 ) - 8, maxRangeTemp );
+@@ -145,7 +148,7 @@ public class ActivationRange
+             {
+                 for ( int j1 = k; j1 <= l; ++j1 )
+                 {
+-                    Chunk chunk = (Chunk) world.getChunkIfLoadedImmediately( i1, j1 );
++                    Chunk chunk = chunkProviderServer.getChunkAtIfLoadedMainThreadNoCache( i1, j1 ); /* Concrete */
+                     if ( chunk != null )
+                     {
+                         activateChunkEntities( chunk );
+@@ -163,24 +166,20 @@ public class ActivationRange
       */
      private static void activateChunkEntities(Chunk chunk)
      {
 -        for ( List<Entity> slice : chunk.entitySlices )
 -        {
 -            for ( Entity entity : (Collection<Entity>) slice )
--            {
-+        chunk.forEachEntity((entity) -> { /* Concrete - optimise this call */
-                 if ( MinecraftServer.currentTick > entity.activatedTick )
++        /* Concrete start - optimise this call */
++        ca.spottedleaf.concrete.util.EntityList entityList = chunk.entityList;
++        Object[] rawData = entityList.getRawData();
++        for (int i = 0, len = rawData.length; i < len; ++i) {
++            Entity entity = (Entity)rawData[i];
++            if ( MinecraftServer.currentTick > entity.activatedTick )
+             {
+-                if ( MinecraftServer.currentTick > entity.activatedTick )
++                if ( entity.defaultActivationState || entity.activationType.boundingBox.intersects(entity.getBoundingBox())) /* Concrete - optimise this call */
                  {
 -                    if ( entity.defaultActivationState )
 -                    {
@@ -27,15 +59,15 @@ index 0e36fca47dc32b9fb747a7f42a2164fb3570eaa2..7f792aa98abb51c492dcae3e548f34bf
 -                        continue;
 -                    }
 -                    if ( entity.activationType.boundingBox.c( entity.getBoundingBox() ) )
-+                    if ( entity.defaultActivationState || entity.activationType.boundingBox.intersects(entity.getBoundingBox())) /* Concrete - optimise this call */
-                     {
-                         entity.activatedTick = MinecraftServer.currentTick;
+-                    {
+-                        entity.activatedTick = MinecraftServer.currentTick;
 -                    }
-+                    } /* Concrete - optimise this call */
-                 }
--            }
--        }
-+        }); /* Concrete - optimise this call */
+-                }
++                    entity.activatedTick = MinecraftServer.currentTick;
++                } /* Concrete - optimise this call */
+             }
+         }
++        /* Concrete end - optimise this call */
      }
  
      /**
