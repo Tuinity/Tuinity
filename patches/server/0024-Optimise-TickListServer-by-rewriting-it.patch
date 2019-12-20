@@ -37,10 +37,10 @@ to ticking, the items are re-scheduled.
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..13d22fcefa9894c7142d3180dddcb8f3fe8443cf
+index 0000000000000000000000000000000000000000..c999e94499a4cb21d6e56a87d60cd6549c39906b
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
-@@ -0,0 +1,582 @@
+@@ -0,0 +1,583 @@
 +package ca.spottedleaf.concrete.server;
 +
 +import ca.spottedleaf.concrete.util.TickThread;
@@ -402,20 +402,21 @@ index 0000000000000000000000000000000000000000..13d22fcefa9894c7142d3180dddcb8f3
 +
 +    @Override
 +    public void a(BlockPosition blockPosition, T t, int i, TickListPriority tickListPriority) {
-+        this.schedule(blockPosition, t, i, tickListPriority);
++        this.schedule(blockPosition, t, i + this.world.getTime(), tickListPriority);
 +    }
-+    public void schedule(final BlockPosition pos, final T data, final int delay, final TickListPriority priority) {
-+        this.schedule(new NextTickListEntry<>(pos, data, delay + this.world.getTime(), priority));
++    public void schedule(final NextTickListEntry<T> entry) {
++        this.schedule(entry.getPosition(), entry.getData(), entry.getTargetTick(), entry.getPriority());
 +    }
 +
-+    public void schedule(final NextTickListEntry<T> entry) {
++    public void schedule(final BlockPosition pos, final T data, final long targetTick, final TickListPriority priority) {
 +        TickThread.softEnsureTickThread("async tick list schedule");
++
++        final NextTickListEntry<T> entry = new NextTickListEntry<>(pos, data, targetTick, priority);
 +        Validate.notNull(entry, "null entry");
 +        if (this.excludeFromScheduling.test(entry.getData())) {
 +            return;
 +        }
 +
-+        final BlockPosition pos = entry.getPosition();
 +        final long blockKey = Util.getBlockKey(pos);
 +
 +        final ArrayList<NextTickListEntry<T>> currentEntries = this.entriesByBlock.computeIfAbsent(blockKey, (long keyInMap) -> new ArrayList<>(3));
