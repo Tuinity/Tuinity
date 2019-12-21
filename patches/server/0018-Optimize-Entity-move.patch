@@ -363,6 +363,348 @@ index 3c6c96745454c4758977bccda1bdc5e8ec44acce..3c93a78fe66461701be9ec0f60b7be38
      }
  
      protected void a(AxisAlignedBB axisalignedbb, AxisAlignedBB axisalignedbb1) {
+diff --git a/src/main/java/net/minecraft/server/ICollisionAccess.java b/src/main/java/net/minecraft/server/ICollisionAccess.java
+index f851ed11df14fd9aa8017f44d82fb6cfc3bde345..4a42d909621efe45b6e21f63f812d1de52018f16 100644
+--- a/src/main/java/net/minecraft/server/ICollisionAccess.java
++++ b/src/main/java/net/minecraft/server/ICollisionAccess.java
+@@ -13,8 +13,8 @@ public interface ICollisionAccess extends IBlockAccess {
+ 
+     WorldBorder getWorldBorder();
+ 
+-    @Nullable
+-    IBlockAccess c(int i, int j);
++    default @Nullable IBlockAccess getBlockAccessAt(int x, int z) { return this.c(x, z); } /* Concrete - OBFHELPER */
++    @Nullable IBlockAccess c(int i, int j); /* Concrete - OBFHELPER */
+ 
+     default boolean a(@Nullable Entity entity, VoxelShape voxelshape) {
+         return true;
+@@ -35,15 +35,37 @@ public interface ICollisionAccess extends IBlockAccess {
+     }
+ 
+     default boolean getCubes(Entity entity) {
+-        return this.a(entity, entity.getBoundingBox(), Collections.emptySet());
++        return this.getCubes(entity, entity.getBoundingBox()); /* Concrete - optimize this call */
+     }
+ 
+     default boolean getCubes(Entity entity, AxisAlignedBB axisalignedbb) {
+-        return this.a(entity, axisalignedbb, Collections.emptySet());
++        /* Concrete start - optimize this call */
++        if (!this.collidingBlocksMatchAll(entity, axisalignedbb, VoxelShape::isEmpty)) {
++            return false;
++        }
++        if (this instanceof IEntityAccess) {
++            if (!((IEntityAccess)this).entityShapesCollidingAllMatch(entity, axisalignedbb, null, null, VoxelShape::isEmpty)) {
++                return false;
++            }
++        }
++
++        return true;
++        /* Concrete end - optimize this call */
+     }
+ 
+     default boolean a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
+-        return this.c(entity, axisalignedbb, set).allMatch(VoxelShape::isEmpty);
++        /* Concrete start - optimize this call */
++        if (!this.collidingBlocksMatchAll(entity, axisalignedbb, VoxelShape::isEmpty)) {
++            return false;
++        }
++        if (this instanceof IEntityAccess) {
++            if (!((IEntityAccess)this).entityShapesCollidingAllMatch(entity, axisalignedbb, set, null, VoxelShape::isEmpty)) {
++                return false;
++            }
++        }
++
++        return true;
++        /* Concrete end - optimize this call */
+     }
+ 
+     default Stream<VoxelShape> b(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
+@@ -114,4 +136,285 @@ public interface ICollisionAccess extends IBlockAccess {
+             }
+         }, false);
+     }
++
++    /* Concrete start */
++    // note: order will be different than from the copied method
++    default java.util.Collection<VoxelShape> getCollidingBlocks(@Nullable Entity entity, AxisAlignedBB axisalignedbb,
++                                                                @Nullable java.util.Collection<VoxelShape> ret) {
++        // TODO obfhelpers
++        if (ret == null) {
++            ret = new java.util.ArrayList<>();
++        }
++
++        if (entity != null) {
++            VoxelShape voxelshape1 = ICollisionAccess.this.getWorldBorder().toVoxelShape();
++            boolean flag = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().shrink(1.0E-7D)), OperatorBoolean.AND);
++            boolean flag1 = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().g(1.0E-7D)), OperatorBoolean.AND);
++
++            if (!flag && flag1) {
++                ret.add(voxelshape1);
++            }
++        }
++
++        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
++        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
++
++        int minChunkX = minBlockX >> 4;
++        int maxChunkX = maxBlockX >> 4;
++
++        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
++        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
++
++        int minChunkY = minBlockY >> 4;
++        int maxChunkY = maxBlockY >> 4;
++
++        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
++        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
++
++        int minChunkZ = minBlockZ >> 4;
++        int maxChunkZ = maxBlockZ >> 4;
++
++        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity);
++        BlockPosition.MutableBlockPosition mutableBlockPosition = new BlockPosition.MutableBlockPosition();
++        VoxelShape voxelshape = VoxelShapes.of(axisalignedbb);
++
++        boolean useOptimizedGet = this instanceof WorldServer;
++        ChunkProviderServer chunkProvider = !useOptimizedGet ? null : ((WorldServer)this).getChunkProvider();
++
++        if (maxBlockY < 0) {
++            // no point in checking
++            return ret;
++        }
++
++        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++
++            for (int currChunkY = minChunkY; currChunkY <= maxChunkY; ++currChunkY) {
++                int minY = minBlockY;
++                int maxY = maxBlockY;
++
++                for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++                    int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++                    int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++
++                    IChunkAccess chunk = useOptimizedGet ? chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ) : // avoid loading chunks
++                            (IChunkAccess)this.getBlockAccessAt(currChunkX, currChunkZ);
++
++                    if (chunk == null) {
++                        continue;
++                    }
++
++                    // TODO it might be better to throw the next 3 nested for loops into their own method.
++
++                    ChunkSection[] sections = chunk.getSections(); // TODO on update, make sure this is RAW access
++                    int maxSectionY = sections.length * 16;
++
++                    // bound y
++
++                    if (maxY >= maxSectionY) {
++                        maxY = maxSectionY - 1;
++                    }
++                    if (minY < 0) {
++                        minY = 0;
++                    }
++
++                    for (int currY = minY; currY <= maxY; ++currY) {
++                        ChunkSection section = sections[currY >>> 4];
++                        if (section == null) {
++                            // empty
++                            continue;
++                        }
++
++                        DataPaletteBlock<IBlockData> blocks = section.blockIds;
++                        int blockKeyY = (currY & 15) << 8;
++
++                        int edgeCountY = (currY == minY || currY == maxY) ? 1 : 0;
++
++                        for (int currX = minX; currX <= maxX; ++currX) {
++                            int blockKeyXY = blockKeyY | currX;
++                            int blockX = currX | (currChunkX << 4); // world position
++
++                            int edgeCountXY;
++                            if (blockX == minBlockX || blockX == maxBlockX) {
++                                edgeCountXY = edgeCountY + 1;
++                            } else {
++                                edgeCountXY = edgeCountY;
++                            }
++
++                            for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                                int blockZ = currZ | (currChunkZ << 4); // world position
++
++                                int edgeCountFull;
++                                if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                                    edgeCountFull = edgeCountXY + 1;
++                                } else {
++                                    edgeCountFull = edgeCountXY;
++                                }
++
++                                if (edgeCountFull == 3) {
++                                    continue;
++                                }
++
++                                int blockKeyFull = blockKeyXY | (currZ << 4);
++                                IBlockData blockData = blocks.rawGet(blockKeyFull);
++
++                                if ((edgeCountFull != 1 || blockData.f()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                                    mutableBlockPosition.setValues(blockX, currY, blockZ);
++                                    VoxelShape voxelshape2 = blockData.b((IBlockAccess)ICollisionAccess.this, mutableBlockPosition, collisionShape);
++                                    VoxelShape voxelshape3 = voxelshape2.a((double)blockX, (double)currY, (double)blockZ);
++
++                                    if (VoxelShapes.c(voxelshape, voxelshape3, OperatorBoolean.AND)) { // TODO Optimize, the enum axis cycle,
++                                        ret.add(voxelshape3);
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        return ret;
++    }
++
++    default boolean collidingBlocksMatchAll(@Nullable Entity entity, AxisAlignedBB axisalignedbb,
++                                            java.util.function.Predicate<VoxelShape> predicate) {
++        // TODO obfhelpers
++        if (entity != null) {
++            VoxelShape voxelshape1 = ICollisionAccess.this.getWorldBorder().toVoxelShape();
++            boolean flag = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().shrink(1.0E-7D)), OperatorBoolean.AND);
++            boolean flag1 = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().g(1.0E-7D)), OperatorBoolean.AND);
++
++            if (!flag && flag1) {
++                if (!predicate.test(voxelshape1)) {
++                    return false;
++                }
++            }
++        }
++
++        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
++        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
++
++        int minChunkX = minBlockX >> 4;
++        int maxChunkX = maxBlockX >> 4;
++
++        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
++        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
++
++        int minChunkY = minBlockY >> 4;
++        int maxChunkY = maxBlockY >> 4;
++
++        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
++        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
++
++        int minChunkZ = minBlockZ >> 4;
++        int maxChunkZ = maxBlockZ >> 4;
++
++        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity);
++        BlockPosition.MutableBlockPosition mutableBlockPosition = new BlockPosition.MutableBlockPosition();
++        VoxelShape voxelshape = VoxelShapes.of(axisalignedbb);
++
++        boolean useOptimizedGet = this instanceof WorldServer;
++        ChunkProviderServer chunkProvider = !useOptimizedGet ? null : ((WorldServer)this).getChunkProvider();
++
++        if (maxBlockY < 0) {
++            // no point in checking
++            return true;
++        }
++
++        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++
++            for (int currChunkY = minChunkY; currChunkY <= maxChunkY; ++currChunkY) {
++                int minY = minBlockY;
++                int maxY = maxBlockY;
++
++                for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++                    int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++                    int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++
++                    IChunkAccess chunk = useOptimizedGet ? chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ) : // avoid loading chunks
++                            (IChunkAccess)this.getBlockAccessAt(currChunkX, currChunkZ);
++
++                    if (chunk == null) {
++                        continue;
++                    }
++
++                    // TODO it might be better to throw the next 3 nested for loops into their own method.
++
++                    ChunkSection[] sections = chunk.getSections(); // TODO on update, make sure this is RAW access
++                    int maxSectionY = sections.length * 16;
++
++                    // bound y
++
++                    if (maxY >= maxSectionY) {
++                        maxY = maxSectionY - 1;
++                    }
++                    if (minY < 0) {
++                        minY = 0;
++                    }
++
++                    for (int currY = minY; currY <= maxY; ++currY) {
++                        ChunkSection section = sections[currY >>> 4];
++                        if (section == null) {
++                            // empty
++                            continue;
++                        }
++
++                        DataPaletteBlock<IBlockData> blocks = section.blockIds;
++                        int blockKeyY = (currY & 15) << 8;
++
++                        int edgeCountY = (currY == minY || currY == maxY) ? 1 : 0;
++
++                        for (int currX = minX; currX <= maxX; ++currX) {
++                            int blockKeyXY = blockKeyY | currX;
++                            int blockX = currX | (currChunkX << 4); // world position
++
++                            int edgeCountXY;
++                            if (blockX == minBlockX || blockX == maxBlockX) {
++                                edgeCountXY = edgeCountY + 1;
++                            } else {
++                                edgeCountXY = edgeCountY;
++                            }
++
++                            for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                                int blockZ = currZ | (currChunkZ << 4); // world position
++
++                                int edgeCountFull;
++                                if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                                    edgeCountFull = edgeCountXY + 1;
++                                } else {
++                                    edgeCountFull = edgeCountXY;
++                                }
++
++                                if (edgeCountFull == 3) {
++                                    continue;
++                                }
++
++                                int blockKeyFull = blockKeyXY | (currZ << 4);
++                                IBlockData blockData = blocks.rawGet(blockKeyFull);
++
++                                if ((edgeCountFull != 1 || blockData.f()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                                    mutableBlockPosition.setValues(blockX, currY, blockZ);
++                                    VoxelShape voxelshape2 = blockData.b((IBlockAccess)ICollisionAccess.this, mutableBlockPosition, collisionShape);
++                                    VoxelShape voxelshape3 = voxelshape2.a((double)blockX, (double)currY, (double)blockZ);
++
++                                    if (VoxelShapes.c(voxelshape, voxelshape3, OperatorBoolean.AND)) { // TODO Optimize, the enum axis cycle,
++                                        if (!predicate.test(voxelshape3)) {
++                                            return false;
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        return true;
++    }
++    /* Concrete end */
+ }
 diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
 index c8512f9f414413bc4f717c291180114e782e6a43..9215bcc13b99f2d7444f50e498d6ff93e5533c21 100644
 --- a/src/main/java/net/minecraft/server/IEntityAccess.java
@@ -491,10 +833,10 @@ index c8512f9f414413bc4f717c291180114e782e6a43..9215bcc13b99f2d7444f50e498d6ff93
          if (axisalignedbb.a() < 1.0E-7D) {
              return Stream.empty();
 diff --git a/src/main/java/net/minecraft/server/IWorldReader.java b/src/main/java/net/minecraft/server/IWorldReader.java
-index cbe2aa4c0acbdcc0b453fdad9a192a3e264406c6..9ffa9f2ade847cdf8c737cd440593796e22a6a8a 100644
+index cbe2aa4c0acbdcc0b453fdad9a192a3e264406c6..98405117f73018b039ee60def2eddec9dca79ce9 100644
 --- a/src/main/java/net/minecraft/server/IWorldReader.java
 +++ b/src/main/java/net/minecraft/server/IWorldReader.java
-@@ -87,12 +87,291 @@ public interface IWorldReader extends IBlockLightAccess, ICollisionAccess, Biome
+@@ -87,9 +87,7 @@ public interface IWorldReader extends IBlockLightAccess, ICollisionAccess, Biome
          return this.getChunkAt(i, j, chunkstatus, true);
      }
  
@@ -505,290 +847,6 @@ index cbe2aa4c0acbdcc0b453fdad9a192a3e264406c6..9ffa9f2ade847cdf8c737cd440593796
          return this.getChunkAt(i, j, ChunkStatus.EMPTY, false);
      }
  
-+    /* Concrete start */
-+    // note: order will be different than from the copied method
-+    default java.util.Collection<VoxelShape> getCollidingBlocks(@Nullable Entity entity, AxisAlignedBB axisalignedbb,
-+                                                          @Nullable java.util.Collection<VoxelShape> ret) {
-+        // TODO obfhelpers
-+        if (ret == null) {
-+            ret = new java.util.ArrayList<>();
-+        }
-+
-+        if (entity != null) {
-+            VoxelShape voxelshape1 = IWorldReader.this.getWorldBorder().a();
-+            boolean flag = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().shrink(1.0E-7D)), OperatorBoolean.AND);
-+            boolean flag1 = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().g(1.0E-7D)), OperatorBoolean.AND);
-+
-+            if (!flag && flag1) {
-+                ret.add(voxelshape1);
-+            }
-+        }
-+
-+        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
-+        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
-+
-+        int minChunkX = minBlockX >> 4;
-+        int maxChunkX = maxBlockX >> 4;
-+
-+        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
-+        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
-+
-+        int minChunkY = minBlockY >> 4;
-+        int maxChunkY = maxBlockY >> 4;
-+
-+        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
-+        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
-+
-+        int minChunkZ = minBlockZ >> 4;
-+        int maxChunkZ = maxBlockZ >> 4;
-+
-+        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity);
-+        BlockPosition.MutableBlockPosition mutableBlockPosition = new BlockPosition.MutableBlockPosition();
-+        VoxelShape voxelshape = VoxelShapes.of(axisalignedbb);
-+
-+        boolean useOptimizedGet = this instanceof WorldServer;
-+        ChunkProviderServer chunkProvider = !useOptimizedGet ? null : ((WorldServer)this).getChunkProvider();
-+
-+        if (maxBlockY < 0) {
-+            // no point in checking
-+            return ret;
-+        }
-+
-+        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
-+            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
-+            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
-+
-+            for (int currChunkY = minChunkY; currChunkY <= maxChunkY; ++currChunkY) {
-+                int minY = minBlockY;
-+                int maxY = maxBlockY;
-+
-+                for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
-+                    int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
-+                    int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
-+
-+                    IChunkAccess chunk = useOptimizedGet ? chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ) : // avoid loading chunks
-+                            (IChunkAccess)this.getHighestStatusChunkAt(currChunkX, currChunkZ);
-+
-+                    if (chunk == null) {
-+                        continue;
-+                    }
-+
-+                    // TODO it might be better to throw the next 3 nested for loops into their own method.
-+
-+                    ChunkSection[] sections = chunk.getSections(); // TODO on update, make sure this is RAW access
-+                    int maxSectionY = sections.length * 16;
-+
-+                    // bound y
-+
-+                    if (maxY >= maxSectionY) {
-+                        maxY = maxSectionY - 1;
-+                    }
-+                    if (minY < 0) {
-+                        minY = 0;
-+                    }
-+
-+                    for (int currY = minY; currY <= maxY; ++currY) {
-+                        ChunkSection section = sections[currY >>> 4];
-+                        if (section == null) {
-+                            // empty
-+                            continue;
-+                        }
-+
-+                        DataPaletteBlock<IBlockData> blocks = section.blockIds;
-+                        int blockKeyY = (currY & 15) << 8;
-+
-+                        int edgeCountY = (currY == minY || currY == maxY) ? 1 : 0;
-+
-+                        for (int currX = minX; currX <= maxX; ++currX) {
-+                            int blockKeyXY = blockKeyY | currX;
-+                            int blockX = currX + (currChunkX << 4); // world position
-+
-+                            int edgeCountXY;
-+                            if (blockX == minBlockX || blockX == maxBlockX) {
-+                                edgeCountXY = edgeCountY + 1;
-+                            } else {
-+                                edgeCountXY = edgeCountY;
-+                            }
-+
-+                            for (int currZ = minZ; currZ <= maxZ; ++currZ) {
-+                                int blockZ = currZ + (currChunkZ << 4); // world position
-+
-+                                int edgeCountFull;
-+                                if (blockZ == minBlockZ || blockZ == maxBlockZ) {
-+                                    edgeCountFull = edgeCountXY + 1;
-+                                } else {
-+                                    edgeCountFull = edgeCountXY;
-+                                }
-+
-+                                if (edgeCountFull == 3) {
-+                                    continue;
-+                                }
-+
-+                                int blockKeyFull = blockKeyXY | (currZ << 4);
-+                                IBlockData blockData = blocks.rawGet(blockKeyFull);
-+
-+                                if ((edgeCountFull != 1 || blockData.f()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
-+                                    mutableBlockPosition.setValues(blockX, currY, blockZ);
-+                                    VoxelShape voxelshape2 = blockData.b((IBlockAccess)IWorldReader.this, mutableBlockPosition, collisionShape);
-+                                    VoxelShape voxelshape3 = voxelshape2.a((double)blockX, (double)currY, (double)blockZ);
-+
-+                                    if (VoxelShapes.c(voxelshape, voxelshape3, OperatorBoolean.AND)) { // TODO Optimize, the enum axis cycle,
-+                                        ret.add(voxelshape3);
-+                                    }
-+                                }
-+                            }
-+                        }
-+                    }
-+                }
-+            }
-+        }
-+
-+        return ret;
-+    }
-+
-+    default boolean collidingBlocksMatchAll(@Nullable Entity entity, AxisAlignedBB axisalignedbb,
-+                                                               java.util.function.Predicate<VoxelShape> predicate) {
-+        // TODO obfhelpers
-+        if (entity != null) {
-+            VoxelShape voxelshape1 = IWorldReader.this.getWorldBorder().a();
-+            boolean flag = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().shrink(1.0E-7D)), OperatorBoolean.AND);
-+            boolean flag1 = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().g(1.0E-7D)), OperatorBoolean.AND);
-+
-+            if (!flag && flag1) {
-+                if (!predicate.test(voxelshape1)) {
-+                    return false;
-+                }
-+            }
-+        }
-+
-+        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
-+        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
-+
-+        int minChunkX = minBlockX >> 4;
-+        int maxChunkX = maxBlockX >> 4;
-+
-+        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
-+        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
-+
-+        int minChunkY = minBlockY >> 4;
-+        int maxChunkY = maxBlockY >> 4;
-+
-+        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
-+        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
-+
-+        int minChunkZ = minBlockZ >> 4;
-+        int maxChunkZ = maxBlockZ >> 4;
-+
-+        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity);
-+        BlockPosition.MutableBlockPosition mutableBlockPosition = new BlockPosition.MutableBlockPosition();
-+        VoxelShape voxelshape = VoxelShapes.of(axisalignedbb);
-+
-+        boolean useOptimizedGet = this instanceof WorldServer;
-+        ChunkProviderServer chunkProvider = !useOptimizedGet ? null : ((WorldServer)this).getChunkProvider();
-+
-+        if (maxBlockY < 0) {
-+            // no point in checking
-+            return true;
-+        }
-+
-+        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
-+            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
-+            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
-+
-+            for (int currChunkY = minChunkY; currChunkY <= maxChunkY; ++currChunkY) {
-+                int minY = minBlockY;
-+                int maxY = maxBlockY;
-+
-+                for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
-+                    int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
-+                    int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
-+
-+                    IChunkAccess chunk = useOptimizedGet ? chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ) : // avoid loading chunks
-+                            (IChunkAccess)this.getHighestStatusChunkAt(currChunkX, currChunkZ);
-+
-+                    if (chunk == null) {
-+                        continue;
-+                    }
-+
-+                    // TODO it might be better to throw the next 3 nested for loops into their own method.
-+
-+                    ChunkSection[] sections = chunk.getSections(); // TODO on update, make sure this is RAW access
-+                    int maxSectionY = sections.length * 16;
-+
-+                    // bound y
-+
-+                    if (maxY >= maxSectionY) {
-+                        maxY = maxSectionY - 1;
-+                    }
-+                    if (minY < 0) {
-+                        minY = 0;
-+                    }
-+
-+                    for (int currY = minY; currY <= maxY; ++currY) {
-+                        ChunkSection section = sections[currY >>> 4];
-+                        if (section == null) {
-+                            // empty
-+                            continue;
-+                        }
-+
-+                        DataPaletteBlock<IBlockData> blocks = section.blockIds;
-+                        int blockKeyY = (currY & 15) << 8;
-+
-+                        int edgeCountY = (currY == minY || currY == maxY) ? 1 : 0;
-+
-+                        for (int currX = minX; currX <= maxX; ++currX) {
-+                            int blockKeyXY = blockKeyY | currX;
-+                            int blockX = currX + (currChunkX << 4); // world position
-+
-+                            int edgeCountXY;
-+                            if (blockX == minBlockX || blockX == maxBlockX) {
-+                                edgeCountXY = edgeCountY + 1;
-+                            } else {
-+                                edgeCountXY = edgeCountY;
-+                            }
-+
-+                            for (int currZ = minZ; currZ <= maxZ; ++currZ) {
-+                                int blockZ = currZ + (currChunkZ << 4); // world position
-+
-+                                int edgeCountFull;
-+                                if (blockZ == minBlockZ || blockZ == maxBlockZ) {
-+                                    edgeCountFull = edgeCountXY + 1;
-+                                } else {
-+                                    edgeCountFull = edgeCountXY;
-+                                }
-+
-+                                if (edgeCountFull == 3) {
-+                                    continue;
-+                                }
-+
-+                                int blockKeyFull = blockKeyXY | (currZ << 4);
-+                                IBlockData blockData = blocks.rawGet(blockKeyFull);
-+
-+                                if ((edgeCountFull != 1 || blockData.f()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
-+                                    mutableBlockPosition.setValues(blockX, currY, blockZ);
-+                                    VoxelShape voxelshape2 = blockData.b((IBlockAccess)IWorldReader.this, mutableBlockPosition, collisionShape);
-+                                    VoxelShape voxelshape3 = voxelshape2.a((double)blockX, (double)currY, (double)blockZ);
-+
-+                                    if (VoxelShapes.c(voxelshape, voxelshape3, OperatorBoolean.AND)) {
-+                                        if (!predicate.test(voxelshape3)) {
-+                                            return false;
-+                                        }
-+                                    }
-+                                }
-+                            }
-+                        }
-+                    }
-+                }
-+            }
-+        }
-+
-+        return true;
-+    }
-+    /* Concrete end */
-+
-     default boolean y(BlockPosition blockposition) {
-         return this.getFluid(blockposition).a(TagsFluid.WATER);
-     }
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
 index 49f89d57d3bf9eec502502f76a69668afae841ad..e752122b5171634c1183b7a04d1099b3fca03d9a 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
@@ -892,6 +950,18 @@ index 50c7673633ef203e2856afd7abc7542f66733b2d..106706c84b2b3b8735dba05e8359ea1f
          int i = MathHelper.floor((axisalignedbb.minX - 2.0D) / 16.0D);
          int j = MathHelper.floor((axisalignedbb.maxX + 2.0D) / 16.0D);
          int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
+diff --git a/src/main/java/net/minecraft/server/WorldBorder.java b/src/main/java/net/minecraft/server/WorldBorder.java
+index 5f10c4338e4f8feffd8f0145dee7550c4db6c9e0..fd1eb120b2feb9c8d12e01650af9a8125d975b15 100644
+--- a/src/main/java/net/minecraft/server/WorldBorder.java
++++ b/src/main/java/net/minecraft/server/WorldBorder.java
+@@ -48,6 +48,7 @@ public class WorldBorder {
+         return this.b(entity.locX(), entity.locZ());
+     }
+ 
++    public final VoxelShape toVoxelShape() { return this.a(); } /* Concrete - OBFHELPER */
+     public VoxelShape a() {
+         return this.i.m();
+     }
 diff --git a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
 index b3b0974365cf338a4b5a82a4eb5d257acf62d309..a273a2828ee355a59086785291043d3dd4daede1 100644
 --- a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
