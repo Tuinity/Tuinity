@@ -12,6 +12,34 @@ It's also targetted to reduce performance regressions when
 plugins or edge cases in code do not spam sync loads since chunks
 without tickets get unloaded immediately.
 
+diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+index 6798bcb73291cf82a64c63d4d6c09da7ac1c7463..533cecf632c37c8045739119d791b197c726bfab 100644
+--- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
++++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+@@ -1,6 +1,7 @@
+ package ca.spottedleaf.concrete.config;
+ 
+ import ca.spottedleaf.concurrentutil.util.Throw;
++import net.minecraft.server.TicketType;
+ import org.bukkit.Bukkit;
+ import org.bukkit.configuration.ConfigurationSection;
+ import org.bukkit.configuration.file.YamlConfiguration;
+@@ -100,6 +101,15 @@ public final class ConcreteConfig {
+         tickThreads = ConcreteConfig.getInt("server-tick-threads", 1); // will be 4 in the future
+     }
+ 
++    public static int delayChunkUnloadsBy;
++
++    private static void delayChunkUnloadsBy() {
++        delayChunkUnloadsBy = ConcreteConfig.getInt("delay-chunkunloads-by", 10) * 20;
++        if (delayChunkUnloadsBy >= 0) {
++            TicketType.DELAYED_UNLOAD.loadPeriod = delayChunkUnloadsBy;
++        }
++    }
++
+     public static int maxChunkLoadsPerPlayer;
+ 
+     private static void maxChunkLoadsPerPlayer() {
 diff --git a/src/main/java/net/minecraft/server/ChunkMap.java b/src/main/java/net/minecraft/server/ChunkMap.java
 index 50444a2f49f07e66ff9ea55dacc1819023ea6624..b0c0e906f3bd8534a6ef0b274ffa163717b7672f 100644
 --- a/src/main/java/net/minecraft/server/ChunkMap.java
@@ -25,11 +53,11 @@ index 50444a2f49f07e66ff9ea55dacc1819023ea6624..b0c0e906f3bd8534a6ef0b274ffa1637
          this.a(ChunkCoordIntPair.a, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 2c0c10d41ea1525f76d07d1a26557aef09bc048c..8aefd3cfc9bba41096d44566585923fa096174e9 100644
+index 00dccb292f3f9fe7e86e566616164263161571eb..c2dabe5527045b44df4b2482ce9bca0e16120cfe 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
-     private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2;
+     private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2; public static int getPlayerTicketLevel() { return ChunkMapDistance.b; } /* Concrete - OBFHELPER */
      private final Long2ObjectMap<ObjectSet<EntityPlayer>> c = new Long2ObjectOpenHashMap();
      public final Long2ObjectOpenHashMap<ArraySetSorted<Ticket<?>>> tickets = new Long2ObjectOpenHashMap();
 -    private final ChunkMapDistance.a e = new ChunkMapDistance.a();
@@ -83,7 +111,7 @@ index 2c0c10d41ea1525f76d07d1a26557aef09bc048c..8aefd3cfc9bba41096d44566585923fa
      /* Concrete end */
  
      protected ChunkMapDistance(Executor executor, Executor executor1) {
-@@ -63,12 +102,27 @@ public abstract class ChunkMapDistance {
+@@ -63,12 +102,30 @@ public abstract class ChunkMapDistance {
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
@@ -95,6 +123,9 @@ index 2c0c10d41ea1525f76d07d1a26557aef09bc048c..8aefd3cfc9bba41096d44566585923fa
 -                return ticket.b(this.currentTick);
 +                /* Concrete start - delay chunk unloads */
 +                boolean ret = ticket.isExpired(this.currentTick);
++                if (ca.spottedleaf.concrete.config.ConcreteConfig.delayChunkUnloadsBy <= 0) {
++                    return ret;
++                }
 +                if (ret && ticket.getTicketType() != TicketType.DELAYED_UNLOAD && ticket.getTicketLevel() < tempLevel[0]) {
 +                    tempLevel[0] = ticket.getTicketLevel();
 +                }
@@ -112,7 +143,7 @@ index 2c0c10d41ea1525f76d07d1a26557aef09bc048c..8aefd3cfc9bba41096d44566585923fa
                  this.e.b(entry.getLongKey(), a((ArraySetSorted) entry.getValue()), false);
              }
  
-@@ -79,6 +133,7 @@ public abstract class ChunkMapDistance {
+@@ -79,6 +136,7 @@ public abstract class ChunkMapDistance {
  
      }
  
@@ -120,12 +151,12 @@ index 2c0c10d41ea1525f76d07d1a26557aef09bc048c..8aefd3cfc9bba41096d44566585923fa
      private static int a(ArraySetSorted<Ticket<?>> arraysetsorted) {
          return !arraysetsorted.isEmpty() ? ((Ticket) arraysetsorted.b()).b() : PlayerChunkMap.GOLDEN_TICKET + 1;
      }
-@@ -163,6 +218,11 @@ public abstract class ChunkMapDistance {
+@@ -163,6 +221,11 @@ public abstract class ChunkMapDistance {
          boolean removed = false; // CraftBukkit
          if (arraysetsorted.remove(ticket)) {
              removed = true; // CraftBukkit
 +            /* Concrete start - delay chunk unloads */
-+            if (ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
++            if (ca.spottedleaf.concrete.config.ConcreteConfig.delayChunkUnloadsBy > 0 && ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
 +                this.computeDelayedTicketFor(i, ticket.getTicketLevel(), arraysetsorted);
 +            }
 +            /* Concrete end - delay chunk unloads */
@@ -158,14 +189,14 @@ index 7a8397815a5b7f79f3e3a0348aeedf63fe879f8f..e98e8530f1eb6552817f7a8fa64c7c82
          long j = this.a.b();
  
 diff --git a/src/main/java/net/minecraft/server/TicketType.java b/src/main/java/net/minecraft/server/TicketType.java
-index 481d9548088d233869570277e8860b532240259c..953f51334ac6686235af75e66032b7d2aa98a02f 100644
+index 481d9548088d233869570277e8860b532240259c..7adcca1c378688e37529c3fbb85398b5155cf84c 100644
 --- a/src/main/java/net/minecraft/server/TicketType.java
 +++ b/src/main/java/net/minecraft/server/TicketType.java
 @@ -23,6 +23,7 @@ public class TicketType<T> {
      public static final TicketType<org.bukkit.plugin.Plugin> PLUGIN_TICKET = a("plugin_ticket", (plugin1, plugin2) -> plugin1.getClass().getName().compareTo(plugin2.getClass().getName())); // Craftbukkit
      public static final TicketType<Integer> ANTIXRAY = a("antixray", Integer::compareTo); // Paper - Anti-Xray
      public static final TicketType<Long> ASYNC_LOAD = a("async_load", Long::compareTo); // Paper
-+    public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo, 30 * 20); /* Concrete - delay chunk unloads by 30 seconds */
++    public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo); /* Concrete - delay chunk unloads by 30 seconds */
  
      public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
          return new TicketType<>(s, comparator, 0L);

@@ -1,0 +1,541 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 22 Dec 2019 03:25:20 -0800
+Subject: [PATCH] Optimise getPlayersInRange type functions
+
+Use a distance map to achieve this
+
+diff --git a/src/main/java/net/minecraft/server/AxisAlignedBB.java b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+index d5ed9a9ee051c784b262d3cdcc1ecb3075ab3008..7308ea5644a2f484461be64a4537336d529eede0 100644
+--- a/src/main/java/net/minecraft/server/AxisAlignedBB.java
++++ b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+@@ -207,6 +207,7 @@ public class AxisAlignedBB {
+         return this.e(vec3d.x, vec3d.y, vec3d.z);
+     }
+ 
++    public final boolean contains(double x, double y, double z) { return this.e(x, y, z); } /* Concrete - OBFHELPER */
+     public boolean e(double d0, double d1, double d2) {
+         return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
+     }
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index 2aa550bd0c701fa6356ecf8c54eb93d7b5ce3f08..edf92b07be99897782ec722eed8330c6531e5593 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -240,6 +240,13 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         this.unTrackQueue.remove(id);
+     }
+ 
++    public final double getDistanceXZSquared(double x, double z) {
++        double diffX = x - this.locX();
++        double diffZ = z - this.locZ();
++
++        return (diffX * diffX) + (diffZ * diffZ);
++    }
++
+ 
+     /* Concrete end  */
+ 
+@@ -1506,6 +1513,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return MathHelper.c(f * f + f1 * f1 + f2 * f2);
+     }
+ 
++    public final double getDistanceSquared(double x, double y, double z) { return this.g(x, y, z); } /* Concrete - OBFHELPER */
+     public double g(double d0, double d1, double d2) {
+         double d3 = this.locX() - d0;
+         double d4 = this.locY() - d1;
+diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
+index 9215bcc13b99f2d7444f50e498d6ff93e5533c21..bea6bf22042d366a6a2eee39ce8c0cd48c7eadf2 100644
+--- a/src/main/java/net/minecraft/server/IEntityAccess.java
++++ b/src/main/java/net/minecraft/server/IEntityAccess.java
+@@ -159,8 +159,8 @@ public interface IEntityAccess {
+         }
+     }
+ 
+-    @Nullable
+-    default EntityHuman a(double d0, double d1, double d2, double d3, @Nullable Predicate<Entity> predicate) {
++    @Nullable default EntityHuman a(double d0, double d1, double d2, double d3, @Nullable Predicate<Entity> predicate) { return this.findClosestPlayer(d0, d1, d2, d3, predicate); } /* Concrete - allow overriding with OBFHELPER */
++    @Nullable default EntityHuman findClosestPlayer(double d0, double d1, double d2, double d3, @Nullable Predicate<Entity> predicate) { /* Concrete - OBFHELPER */
+         double d4 = -1.0D;
+         EntityHuman entityhuman = null;
+         Iterator iterator = this.getPlayers().iterator();
+@@ -195,6 +195,11 @@ public interface IEntityAccess {
+ 
+     @Nullable
+     default EntityHuman a(double d0, double d1, double d2) {
++        /* Concrete start - add predicate parameter and allow for WorldServer to override */
++        return this.findClosestPlayerXZ(d0, d1, d2, IEntitySelector.notSpectator());
++    }
++    default EntityHuman findClosestPlayerXZ(double d0, double d1, double d2, @Nullable Predicate<Entity> predicate) {
++        /* Concrete end - add predicate parameter and allow for WorldServer to override */
+         double d3 = -1.0D;
+         EntityHuman entityhuman = null;
+         Iterator iterator = this.getPlayers().iterator();
+@@ -202,7 +207,7 @@ public interface IEntityAccess {
+         while (iterator.hasNext()) {
+             EntityHuman entityhuman1 = (EntityHuman) iterator.next();
+ 
+-            if (IEntitySelector.f.test(entityhuman1)) {
++            if ((predicate == null || predicate.test(entityhuman1))) { /* Concrete - add predicate parameter */
+                 double d4 = entityhuman1.g(d0, entityhuman1.locY(), d1);
+ 
+                 if ((d2 < 0.0D || d4 < d2 * d2) && (d3 == -1.0D || d4 < d3)) {
+@@ -241,19 +246,26 @@ public interface IEntityAccess {
+ 
+     @Nullable
+     default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving) {
+-        return (EntityHuman) this.a(this.getPlayers(), pathfindertargetcondition, entityliving, entityliving.locX(), entityliving.locY(), entityliving.locZ());
++        return (EntityHuman) this.getNearestPlayerForPathFinding(pathfindertargetcondition, entityliving, entityliving.locX(), entityliving.locY(), entityliving.locZ()); /* Concrete - allow overriding in WorldServer for find nearest player optimisation */
+     }
+ 
+     @Nullable
+     default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving, double d0, double d1, double d2) {
+-        return (EntityHuman) this.a(this.getPlayers(), pathfindertargetcondition, entityliving, d0, d1, d2);
++        return (EntityHuman) this.getNearestPlayerForPathFinding(pathfindertargetcondition, entityliving, d0, d1, d2); /* Concrete - allow overriding in WorldServer for find nearest player optimisation */
+     }
+ 
+     @Nullable
+     default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, double d0, double d1, double d2) {
+-        return (EntityHuman) this.a(this.getPlayers(), pathfindertargetcondition, (EntityLiving) null, d0, d1, d2);
++        return (EntityHuman) this.getNearestPlayerForPathFinding(pathfindertargetcondition, (EntityLiving) null, d0, d1, d2); /* Concrete - allow overriding in WorldServer for find nearest player optimisation */
+     }
+ 
++    /* Concrete start - allow overriding in WorldServer for find nearest player optimisation */
++    @Nullable
++    default EntityHuman getNearestPlayerForPathFinding(PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2) {
++        return this.getNearestEntityForPathFinding(this.getPlayers(), pathfindertargetcondition, entityliving, d0, d1, d2);
++    }
++    /* Concrete end - allow overriding in WorldServer */
++
+     @Nullable
+     default <T extends EntityLiving> T a(Class<? extends T> oclass, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2, AxisAlignedBB axisalignedbb) {
+         return this.a(this.a(oclass, axisalignedbb, null), pathfindertargetcondition, entityliving, d0, d1, d2); // Paper - decompile fix
+@@ -264,8 +276,8 @@ public interface IEntityAccess {
+         return this.a(this.b(oclass, axisalignedbb, null), pathfindertargetcondition, entityliving, d0, d1, d2); // Paper - decompile fix
+     }
+ 
+-    @Nullable
+-    default <T extends EntityLiving> T a(List<? extends T> list, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2) {
++    @Nullable default <T extends EntityLiving> T getNearestEntityForPathFinding(List<? extends T> list, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2) { return this.a(list, pathfindertargetcondition, entityliving, d0, d1, d2); } /* Concrete - OBFHELPER */
++    @Nullable default <T extends EntityLiving> T a(List<? extends T> list, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2) { /* Concrete - OBFHELPER */
+         double d3 = -1.0D;
+         T t0 = null;
+         Iterator<? extends T> iterator = list.iterator(); // Paper - decompile fix
+@@ -287,6 +299,11 @@ public interface IEntityAccess {
+     }
+ 
+     default List<EntityHuman> a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving, AxisAlignedBB axisalignedbb) {
++        /* Concrete start - allow overriding in WorldServer */
++        return this.getNearestPlayersForPathFinding(pathfindertargetcondition, entityliving, axisalignedbb);
++    }
++    default List<EntityHuman> getNearestPlayersForPathFinding(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving, AxisAlignedBB axisalignedbb) {
++        /* Concrete end - allow overriding in WorldServer */
+         List<EntityHuman> list = Lists.newArrayList();
+         Iterator iterator = this.getPlayers().iterator();
+ 
+diff --git a/src/main/java/net/minecraft/server/PathfinderTargetCondition.java b/src/main/java/net/minecraft/server/PathfinderTargetCondition.java
+index e35ec2db078cc888333cfdd44e1cd3fda71246da..a190e9bbe77c4c4dce9accecee33bb963e728001 100644
+--- a/src/main/java/net/minecraft/server/PathfinderTargetCondition.java
++++ b/src/main/java/net/minecraft/server/PathfinderTargetCondition.java
+@@ -51,6 +51,7 @@ public class PathfinderTargetCondition {
+         return this;
+     }
+ 
++    public final boolean test(@Nullable EntityLiving entityliving, EntityLiving entityliving1) { return this.a(entityliving, entityliving1); } /* Concrete - OBFHELPER */
+     public boolean a(@Nullable EntityLiving entityliving, EntityLiving entityliving1) {
+         if (entityliving == entityliving1) {
+             return false;
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index 5f361885dde743e1b4cfdb56a4aa322aa82c2d8a..d228e052a81010cab2abbca9f77f2e2d8cc311bc 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -135,6 +135,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     public final int entityTrackerTrackRange;
+     public final int entityTrackerUntrackRange;
+ 
++    public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerGeneralAreaMap;
++    public static final int PLAYER_GENERAL_AREA_MAP_DISTANCE = (32 + 3) + 1;
++    public static final int PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS = (16 * PLAYER_GENERAL_AREA_MAP_DISTANCE) * (16 * PLAYER_GENERAL_AREA_MAP_DISTANCE);
++
+     void addPlayerToDistanceMaps(EntityPlayer player) {
+         try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapAdd.startTiming()) {
+             this.updateMaps(player);
+@@ -154,6 +158,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                 this.playerEntityTrackerTrackMap.remove(player);
+                 this.playerEntityTrackerUntrackMap.remove(player);
+             }
++            this.playerGeneralAreaMap.remove(player);
+         }
+     }
+ 
+@@ -203,6 +208,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             this.playerEntityTrackerTrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerTrackRange, effectiveViewDistance));
+             this.playerEntityTrackerUntrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerUntrackRange, effectiveViewDistance));
+         }
++        this.playerGeneralAreaMap.update(player, chunkX, chunkZ, PLAYER_GENERAL_AREA_MAP_DISTANCE);
+     }
+ 
+     final it.unimi.dsi.fastutil.objects.ObjectRBTreeSet<PlayerChunk> autoSaveQueue = new it.unimi.dsi.fastutil.objects.ObjectRBTreeSet<>((playerchunk1, playerchunk2) -> {
+@@ -339,6 +345,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                         });
+                     });
+         }
++        this.playerGeneralAreaMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets);
+         /* Concrete end - distance maps */
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index f49f67c7f1a44fcf24aff7490e2505d6df46c7d1..8115126899c9480d9fa559491758f94dcc643fe2 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -185,6 +185,348 @@ public class WorldServer extends World {
+     }
+     /* Concrete end */
+ 
++    /* Concrete start */
++    // TODO the general area map is too large, use a smaller one depending on distance
++    @Nullable
++    public EntityPlayer findClosestPlayer(double fromX, double fromY, double fromZ, double distance) {
++        double maximumDistanceSquared;
++        if (distance < 0) {
++            maximumDistanceSquared = Double.MAX_VALUE;
++        } else {
++            maximumDistanceSquared = distance * distance;
++        }
++
++        EntityPlayer closestPlayer = null;
++        double closestDistanceSquared = maximumDistanceSquared;
++
++        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearestPlayers =
++                this.getChunkProvider().playerChunkMap.playerGeneralAreaMap
++                        .getObjectsInRange(ca.spottedleaf.concrete.util.Util.getCoordinateKey(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromZ)));
++
++        if (nearestPlayers != null) {
++            Object[] backingSet = nearestPlayers.getBackingSet();
++
++            for (int i = 0, len = backingSet.length; i < len; ++i) {
++                Object raw = backingSet[i];
++                if (!(raw instanceof EntityPlayer)) {
++                    continue;
++                }
++                EntityPlayer currPlayer = (EntityPlayer)raw;
++                double currDistanceSquared = currPlayer.getDistanceSquared(fromX, fromY, fromZ);
++
++                if (currDistanceSquared <= closestDistanceSquared && currDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++                    closestPlayer = currPlayer;
++                    closestDistanceSquared = currDistanceSquared;
++                }
++            }
++        }
++
++        if (closestPlayer != null) {
++            return closestPlayer;
++        } else if (maximumDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++            return null;
++        }
++
++        // fall back to iteration over the world players
++
++        for (int i = 0, len = this.players.size(); i < len; ++i) {
++            EntityPlayer currPlayer = this.players.get(i);
++            double currDistanceSquared = currPlayer.getDistanceSquared(fromX, fromY, fromZ);
++
++            if (currDistanceSquared <= closestDistanceSquared) {
++                closestPlayer = currPlayer;
++                closestDistanceSquared = currDistanceSquared;
++            }
++        }
++
++        return closestPlayer;
++    }
++
++    @Nullable
++    public EntityPlayer findClosestPlayer(double fromX, double fromY, double fromZ, double distance, @Nullable Predicate<Entity> predicate) {
++        if (predicate == null) {
++            return this.findClosestPlayer(fromX, fromY, fromZ, distance);
++        }
++
++        double maximumDistanceSquared;
++        if (distance < 0) {
++            maximumDistanceSquared = Double.MAX_VALUE;
++        } else {
++            maximumDistanceSquared = distance * distance;
++        }
++
++        EntityPlayer closestPlayer = null;
++        double closestDistanceSquared = maximumDistanceSquared;
++
++        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearestPlayers =
++                this.getChunkProvider().playerChunkMap.playerGeneralAreaMap
++                        .getObjectsInRange(ca.spottedleaf.concrete.util.Util.getCoordinateKey(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromZ)));
++
++        if (nearestPlayers != null) {
++            Object[] backingSet = nearestPlayers.getBackingSet();
++
++            for (int i = 0, len = backingSet.length; i < len; ++i) {
++                Object raw = backingSet[i];
++                if (!(raw instanceof EntityPlayer)) {
++                    continue;
++                }
++                EntityPlayer currPlayer = (EntityPlayer)raw;
++                double currDistanceSquared = currPlayer.getDistanceSquared(fromX, fromY, fromZ);
++
++                if (predicate.test(currPlayer) && currDistanceSquared <= closestDistanceSquared && currDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++                    closestPlayer = currPlayer;
++                    closestDistanceSquared = currDistanceSquared;
++                }
++            }
++        }
++
++        if (closestPlayer != null) {
++            return closestPlayer;
++        } else if (maximumDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++            return null;
++        }
++
++        // fall back to iteration over the world players
++
++        for (int i = 0, len = this.players.size(); i < len; ++i) {
++            EntityPlayer currPlayer = this.players.get(i);
++            double currDistanceSquared = currPlayer.getDistanceSquared(fromX, fromY, fromZ);
++
++            if (predicate.test(currPlayer) && currDistanceSquared <= closestDistanceSquared) {
++                closestPlayer = currPlayer;
++                closestDistanceSquared = currDistanceSquared;
++            }
++        }
++
++        return closestPlayer;
++    }
++
++    @Nullable
++    public List<EntityPlayer> findPlayersInRange(double fromX, double fromY, double fromZ, double distance) {
++        return this.findPlayersInRange(fromX, fromY, fromZ, distance, new java.util.ArrayList<>(), null);
++    }
++
++    @Nullable
++    public List<EntityPlayer> findPlayersInRange(double fromX, double fromY, double fromZ, double distance, @Nonnull List<EntityPlayer> players, @Nullable Predicate<Entity> predicate) {
++        double maximumDistanceSquared;
++        if (distance < 0) {
++            maximumDistanceSquared = Double.MAX_VALUE;
++        } else {
++            maximumDistanceSquared = distance * distance;
++        }
++
++        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearestPlayers =
++                this.getChunkProvider().playerChunkMap.playerGeneralAreaMap
++                        .getObjectsInRange(ca.spottedleaf.concrete.util.Util.getCoordinateKey(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromZ)));
++
++        if (nearestPlayers != null) {
++            Object[] backingSet = nearestPlayers.getBackingSet();
++
++            for (int i = 0, len = backingSet.length; i < len; ++i) {
++                Object raw = backingSet[i];
++                if (!(raw instanceof EntityPlayer)) {
++                    continue;
++                }
++                EntityPlayer currPlayer = (EntityPlayer)raw;
++                double currDistanceSquared = currPlayer.getDistanceSquared(fromX, fromY, fromZ);
++
++                if ((predicate == null || predicate.test(currPlayer)) && currDistanceSquared <= maximumDistanceSquared && currDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++                    players.add(currPlayer);
++                }
++            }
++        }
++
++        if (maximumDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++            return players;
++        }
++
++        // fall back to iteration over the world players
++
++        for (int i = 0, len = this.players.size(); i < len; ++i) {
++            EntityPlayer currPlayer = this.players.get(i);
++            double currDistanceSquared = currPlayer.getDistanceSquared(fromX, fromY, fromZ);
++
++            if ((predicate == null || predicate.test(currPlayer)) && currDistanceSquared <= maximumDistanceSquared) {
++                players.add(currPlayer);
++            }
++        }
++
++        return players;
++    }
++
++    @Override
++    public boolean isPlayerNearby(double fromX, double fromY, double fromZ, double distance) {
++        double maximumDistanceSquared;
++        if (distance < 0) {
++            maximumDistanceSquared = Double.MAX_VALUE;
++        } else {
++            maximumDistanceSquared = distance * distance;
++        }
++
++        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearestPlayers =
++                this.getChunkProvider().playerChunkMap.playerGeneralAreaMap
++                        .getObjectsInRange(ca.spottedleaf.concrete.util.Util.getCoordinateKey(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromZ)));
++
++        if (nearestPlayers != null) {
++            Object[] backingSet = nearestPlayers.getBackingSet();
++
++            for (int i = 0, len = backingSet.length; i < len; ++i) {
++                Object raw = backingSet[i];
++                if (!(raw instanceof EntityPlayer)) {
++                    continue;
++                }
++                EntityPlayer currPlayer = (EntityPlayer)raw;
++                double currDistanceSquared = currPlayer.getDistanceSquared(fromX, fromY, fromZ);
++
++                // TODO check on update
++                if ((currPlayer.isAlive() && !currPlayer.isSpectator()) && currDistanceSquared <= maximumDistanceSquared && currDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++                    return true;
++                }
++            }
++        }
++
++        if (maximumDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++            return false;
++        }
++
++        // fall back to iteration over the world players
++
++        for (int i = 0, len = this.players.size(); i < len; ++i) {
++            EntityPlayer currPlayer = this.players.get(i);
++            double currDistanceSquared = currPlayer.getDistanceSquared(fromX, fromY, fromZ);
++
++            // TODO check on update
++            if ((currPlayer.isAlive() && !currPlayer.isSpectator()) && currDistanceSquared <= maximumDistanceSquared) {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    @Override
++    public EntityPlayer findClosestPlayerXZ(double fromX, double fromZ, double distanceXZ, @Nullable Predicate<Entity> predicate) {
++        double maximumDistanceSquared;
++        if (distanceXZ < 0) {
++            maximumDistanceSquared = Double.MAX_VALUE;
++        } else {
++            maximumDistanceSquared = distanceXZ * distanceXZ;
++        }
++
++        EntityPlayer closestPlayer = null;
++        double closestDistanceSquared = maximumDistanceSquared;
++
++        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearestPlayers =
++                this.getChunkProvider().playerChunkMap.playerGeneralAreaMap
++                        .getObjectsInRange(ca.spottedleaf.concrete.util.Util.getCoordinateKey(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromZ)));
++
++        if (nearestPlayers != null) {
++            Object[] backingSet = nearestPlayers.getBackingSet();
++
++            for (int i = 0, len = backingSet.length; i < len; ++i) {
++                Object raw = backingSet[i];
++                if (!(raw instanceof EntityPlayer)) {
++                    continue;
++                }
++                EntityPlayer currPlayer = (EntityPlayer)raw;
++                double currDistanceSquared = currPlayer.getDistanceXZSquared(fromX, fromZ);
++
++                if ((predicate == null || predicate.test(currPlayer)) && currDistanceSquared <= closestDistanceSquared && currDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++                    closestPlayer = currPlayer;
++                    closestDistanceSquared = currDistanceSquared;
++                }
++            }
++        }
++
++        if (closestPlayer != null) {
++            return closestPlayer;
++        } else if (maximumDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++            return null;
++        }
++
++        // fall back to iteration over the world players
++
++        for (int i = 0, len = this.players.size(); i < len; ++i) {
++            EntityPlayer currPlayer = this.players.get(i);
++            double currDistanceSquared = currPlayer.getDistanceXZSquared(fromX, fromZ);
++
++            if ((predicate == null || predicate.test(currPlayer)) && currDistanceSquared <= closestDistanceSquared) {
++                closestPlayer = currPlayer;
++                closestDistanceSquared = currDistanceSquared;
++            }
++        }
++
++        return closestPlayer;
++    }
++
++    @Nullable
++    @Override
++    public EntityPlayer getNearestPlayerForPathFinding(PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double fromX, double fromY, double fromZ) {
++        double maximumDistanceSquared = PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS;
++        // it isn't mojang behaviour to straight up limit to 576 blocks or less, but there should be nothing
++        // that tracks outside that range. Besides, not hard limiting at some point is really stupid.
++
++        EntityPlayer closestPlayer = null;
++        double closestDistanceSquared = maximumDistanceSquared;
++
++        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearestPlayers =
++                this.getChunkProvider().playerChunkMap.playerGeneralAreaMap
++                        .getObjectsInRange(ca.spottedleaf.concrete.util.Util.getCoordinateKey(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(fromZ)));
++
++        if (nearestPlayers != null) {
++            Object[] backingSet = nearestPlayers.getBackingSet();
++
++            for (int i = 0, len = backingSet.length; i < len; ++i) {
++                Object raw = backingSet[i];
++                if (!(raw instanceof EntityPlayer)) {
++                    continue;
++                }
++                EntityPlayer currPlayer = (EntityPlayer)raw;
++                double currDistanceSquared = currPlayer.getDistanceSquared(fromX, fromY, fromZ);
++
++                if (pathfindertargetcondition.test(entityliving, currPlayer) && currDistanceSquared <= closestDistanceSquared && currDistanceSquared <= PlayerChunkMap.PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS) {
++                    closestPlayer = currPlayer;
++                    closestDistanceSquared = currDistanceSquared;
++                }
++            }
++        }
++
++        return closestPlayer;
++    }
++
++    @Override
++    public List<EntityHuman> getNearestPlayersForPathFinding(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving, AxisAlignedBB axisalignedbb) {
++        List<EntityHuman> ret = new java.util.ArrayList<>();
++
++        double centerX = (axisalignedbb.minX + axisalignedbb.maxX) / 2.0;
++        double centerZ = (axisalignedbb.minZ + axisalignedbb.maxZ) / 2.0;
++
++        // we make the assumption that the bounding box isn't greater-than the general area map's chunk radius (~576 blocks)
++
++        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearestPlayers =
++                this.getChunkProvider().playerChunkMap.playerGeneralAreaMap
++                        .getObjectsInRange(ca.spottedleaf.concrete.util.Util.getCoordinateKey(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(centerX), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(centerZ)));
++
++        if (nearestPlayers != null) {
++            Object[] backingSet = nearestPlayers.getBackingSet();
++
++            for (int i = 0, len = backingSet.length; i < len; ++i) {
++                Object raw = backingSet[i];
++                if (!(raw instanceof EntityPlayer)) {
++                    continue;
++                }
++                EntityPlayer currPlayer = (EntityPlayer)raw;
++
++                if (axisalignedbb.contains(currPlayer.locX(), currPlayer.locY(), currPlayer.locZ()) && pathfindertargetcondition.test(entityliving, currPlayer)) {
++                    ret.add(currPlayer);
++                }
++            }
++        }
++
++        return ret;
++    }
++    /* Concrete end */
++
+     // Add env and gen to constructor
+     public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
+         super(worlddata, dimensionmanager, (world, worldprovider) -> {
+-- 
+2.24.0.windows.2
+

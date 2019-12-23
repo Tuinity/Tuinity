@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 22 Dec 2019 03:30:50 -0800
+Subject: [PATCH] Optimise IEntityAccess#getPlayerByUUID
+
+Use the world entity map instead of iterating over all players
+
+diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
+index bea6bf22042d366a6a2eee39ce8c0cd48c7eadf2..3da30cc46c8f4b1fb0221c42766de440c6292f0a 100644
+--- a/src/main/java/net/minecraft/server/IEntityAccess.java
++++ b/src/main/java/net/minecraft/server/IEntityAccess.java
+@@ -336,6 +336,11 @@ public interface IEntityAccess {
+ 
+     @Nullable
+     default EntityHuman b(UUID uuid) {
++        /* Concrete start - allow WorldServer to override */
++        return this.getPlayerByUUID(uuid);
++    }
++    default EntityHuman getPlayerByUUID(UUID uuid) {
++        /* Concrete end - allow WorldServer to override */
+         for (int i = 0; i < this.getPlayers().size(); ++i) {
+             EntityHuman entityhuman = (EntityHuman) this.getPlayers().get(i);
+ 
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index 8115126899c9480d9fa559491758f94dcc643fe2..408e1a32c4e88923cae70cdc1c4802082cb98368 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -525,6 +525,13 @@ public class WorldServer extends World {
+ 
+         return ret;
+     }
++
++    @Override
++    public EntityHuman getPlayerByUUID(UUID uuid) {
++        Entity player = this.entitiesByUUID.get(uuid);
++        return (player instanceof EntityHuman) ? (EntityHuman)player : null;
++    }
++
+     /* Concrete end */
+ 
+     // Add env and gen to constructor
+-- 
+2.24.0.windows.2
+
