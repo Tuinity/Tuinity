@@ -2077,7 +2077,7 @@ index ed6f1b1a3ef9fee52ebd62444f32dcb25b358c16..7e5b4c6aa02202e675c0e88823dd5541
  
      // Yes, this doesn't match Vanilla, but it's the best we can do for now.
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 0fb9c1e441b5a6f71c86db3e90bb3509c409f11e..d520890ab77bda6e6d7b4d9db073cd89bb9dee67 100644
+index 0fb9c1e441b5a6f71c86db3e90bb3509c409f11e..cb4c539277a20f020889c51438dd965138c37086 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -20,8 +20,8 @@ public class PlayerChunk {
@@ -2142,17 +2142,16 @@ index 0fb9c1e441b5a6f71c86db3e90bb3509c409f11e..d520890ab77bda6e6d7b4d9db073cd89
  
      public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getStatusFutureUnchecked(ChunkStatus chunkstatus) {
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(chunkstatus.c());
-@@ -378,12 +408,20 @@ public class PlayerChunk {
+@@ -378,12 +408,19 @@ public class PlayerChunk {
          boolean flag5 = playerchunk_state1.isAtLeast(PlayerChunk.State.TICKING);
  
          if (!flag4 && flag5) {
 -            this.tickingFuture = playerchunkmap.a(this);
 +            /* Concrete start - cache chunk ticking stage */
-+            this.tickingFuture = playerchunkmap.a(this).thenApply((either) -> {
++            this.tickingFuture = playerchunkmap.a(this); this.tickingFuture.thenAccept((either) -> {
 +                if (either.left().isPresent()) {
 +                    PlayerChunk.this.isTickingReady = true;
 +                }
-+                return either;
 +            });
 +            /* Concrete end - cache chunk ticking stage */
              this.a(this.tickingFuture);
@@ -2164,17 +2163,16 @@ index 0fb9c1e441b5a6f71c86db3e90bb3509c409f11e..d520890ab77bda6e6d7b4d9db073cd89
              this.tickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
          }
  
-@@ -395,12 +433,20 @@ public class PlayerChunk {
+@@ -395,12 +432,19 @@ public class PlayerChunk {
                  throw (IllegalStateException) SystemUtils.c(new IllegalStateException());
              }
  
 -            this.entityTickingFuture = playerchunkmap.b(this.location);
 +            /* Concrete start - cache chunk ticking stage */
-+            this.entityTickingFuture = playerchunkmap.b(this.location).thenApply((either) -> {
++            this.entityTickingFuture = playerchunkmap.b(this.location); this.entityTickingFuture.thenAccept((either) -> {
 +                if (either.left().isPresent()) {
 +                    PlayerChunk.this.isEntityTickingReady = true;
 +                }
-+                return either;
 +            });
 +            /* Concrete end - cache chunk ticking stage */
              this.a(this.entityTickingFuture);

@@ -70,7 +70,7 @@ index fd3776d6f013f79c692bc217315683e15cd616a6..f9cd05765e16afe24012996b54531965
  
          mobSpawn = Timings.ofSafe(name + "mobSpawn");
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index ca0efec1c42e1997e255dd06055b704028664e9a..70117e7e7cda6fb4890955372fb9f6a0fac98005 100644
+index ca0efec1c42e1997e255dd06055b704028664e9a..7edfdc8704fad0436523eb1384595987a7942fe9 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -1,5 +1,6 @@
@@ -152,7 +152,7 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..70117e7e7cda6fb4890955372fb9f6a0
  
      public int b() {
          this.f.a();
-@@ -334,6 +347,187 @@ public abstract class ChunkMapDistance {
+@@ -334,6 +347,194 @@ public abstract class ChunkMapDistance {
          }
      }
  
@@ -221,9 +221,16 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..70117e7e7cda6fb4890955372fb9f6a0
 +                // handle movement
 +
 +                int radius = lastLoadedRadius + 1;
++                int viewDistance = chunkMap.playerViewDistanceTicketMap.getLastViewDistance(player);
++
++                if (radius > viewDistance) {
++                    // distance map will unload our chunks
++                    this.lastLoadedRadiusByPlayer.put(playerId, viewDistance);
++                    continue;
++                }
 +
 +                radius_loop:
-+                for (int viewDistance = chunkMap.playerViewDistanceTicketMap.getLastViewDistance(player); radius <= viewDistance; ++radius) {
++                for (; radius <= viewDistance; ++radius) {
 +                    for (int offset = 0; offset <= viewDistance; ++offset) {
 +                        // try to load the chunks closest to the player by distance
 +                        // so instead of going left->right on the x axis, we start at the center of the view distance square
@@ -405,7 +412,7 @@ index 8977c3516b2ee9b970b6274a5c71982b019ac2a6..38de74d95c5cac1a6ae11f226726a7a1
                      double deltaX = this.locX() - player.locX();
                      double deltaZ = this.locZ() - player.locZ();
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 57c6057ea763aa1e9fa5ab3458c5e396929b0d8d..8f45fe80ace162cb9700c4d143e033ef77fcd0a0 100644
+index fb7e8626f73d47fc4cd439488dbf9fe56f230c32..9a1c2110a651c77fb265bfbb2e72c9a744d20c23 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -278,6 +278,50 @@ public class PlayerChunk {
@@ -459,14 +466,14 @@ index 57c6057ea763aa1e9fa5ab3458c5e396929b0d8d..8f45fe80ace162cb9700c4d143e033ef
          this.players.a(this.location, flag).forEach((entityplayer) -> {
              entityplayer.playerConnection.sendPacket(packet);
          });
-@@ -444,6 +488,7 @@ public class PlayerChunk {
+@@ -443,6 +487,7 @@ public class PlayerChunk {
                      } else {
                          chunkProvder.entityTickingChunks.add(chunk);
                      }
 +                    PlayerChunk.this.chunkMap.getChunkMapDistanceManager().playerTicketHandler.onChunkSetEntityTicking(this.location.x, this.location.z); /* Concrete - per player view distance implementation */
                  }
-                 return either;
              });
+             /* Concrete end - cache chunk ticking stage */
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 index a32ca6603c7669a243a912abaaa062f48e30ea1a..d94a98af7a7c634933dfadcdb829cff8ea54a1e0 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
