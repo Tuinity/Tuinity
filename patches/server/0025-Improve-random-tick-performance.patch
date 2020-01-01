@@ -6,10 +6,10 @@ Subject: [PATCH] Improve random tick performance
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/util/ThreadUnsafeRandom.java b/src/main/java/ca/spottedleaf/concrete/util/ThreadUnsafeRandom.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..e8accbe0a9c52f173a532cf4efe8694e6a7c2da0
+index 0000000000000000000000000000000000000000..21041ef92060fbc401aaa6b0ab5f02b00436d4dc
 --- /dev/null
 +++ b/src/main/java/ca/spottedleaf/concrete/util/ThreadUnsafeRandom.java
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,36 @@
 +package ca.spottedleaf.concrete.util;
 +
 +import java.util.Random;
@@ -37,6 +37,13 @@ index 0000000000000000000000000000000000000000..e8accbe0a9c52f173a532cf4efe8694e
 +    protected int next(int bits) {
 +        // avoid the expensive CAS logic used by superclass
 +        return (int) (((this.seed = this.seed * multiplier + addend) & mask) >>> (48 - bits));
++    }
++
++    @Override
++    public int nextInt(int bound) {
++        // yes this breaks random's spec
++        // however there's nothing that uses this class that relies on it
++        return ca.spottedleaf.concrete.util.Util.fastRandomBounded(this.next(32) & 0xFFFFFFFFL, bound);
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/BiomeBase.java b/src/main/java/net/minecraft/server/BiomeBase.java
@@ -360,7 +367,7 @@ index de43881653ff37e38dc42c7f953dc96126a30c61..20d682d739b2a8a0eea8434334dd4d8c
  
      public final SoundEffectType getStepSound() { return this.r(); } // Paper - OBFHELPER
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 323e861d151b5cf9190579554a06af3038841199..2c96ad88f74e1327e715df8c156546e27c8d19c4 100644
+index 323e861d151b5cf9190579554a06af3038841199..c62ec5caf540371b6af123030432c80abc742e5b 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -548,6 +548,9 @@ public class WorldServer extends World {
@@ -460,11 +467,11 @@ index 323e861d151b5cf9190579554a06af3038841199..2c96ad88f74e1327e715df8c156546e2
 -                        Fluid fluid = iblockdata.getFluid();
 +            gameprofilerfiller.enter("randomTick");
 +            for (int tick = 0; tick < toTick; ++tick) {
-+                char tickingSize = (char)chunk.tickingList.size();
++                int tickingSize = chunk.tickingList.size();
 +                if (tickingSize == 0) {
 +                    break;
 +                }
-+                int index = ((char)this.randomTickRandom.nextInt()) % tickingSize;
++                int index = this.randomTickRandom.nextInt(tickingSize);
 +                long raw = chunk.tickingList.getRaw(index);
 +                int location = ca.spottedleaf.concrete.util.IBlockDataList.getLocationFromRaw(raw);
 +                int randomX = location & 15;
