@@ -31,7 +31,7 @@ function savePatches {
         rm $basedir/patches/$2/*.patch
     fi
 
-    git format-patch --zero-commit --full-index --no-stat -N -o $basedir/patches/$2 upstream/upstream
+    git format-patch --no-signature --zero-commit --full-index --no-stat -N -o $basedir/patches/$2 upstream/upstream
     cd $basedir
     git add -A $basedir/patches/$2
     echo "  Patches saved for $what to patches/$2"
