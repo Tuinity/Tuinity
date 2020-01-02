@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Wed, 1 Jan 2020 13:29:34 -0800
+Subject: [PATCH] Optimise IBlockData#isAir
+
+Assist in inlining the function by caching its result
+
+diff --git a/src/main/java/net/minecraft/server/Block.java b/src/main/java/net/minecraft/server/Block.java
+index e29ec958b3519d92cda215a50e97e6852d71c684..55a23050ade56defd91ace25cd347993df8013b4 100644
+--- a/src/main/java/net/minecraft/server/Block.java
++++ b/src/main/java/net/minecraft/server/Block.java
+@@ -109,8 +109,8 @@ public class Block implements IMaterial {
+         return iblockdata.d(iblockaccess, blockposition, EnumDirection.UP) && this.n < 14;
+     }
+ 
+-    @Deprecated
+-    public boolean d(IBlockData iblockdata) {
++    @Deprecated public final boolean isAir(IBlockData iblockdata) { return this.d(iblockdata); } /* Concrete - OBFHELPER */
++    @Deprecated public boolean d(IBlockData iblockdata) { /* Concrete - OBFHELPER */
+         return false;
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/IBlockData.java b/src/main/java/net/minecraft/server/IBlockData.java
+index 20d682d739b2a8a0eea8434334dd4d8c68318e84..3ece5060d402cb678eefc7c01a614f9485afba28 100644
+--- a/src/main/java/net/minecraft/server/IBlockData.java
++++ b/src/main/java/net/minecraft/server/IBlockData.java
+@@ -22,11 +22,13 @@ public class IBlockData extends BlockDataAbstract<Block, IBlockData> implements
+     private IBlockData.a c;
+     private final int d;
+     private final boolean e;
++    private final boolean isAir;
+ 
+     public IBlockData(Block block, ImmutableMap<IBlockState<?>, Comparable<?>> immutablemap) {
+         super(block, immutablemap);
+         this.d = block.a(this);
+         this.e = block.o(this);
++        this.isAir = this.getBlock().isAir(this); /* Concrete */
+         this.isTicking = this.getBlock().isTicking(this); /* Concrete */
+     }
+ 
+@@ -83,7 +85,7 @@ public class IBlockData extends BlockDataAbstract<Block, IBlockData> implements
+     }
+ 
+     public boolean isAir() {
+-        return this.getBlock().d(this);
++        return this.isAir; /* Concrete - optimise this function */
+     }
+ 
+     public MaterialMapColor c(IBlockAccess iblockaccess, BlockPosition blockposition) {
