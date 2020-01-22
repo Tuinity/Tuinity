@@ -6,7 +6,7 @@ Subject: [PATCH] Optimise getPlayersInRange type functions
 Use a distance map to achieve this
 
 diff --git a/src/main/java/net/minecraft/server/AxisAlignedBB.java b/src/main/java/net/minecraft/server/AxisAlignedBB.java
-index d5ed9a9ee051c784b262d3cdcc1ecb3075ab3008..7308ea5644a2f484461be64a4537336d529eede0 100644
+index 3fdb52007a2cf53b3319e4decf84d99876e830d0..c0d209c4ff759276f2f2d5eab264c6fae1d8605f 100644
 --- a/src/main/java/net/minecraft/server/AxisAlignedBB.java
 +++ b/src/main/java/net/minecraft/server/AxisAlignedBB.java
 @@ -207,6 +207,7 @@ public class AxisAlignedBB {
@@ -18,7 +18,7 @@ index d5ed9a9ee051c784b262d3cdcc1ecb3075ab3008..7308ea5644a2f484461be64a4537336d
          return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
      }
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 2aa550bd0c701fa6356ecf8c54eb93d7b5ce3f08..edf92b07be99897782ec722eed8330c6531e5593 100644
+index 2f0523855a8ecc0b3b7ed143e1919374525421d7..e7d33030233976f849b0d8c059404bb698d5011a 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -240,6 +240,13 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -35,7 +35,7 @@ index 2aa550bd0c701fa6356ecf8c54eb93d7b5ce3f08..edf92b07be99897782ec722eed8330c6
  
      /* Concrete end  */
  
-@@ -1506,6 +1513,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -1405,6 +1412,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return MathHelper.c(f * f + f1 * f1 + f2 * f2);
      }
  
@@ -44,10 +44,10 @@ index 2aa550bd0c701fa6356ecf8c54eb93d7b5ce3f08..edf92b07be99897782ec722eed8330c6
          double d3 = this.locX() - d0;
          double d4 = this.locY() - d1;
 diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
-index 9215bcc13b99f2d7444f50e498d6ff93e5533c21..bea6bf22042d366a6a2eee39ce8c0cd48c7eadf2 100644
+index 4157e50e4d99c029759bffcb48a8d645487554c8..e81c1ae75d420aac3db82bd862ca4e7ee542157f 100644
 --- a/src/main/java/net/minecraft/server/IEntityAccess.java
 +++ b/src/main/java/net/minecraft/server/IEntityAccess.java
-@@ -159,8 +159,8 @@ public interface IEntityAccess {
+@@ -59,8 +59,8 @@ public interface IEntityAccess {
          }
      }
  
@@ -58,7 +58,7 @@ index 9215bcc13b99f2d7444f50e498d6ff93e5533c21..bea6bf22042d366a6a2eee39ce8c0cd4
          double d4 = -1.0D;
          EntityHuman entityhuman = null;
          Iterator iterator = this.getPlayers().iterator();
-@@ -195,6 +195,11 @@ public interface IEntityAccess {
+@@ -95,6 +95,11 @@ public interface IEntityAccess {
  
      @Nullable
      default EntityHuman a(double d0, double d1, double d2) {
@@ -70,7 +70,7 @@ index 9215bcc13b99f2d7444f50e498d6ff93e5533c21..bea6bf22042d366a6a2eee39ce8c0cd4
          double d3 = -1.0D;
          EntityHuman entityhuman = null;
          Iterator iterator = this.getPlayers().iterator();
-@@ -202,7 +207,7 @@ public interface IEntityAccess {
+@@ -102,7 +107,7 @@ public interface IEntityAccess {
          while (iterator.hasNext()) {
              EntityHuman entityhuman1 = (EntityHuman) iterator.next();
  
@@ -79,7 +79,7 @@ index 9215bcc13b99f2d7444f50e498d6ff93e5533c21..bea6bf22042d366a6a2eee39ce8c0cd4
                  double d4 = entityhuman1.g(d0, entityhuman1.locY(), d1);
  
                  if ((d2 < 0.0D || d4 < d2 * d2) && (d3 == -1.0D || d4 < d3)) {
-@@ -241,19 +246,26 @@ public interface IEntityAccess {
+@@ -141,19 +146,26 @@ public interface IEntityAccess {
  
      @Nullable
      default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving) {
@@ -109,7 +109,7 @@ index 9215bcc13b99f2d7444f50e498d6ff93e5533c21..bea6bf22042d366a6a2eee39ce8c0cd4
      @Nullable
      default <T extends EntityLiving> T a(Class<? extends T> oclass, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2, AxisAlignedBB axisalignedbb) {
          return this.a(this.a(oclass, axisalignedbb, null), pathfindertargetcondition, entityliving, d0, d1, d2); // Paper - decompile fix
-@@ -264,8 +276,8 @@ public interface IEntityAccess {
+@@ -164,8 +176,8 @@ public interface IEntityAccess {
          return this.a(this.b(oclass, axisalignedbb, null), pathfindertargetcondition, entityliving, d0, d1, d2); // Paper - decompile fix
      }
  
@@ -120,7 +120,7 @@ index 9215bcc13b99f2d7444f50e498d6ff93e5533c21..bea6bf22042d366a6a2eee39ce8c0cd4
          double d3 = -1.0D;
          T t0 = null;
          Iterator<? extends T> iterator = list.iterator(); // Paper - decompile fix
-@@ -287,6 +299,11 @@ public interface IEntityAccess {
+@@ -187,6 +199,11 @@ public interface IEntityAccess {
      }
  
      default List<EntityHuman> a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving, AxisAlignedBB axisalignedbb) {
@@ -145,7 +145,7 @@ index e35ec2db078cc888333cfdd44e1cd3fda71246da..a190e9bbe77c4c4dce9accecee33bb96
          if (entityliving == entityliving1) {
              return false;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index ba5cb2427f84519fe68140f5631d8fd3456fc2a5..dd9bb318e00baa635fff7d37172f6dd21299f04b 100644
+index cc76ebae4e8d3abeb6a9d1146bd05285d2b42685..9200fda83ed152f691a064142268e3746be3d666 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -135,6 +135,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -184,10 +184,10 @@ index ba5cb2427f84519fe68140f5631d8fd3456fc2a5..dd9bb318e00baa635fff7d37172f6dd2
      }
  
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index c62ec5caf540371b6af123030432c80abc742e5b..f7e262237321b82fdf036c3aa7c84d8b5369c11f 100644
+index 5b89b8daee422c03d34418c057c52df70d365d79..c3cd615d355f4fea6d573398750714ced8cfa31a 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -186,6 +186,348 @@ public class WorldServer extends World {
+@@ -195,6 +195,348 @@ public class WorldServer extends World {
      }
      /* Concrete end */
  

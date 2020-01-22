@@ -6,8 +6,20 @@ Subject: [PATCH] Optimise ActivationRange#activateEntities(World)
 By using our Chunk#forEachEntity method, the time trimmed was
 approximately 2-5x in my testing.
 
+diff --git a/src/main/java/net/minecraft/server/AxisAlignedBB.java b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+index c950139c0f819e87ded97dc8fb915b6755e51e71..3fdb52007a2cf53b3319e4decf84d99876e830d0 100644
+--- a/src/main/java/net/minecraft/server/AxisAlignedBB.java
++++ b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+@@ -193,6 +193,7 @@ public class AxisAlignedBB {
+         return this.d(vec3d.x, vec3d.y, vec3d.z);
+     }
+ 
++    public final boolean intersects(AxisAlignedBB axisalignedbb) { return this.c(axisalignedbb); } // Paper - OBFHELPER
+     public boolean c(AxisAlignedBB axisalignedbb) {
+         return this.a(axisalignedbb.minX, axisalignedbb.minY, axisalignedbb.minZ, axisalignedbb.maxX, axisalignedbb.maxY, axisalignedbb.maxZ);
+     }
 diff --git a/src/main/java/org/spigotmc/ActivationRange.java b/src/main/java/org/spigotmc/ActivationRange.java
-index 0e36fca47dc32b9fb747a7f42a2164fb3570eaa2..ca5bdb4f551f2ee49ab23949d3cb1074b8f0d5df 100644
+index 063d1cd683a7d68131b5539a46aa9abc55bff145..cd87f68f29448793a6f72377aa336e8fceb2709c 100644
 --- a/src/main/java/org/spigotmc/ActivationRange.java
 +++ b/src/main/java/org/spigotmc/ActivationRange.java
 @@ -4,6 +4,7 @@ import java.util.Collection;
@@ -18,7 +30,7 @@ index 0e36fca47dc32b9fb747a7f42a2164fb3570eaa2..ca5bdb4f551f2ee49ab23949d3cb1074
  import net.minecraft.server.Entity;
  import net.minecraft.server.EntityAmbient;
  import net.minecraft.server.EntityAnimal;
-@@ -125,6 +126,8 @@ public class ActivationRange
+@@ -134,6 +135,8 @@ public class ActivationRange
          maxRangeTemp = Math.max( maxRangeTemp, raiderActivationRange );
          maxRangeTemp = Math.max( maxRangeTemp, miscActivationRange );
  
@@ -27,7 +39,7 @@ index 0e36fca47dc32b9fb747a7f42a2164fb3570eaa2..ca5bdb4f551f2ee49ab23949d3cb1074
          for ( EntityHuman player : world.getPlayers() )
          {
              final int maxRange = Math.min( ( ( player instanceof net.minecraft.server.EntityPlayer ? ((net.minecraft.server.EntityPlayer)player).getEffectiveViewDistance(((WorldServer)world).getChunkProvider().playerChunkMap) : world.spigotConfig.viewDistance ) << 4 ) - 8, maxRangeTemp );
-@@ -145,7 +148,7 @@ public class ActivationRange
+@@ -156,7 +159,7 @@ public class ActivationRange
              {
                  for ( int j1 = k; j1 <= l; ++j1 )
                  {
@@ -36,7 +48,7 @@ index 0e36fca47dc32b9fb747a7f42a2164fb3570eaa2..ca5bdb4f551f2ee49ab23949d3cb1074
                      if ( chunk != null )
                      {
                          activateChunkEntities( chunk );
-@@ -163,24 +166,20 @@ public class ActivationRange
+@@ -174,24 +177,20 @@ public class ActivationRange
       */
      private static void activateChunkEntities(Chunk chunk)
      {
