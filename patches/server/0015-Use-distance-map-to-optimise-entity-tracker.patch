@@ -6,7 +6,7 @@ Subject: [PATCH] Use distance map to optimise entity tracker
 Add a new config option to enable tracking entities by a chunk range.
 
 diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-index 8f5d4fd24a2e4c716204a31455506a6e464b2dd6..242652e93cd7b24f8fb6a76293144ecbd4177633 100644
+index 8f5d4fd24a2e4c716204a31455506a6e464b2dd6..3255d681d87b43c2a1a9a10f2144a9ef5f7af75c 100644
 --- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
 +++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
 @@ -177,6 +177,26 @@ public final class ConcreteConfig {
@@ -19,7 +19,7 @@ index 8f5d4fd24a2e4c716204a31455506a6e464b2dd6..242652e93cd7b24f8fb6a76293144ecb
 +        public int optimizedTrackerUntrackRange;
 +
 +        private void optimizetracker() {
-+            this.useOptimizedTracker = this.getBoolean("optimized-tracker", false);
++            this.useOptimizedTracker = this.getBoolean("optimized-tracker", true);
 +            this.optimizedTrackerTrackRange = this.getInt("optimized-tracker-track-range", -1);
 +            this.optimizedTrackerUntrackRange = this.getInt("optimized-tracker-untrack-range", -1);
 +            if (!this.useOptimizedTracker) {
@@ -136,7 +136,7 @@ index cfc5690bc7f7fbc5aca3d0d6a42d462a0cae5ec7..95cde07b6142cf8ceb74e7ce6fb1989c
              consumer.accept(new PacketPlayOutMount(this.tracker));
          }
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index a40136ac36448397181cbc42ca46262a71d29bbe..62dec8d508e5912d202fbb44d05387afc8c7938c 100644
+index a40136ac36448397181cbc42ca46262a71d29bbe..43a0465d42f330bb93036a3282d2a87c2e65f816 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -130,6 +130,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -213,8 +213,8 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..62dec8d508e5912d202fbb44d05387af
 +            maxEntityTrackRange = (maxEntityTrackRange >> 4) + ((maxEntityTrackRange & 15) != 0 ? 2 : 1);
 +
 +            if (this.world.concreteConfig.optimizedTrackerTrackRange == -1) {
-+                this.entityTrackerTrackRange = maxEntityTrackRange - 1;
-+                this.entityTrackerUntrackRange = maxEntityTrackRange;
++                this.entityTrackerTrackRange = Math.max(1, maxEntityTrackRange - 2);
++                this.entityTrackerUntrackRange = Math.max(2, maxEntityTrackRange - 1);
 +            } else {
 +                this.entityTrackerTrackRange = this.world.concreteConfig.optimizedTrackerTrackRange;
 +                this.entityTrackerUntrackRange = this.world.concreteConfig.optimizedTrackerUntrackRange;
