@@ -56,8 +56,8 @@ patches. The folder `Tuinity-API` is the api repo and the `Tuinity-Server` folde
 is the server repo and will contain the source files you will modify.
 
 #### Creating a patch
-Patches are effectively just commits in either `Concrete-API` or `Concrete-Server`.
-To create one, just add a commit to either repo and run `./concrete rb`, and a
+Patches are effectively just commits in either `Tuinity-API` or `Tuinity-Server`.
+To create one, just add a commit to either repo and run `./tuinity rb`, and a
 patch will be placed in the patches folder. Modifying commits will also modify its
 corresponding patch file.
 
