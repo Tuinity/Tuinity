@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # BEGIN config
-FORK_NAME="Concrete"
+FORK_NAME="Tuinity"
 API_REPO=""
 SERVER_REPO=""
 PAPER_API_REPO=""
