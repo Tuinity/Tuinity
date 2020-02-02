@@ -1,2 +1,2 @@
-Contributing to Concrete
+Contributing to Tuinity
 TODO
