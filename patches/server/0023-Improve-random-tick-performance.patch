@@ -4,13 +4,13 @@ Date: Wed, 27 Nov 2019 04:54:58 -0800
 Subject: [PATCH] Improve random tick performance
 
 
-diff --git a/src/main/java/ca/spottedleaf/concrete/util/ThreadUnsafeRandom.java b/src/main/java/ca/spottedleaf/concrete/util/ThreadUnsafeRandom.java
+diff --git a/src/main/java/ca/spottedleaf/tuinity/util/ThreadUnsafeRandom.java b/src/main/java/ca/spottedleaf/tuinity/util/ThreadUnsafeRandom.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..21041ef92060fbc401aaa6b0ab5f02b00436d4dc
+index 0000000000000000000000000000000000000000..084e3408d8edd7b8cee1e8f27f5f798d37238fbf
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/concrete/util/ThreadUnsafeRandom.java
++++ b/src/main/java/ca/spottedleaf/tuinity/util/ThreadUnsafeRandom.java
 @@ -0,0 +1,36 @@
-+package ca.spottedleaf.concrete.util;
++package ca.spottedleaf.tuinity.util;
 +
 +import java.util.Random;
 +
@@ -43,31 +43,31 @@ index 0000000000000000000000000000000000000000..21041ef92060fbc401aaa6b0ab5f02b0
 +    public int nextInt(int bound) {
 +        // yes this breaks random's spec
 +        // however there's nothing that uses this class that relies on it
-+        return ca.spottedleaf.concrete.util.Util.fastRandomBounded(this.next(32) & 0xFFFFFFFFL, bound);
++        return ca.spottedleaf.tuinity.util.Util.fastRandomBounded(this.next(32) & 0xFFFFFFFFL, bound);
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/BiomeBase.java b/src/main/java/net/minecraft/server/BiomeBase.java
-index 0102a170dc333fb4af01efa0aaa66df85271f1e0..e56a8284adbe03f52e623074677a83099e6dd91f 100644
+index 0102a170dc333fb4af01efa0aaa66df85271f1e0..b7b2326c4885bccd1e4a85d16f89933af32ffa09 100644
 --- a/src/main/java/net/minecraft/server/BiomeBase.java
 +++ b/src/main/java/net/minecraft/server/BiomeBase.java
 @@ -166,12 +166,18 @@ public abstract class BiomeBase {
      }
  
      public boolean a(IWorldReader iworldreader, BlockPosition blockposition, boolean flag) {
-+        /* Concrete start - Add Chunk parameter */
++        // Tuinity start - Add Chunk parameter
 +        return this.transformWater(iworldreader, blockposition, flag, null);
 +    }
 +    public boolean transformWater(IWorldReader iworldreader, BlockPosition blockposition, boolean flag, IChunkAccess chunk) {
-+        /* Concrete end - Add Chunk parameter */
++        // Tuinity end - Add Chunk parameter
          if (this.getAdjustedTemperature(blockposition) >= 0.15F) {
              return false;
          } else {
              if (blockposition.getY() >= 0 && blockposition.getY() < 256 && iworldreader.getBrightness(EnumSkyBlock.BLOCK, blockposition) < 10) {
 -                IBlockData iblockdata = iworldreader.getType(blockposition);
 -                Fluid fluid = iworldreader.getFluid(blockposition);
-+                if (chunk == null) chunk = iworldreader.getChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4); /* Concrete - Add Chunk parameter */
-+                IBlockData iblockdata = chunk.getType(blockposition); /* Concrete - avoid chunk lookup */
-+                Fluid fluid = iblockdata.getFluid(); /* Concrete - avoid chunk lookup + IBlockData lookup */
++                if (chunk == null) chunk = iworldreader.getChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4); // Tuinity - Add Chunk parameter
++                IBlockData iblockdata = chunk.getType(blockposition); // Tuinity - avoid chunk lookup
++                Fluid fluid = iblockdata.getFluid(); // Tuinity - avoid chunk lookup + IBlockData lookup
  
                  if (fluid.getType() == FluidTypes.WATER && iblockdata.getBlock() instanceof BlockFluids) {
                      if (!flag) {
@@ -75,23 +75,23 @@ index 0102a170dc333fb4af01efa0aaa66df85271f1e0..e56a8284adbe03f52e623074677a8309
      }
  
      public boolean b(IWorldReader iworldreader, BlockPosition blockposition) {
-+        /* Concrete start - add Chunk parameter */
++        // Tuinity start - add Chunk parameter
 +        return this.canPlaceSnow(iworldreader, blockposition, null);
 +    }
 +    public boolean canPlaceSnow(IWorldReader iworldreader, BlockPosition blockposition, IChunkAccess chunk) {
-+        /* Concrete end - add Chunk parameter */
++        // Tuinity end - add Chunk parameter
          if (this.getAdjustedTemperature(blockposition) >= 0.15F) {
              return false;
          } else {
              if (blockposition.getY() >= 0 && blockposition.getY() < 256 && iworldreader.getBrightness(EnumSkyBlock.BLOCK, blockposition) < 10) {
 -                IBlockData iblockdata = iworldreader.getType(blockposition);
-+                if (chunk == null) chunk = iworldreader.getChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4); /* Concrete - Add Chunk parameter */
-+                IBlockData iblockdata = chunk.getType(blockposition); /* Concrete - avoid chunk lookup */
++                if (chunk == null) chunk = iworldreader.getChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4); // Tuinity - Add Chunk parameter
++                IBlockData iblockdata = chunk.getType(blockposition); // Tuinity - avoid chunk lookup
  
                  if (iblockdata.isAir() && Blocks.SNOW.getBlockData().canPlace(iworldreader, blockposition)) {
                      return true;
 diff --git a/src/main/java/net/minecraft/server/BlockFluids.java b/src/main/java/net/minecraft/server/BlockFluids.java
-index 6d351f0979ecfa8e500edf8dd03b4a455fd5d180..ee4f33b056a1137a4a620fb2635a4bf8dcf7e45f 100644
+index 6d351f0979ecfa8e500edf8dd03b4a455fd5d180..2541eaae94ec14f09cafb0d2cde0dab58e2f6a03 100644
 --- a/src/main/java/net/minecraft/server/BlockFluids.java
 +++ b/src/main/java/net/minecraft/server/BlockFluids.java
 @@ -27,7 +27,7 @@ public class BlockFluids extends Block implements IFluidSource {
@@ -99,19 +99,19 @@ index 6d351f0979ecfa8e500edf8dd03b4a455fd5d180..ee4f33b056a1137a4a620fb2635a4bf8
      @Override
      public void b(IBlockData iblockdata, WorldServer worldserver, BlockPosition blockposition, Random random) {
 -        worldserver.getFluid(blockposition).b(worldserver, blockposition, random);
-+        iblockdata.getFluid().b(worldserver, blockposition, random); /* Concrete - avoid another getType call */
++        iblockdata.getFluid().b(worldserver, blockposition, random); // Tuinity - avoid another getType call
      }
  
      @Override
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 5b027da1cf5189197fcecd488c3ae781b2a58abc..4ddb3e67afc54f501a915504cc27c9ae353a2897 100644
+index 0b2a8a5258cab2e57f054ca4c5ba98314885488a..7405c936cdfcec6ff31c0e9393d487d10363ec52 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -90,6 +90,8 @@ public class Chunk implements IChunkAccess {
      private final int[] inventoryEntityCounts = new int[16];
      // Paper end
  
-+    final ca.spottedleaf.concrete.util.IBlockDataList tickingList = new ca.spottedleaf.concrete.util.IBlockDataList(); /* Concrete */
++    final ca.spottedleaf.tuinity.util.IBlockDataList tickingList = new ca.spottedleaf.tuinity.util.IBlockDataList(); // Tuinity
 +
      public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeStorage biomestorage, ChunkConverter chunkconverter, TickList<Block> ticklist, TickList<FluidType> ticklist1, long i, @Nullable ChunkSection[] achunksection, @Nullable Consumer<Chunk> consumer) {
          this.sections = new ChunkSection[16];
@@ -120,23 +120,23 @@ index 5b027da1cf5189197fcecd488c3ae781b2a58abc..4ddb3e67afc54f501a915504cc27c9ae
          this.v = consumer;
          if (achunksection != null) {
              if (this.sections.length == achunksection.length) {
-+                /* Concrete start */
++                // Tuinity start
 +                for (ChunkSection section : achunksection) {
 +                    if (section != null) {
 +                        section.chunk = this;
-+                        int offset = ca.spottedleaf.concrete.util.IBlockDataList.getLocationKey(0, section.yPos, 0);
++                        int offset = ca.spottedleaf.tuinity.util.IBlockDataList.getLocationKey(0, section.yPos, 0);
 +                        for (it.unimi.dsi.fastutil.longs.LongIterator iterator = section.tickingList.getRawIterator(); iterator.hasNext();) {
 +                            long raw = iterator.nextLong();
-+                            this.tickingList.add(ca.spottedleaf.concrete.util.IBlockDataList.getLocationFromRaw(raw) + offset, ca.spottedleaf.concrete.util.IBlockDataList.getBlockDataFromRaw(raw));
++                            this.tickingList.add(ca.spottedleaf.tuinity.util.IBlockDataList.getLocationFromRaw(raw) + offset, ca.spottedleaf.tuinity.util.IBlockDataList.getBlockDataFromRaw(raw));
 +                        }
 +                    }
 +                }
-+                /* Concrete start */
++                // Tuinity start
                  System.arraycopy(achunksection, 0, this.sections, 0, this.sections.length);
              } else {
                  Chunk.LOGGER.warn("Could not set level chunk sections, array length is {} instead of {}", achunksection.length, this.sections.length);
 diff --git a/src/main/java/net/minecraft/server/ChunkSection.java b/src/main/java/net/minecraft/server/ChunkSection.java
-index 4526527aca19bf9c57d7e77a661c847131867d5a..b66a162ddaf5c530b805425325dd2a1192c89736 100644
+index 4526527aca19bf9c57d7e77a661c847131867d5a..bb3597233b1f36717885e0437fcb9aef820e9d6d 100644
 --- a/src/main/java/net/minecraft/server/ChunkSection.java
 +++ b/src/main/java/net/minecraft/server/ChunkSection.java
 @@ -5,11 +5,13 @@ import javax.annotation.Nullable;
@@ -144,14 +144,14 @@ index 4526527aca19bf9c57d7e77a661c847131867d5a..b66a162ddaf5c530b805425325dd2a11
  
      public static final DataPalette<IBlockData> GLOBAL_PALETTE = new DataPaletteGlobal<>(Block.REGISTRY_ID, Blocks.AIR.getBlockData());
 -    private final int yPos;
-+    final int yPos; /* Concrete - private -> package */
++    final int yPos; // Tuinity - private -> package
      short nonEmptyBlockCount; // Paper - private -> package-private
 -    private short tickingBlockCount;
-+    short tickingBlockCount; /* Concrete - private -> package */
++    short tickingBlockCount; // Tuinity - private -> package
      private short e;
      final DataPaletteBlock<IBlockData> blockIds;
-+    Chunk chunk; /* Concrete */
-+    final ca.spottedleaf.concrete.util.IBlockDataList tickingList = new ca.spottedleaf.concrete.util.IBlockDataList(); /* Concrete */
++    Chunk chunk; // Tuinity
++    final ca.spottedleaf.tuinity.util.IBlockDataList tickingList = new ca.spottedleaf.tuinity.util.IBlockDataList(); // Tuinity
  
      public ChunkSection(int i) {
          // Paper start - add parameters
@@ -159,11 +159,11 @@ index 4526527aca19bf9c57d7e77a661c847131867d5a..b66a162ddaf5c530b805425325dd2a11
          this.tickingBlockCount = short1;
          this.e = short2;
          this.blockIds = new DataPaletteBlock<>(ChunkSection.GLOBAL_PALETTE, Block.REGISTRY_ID, GameProfileSerializer::d, GameProfileSerializer::a, Blocks.AIR.getBlockData(), world instanceof GeneratorAccess ? ((GeneratorAccess) world).getMinecraftWorld().chunkPacketBlockController.getPredefinedBlockData(world, chunk, this, initializeBlocks) : null, initializeBlocks); // Paper - Anti-Xray - Add predefined block data
-+        /* Concrete start */
++        // Tuinity start
 +        if (chunk instanceof Chunk) {
 +            this.chunk = (Chunk)chunk;
 +        }
-+        /* Concrete end */
++        // Tuinity end
      }
  
      public IBlockData getType(int i, int j, int k) {
@@ -171,12 +171,12 @@ index 4526527aca19bf9c57d7e77a661c847131867d5a..b66a162ddaf5c530b805425325dd2a11
              --this.nonEmptyBlockCount;
              if (iblockdata1.q()) {
                  --this.tickingBlockCount;
-+                /* Concrete start */
++                // Tuinity start
 +                this.tickingList.remove(i, j, k);
 +                if (this.chunk != null) {
 +                    this.chunk.tickingList.remove(i, j + this.yPos, k);
 +                }
-+                /* Concrete end */
++                // Tuinity end
              }
          }
  
@@ -184,12 +184,12 @@ index 4526527aca19bf9c57d7e77a661c847131867d5a..b66a162ddaf5c530b805425325dd2a11
              ++this.nonEmptyBlockCount;
              if (iblockdata.q()) {
                  ++this.tickingBlockCount;
-+                /* Concrete start */
++                // Tuinity start
 +                this.tickingList.add(i, j, k, iblockdata);
 +                if (this.chunk != null) {
 +                    this.chunk.tickingList.add(i, j + this.yPos, k, iblockdata);
 +                }
-+                /* Concrete end */
++                // Tuinity end
              }
          }
  
@@ -197,49 +197,49 @@ index 4526527aca19bf9c57d7e77a661c847131867d5a..b66a162ddaf5c530b805425325dd2a11
      }
  
      public void recalcBlockCounts() {
-+        /* Concrete start */
-+        int offset = ca.spottedleaf.concrete.util.IBlockDataList.getLocationKey(0, this.yPos, 0);
++        // Tuinity start
++        int offset = ca.spottedleaf.tuinity.util.IBlockDataList.getLocationKey(0, this.yPos, 0);
 +        if (this.chunk != null) {
 +            for (it.unimi.dsi.fastutil.longs.LongIterator iterator = this.tickingList.getRawIterator(); iterator.hasNext();) {
 +                long raw = iterator.nextLong();
-+                this.chunk.tickingList.remove(ca.spottedleaf.concrete.util.IBlockDataList.getLocationFromRaw(raw) + offset);
++                this.chunk.tickingList.remove(ca.spottedleaf.tuinity.util.IBlockDataList.getLocationFromRaw(raw) + offset);
 +            }
 +        }
 +        this.tickingList.clear();
-+        /* Concrete end */
++        // Tuinity end
          this.nonEmptyBlockCount = 0;
          this.tickingBlockCount = 0;
          this.e = 0;
 -        this.blockIds.a((iblockdata, i) -> {
-+        this.blockIds.forEachLocation((iblockdata, location) -> { /* Concrete */
++        this.blockIds.forEachLocation((iblockdata, location) -> { // Tuinity
              Fluid fluid = iblockdata.getFluid();
  
              if (!iblockdata.isAir()) {
 -                this.nonEmptyBlockCount = (short) (this.nonEmptyBlockCount + i);
-+                this.nonEmptyBlockCount = (short) (this.nonEmptyBlockCount + 1); /* Concrete */
++                this.nonEmptyBlockCount = (short) (this.nonEmptyBlockCount + 1); // Tuinity
                  if (iblockdata.q()) {
 -                    this.tickingBlockCount = (short) (this.tickingBlockCount + i);
-+                    /* Concrete start */
++                    // Tuinity start
 +                    this.tickingList.add(location, iblockdata);
 +                    if (this.chunk != null) {
 +                        this.chunk.tickingList.add(location + offset, iblockdata);
 +                    }
 +                    this.tickingBlockCount = (short) (this.tickingBlockCount + 1);
-+                    /* Concrete end */
++                    // Tuinity end
                  }
              }
  
              if (!fluid.isEmpty()) {
 -                this.nonEmptyBlockCount = (short) (this.nonEmptyBlockCount + i);
-+                this.nonEmptyBlockCount = (short) (this.nonEmptyBlockCount + 1); /* Concrete */
++                this.nonEmptyBlockCount = (short) (this.nonEmptyBlockCount + 1); // Tuinity
                  if (fluid.h()) {
 -                    this.e = (short) (this.e + i);
-+                    this.e = (short) (this.e + 1); /* Concrete */
++                    this.e = (short) (this.e + 1); // Tuinity
                  }
              }
  
 diff --git a/src/main/java/net/minecraft/server/DataBits.java b/src/main/java/net/minecraft/server/DataBits.java
-index f9680b6830c77f31e1eb8b6845dd6d58d04f624a..151baeabbab155cd7fc44d41ae3524e773c85e7f 100644
+index f9680b6830c77f31e1eb8b6845dd6d58d04f624a..4144788883325c538c0bee64a585a8371ab83889 100644
 --- a/src/main/java/net/minecraft/server/DataBits.java
 +++ b/src/main/java/net/minecraft/server/DataBits.java
 @@ -127,4 +127,46 @@ public class DataBits {
@@ -247,7 +247,7 @@ index f9680b6830c77f31e1eb8b6845dd6d58d04f624a..151baeabbab155cd7fc44d41ae3524e7
          }
      }
 +
-+    /* Concrete start */
++    // Tuinity start
 +    public void forEach(DataBitConsumer consumer) {
 +        // Note: copied from above
 +        int i = this.a.length;
@@ -287,36 +287,36 @@ index f9680b6830c77f31e1eb8b6845dd6d58d04f624a..151baeabbab155cd7fc44d41ae3524e7
 +        void accept(int location, int data);
 +
 +    }
-+    /* Concrete end */
++    // Tuinity end
  }
 diff --git a/src/main/java/net/minecraft/server/DataPaletteBlock.java b/src/main/java/net/minecraft/server/DataPaletteBlock.java
-index 44aed67274b1a10726ad91b261b159289f36b6d9..ee5006e303ace5cd66b6a0971bcfa07513ae6ecc 100644
+index 44aed67274b1a10726ad91b261b159289f36b6d9..1d94dbae8738db14b81c6a1f05537885f88b051d 100644
 --- a/src/main/java/net/minecraft/server/DataPaletteBlock.java
 +++ b/src/main/java/net/minecraft/server/DataPaletteBlock.java
 @@ -287,6 +287,14 @@ public class DataPaletteBlock<T> implements DataPaletteExpandable<T> {
          });
      }
  
-+    /* Concrete start */
++    // Tuinity start
 +    public void forEachLocation(DataPaletteBlock.a<T> datapaletteblock_a) {
 +        this.getDataBits().forEach((int location, int data) -> {
 +            datapaletteblock_a.accept(this.getDataPalette().getObject(data), location);
 +        });
 +    }
-+    /* Concrete end */
++    // Tuinity end
 +
      @FunctionalInterface
      public interface a<T> {
  
 diff --git a/src/main/java/net/minecraft/server/FluidImpl.java b/src/main/java/net/minecraft/server/FluidImpl.java
-index ac9b8909135074ccdc8b9d2886b1b74939853231..69a7d7ad68d5dad2e0036f77e5581f94bd852f78 100644
+index ac9b8909135074ccdc8b9d2886b1b74939853231..b326e592ed28a1e1300622486de5941784c27d7d 100644
 --- a/src/main/java/net/minecraft/server/FluidImpl.java
 +++ b/src/main/java/net/minecraft/server/FluidImpl.java
 @@ -6,10 +6,19 @@ public class FluidImpl extends BlockDataAbstract<FluidType, Fluid> implements Fl
  
      public FluidImpl(FluidType fluidtype, ImmutableMap<IBlockState<?>, Comparable<?>> immutablemap) {
          super(fluidtype, immutablemap);
-+        this.isLava = this.getType().j(); /* Concrete */
++        this.isLava = this.getType().j(); // Tuinity
      }
  
      @Override
@@ -324,23 +324,23 @@ index ac9b8909135074ccdc8b9d2886b1b74939853231..69a7d7ad68d5dad2e0036f77e5581f94
          return (FluidType) this.a;
      }
 +
-+    /* Concrete start */
++    // Tuinity start
 +    private final boolean isLava;
 +
 +    public final boolean h() {
 +        return this.isLava;
 +    }
-+    /* Concrete end */
++    // Tuinity end
  }
 diff --git a/src/main/java/net/minecraft/server/IBlockData.java b/src/main/java/net/minecraft/server/IBlockData.java
-index de43881653ff37e38dc42c7f953dc96126a30c61..20d682d739b2a8a0eea8434334dd4d8c68318e84 100644
+index de43881653ff37e38dc42c7f953dc96126a30c61..05f5cd4a42250a4b988b8b4ece3d86efe3b257a7 100644
 --- a/src/main/java/net/minecraft/server/IBlockData.java
 +++ b/src/main/java/net/minecraft/server/IBlockData.java
 @@ -27,6 +27,7 @@ public class IBlockData extends BlockDataAbstract<Block, IBlockData> implements
          super(block, immutablemap);
          this.d = block.a(this);
          this.e = block.o(this);
-+        this.isTicking = this.getBlock().isTicking(this); /* Concrete */
++        this.isTicking = this.getBlock().isTicking(this); // Tuinity
      }
  
      public void c() {
@@ -357,36 +357,36 @@ index de43881653ff37e38dc42c7f953dc96126a30c61..20d682d739b2a8a0eea8434334dd4d8c
 +        return this.fluid = this.getBlock().a_(this);
      }
  
-+    /* Concrete start */
++    // Tuinity start
 +    private final boolean isTicking;
      public boolean q() {
 -        return this.getBlock().isTicking(this);
 +        return this.isTicking;
-+        /* Concrete end */
++        // Tuinity end
      }
  
      public final SoundEffectType getStepSound() { return this.r(); } // Paper - OBFHELPER
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 2362758ea3469d05e20ae9a28ac5db965d90d026..2238f7d122216f28d02e88f95a389fc5c985f18e 100644
+index 9602d1a06d10e2101ed223add8a5a73cce0aa1a9..f8031cde57109c3e01f05534c41dca66b32b1dc4 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -559,6 +559,9 @@ public class WorldServer extends World {
      }
  
-     private final BlockPosition.MutableBlockPosition chunkTickMutablePosition = new BlockPosition.MutableBlockPosition(); /* Concrete - use mutable to reduce allocation rate */
-+    /* Concrete start */
-+    private final ca.spottedleaf.concrete.util.ThreadUnsafeRandom randomTickRandom = new ca.spottedleaf.concrete.util.ThreadUnsafeRandom();
-+    /* Concrete end  */
+     private final BlockPosition.MutableBlockPosition chunkTickMutablePosition = new BlockPosition.MutableBlockPosition(); // Tuinity - use mutable to reduce allocation rate
++    // Tuinity start
++    private final ca.spottedleaf.tuinity.util.ThreadUnsafeRandom randomTickRandom = new ca.spottedleaf.tuinity.util.ThreadUnsafeRandom();
++    // Tuinity end
  
      public void a(Chunk chunk, int i) {
          ChunkCoordIntPair chunkcoordintpair = chunk.getPos();
 @@ -570,7 +573,7 @@ public class WorldServer extends World {
          gameprofilerfiller.enter("thunder");
-         final BlockPosition.MutableBlockPosition blockposition = this.chunkTickMutablePosition; /* Concrete - use mutable to reduce allocation rate, final to force compile fail on change */
+         final BlockPosition.MutableBlockPosition blockposition = this.chunkTickMutablePosition; // Tuinity - use mutable to reduce allocation rate, final to force compile fail on change
  
 -        if (!this.paperConfig.disableThunder && flag && this.U() && this.random.nextInt(100000) == 0) { // Paper - Disable thunder
-+        if (!this.paperConfig.disableThunder && flag && this.U() && this.randomTickRandom.nextInt(100000) == 0) { // Paper - Disable thunder /* Concrete */
-             blockposition.setValues(this.a(this.getRandomBlockPosition(j, 0, k, 15, blockposition))); /* Concrete - use mutable to reduce allocation rate */
++        if (!this.paperConfig.disableThunder && flag && this.U() && this.randomTickRandom.nextInt(100000) == 0) { // Paper - Disable thunder // Tuinity
+             blockposition.setValues(this.a(this.getRandomBlockPosition(j, 0, k, 15, blockposition))); // Tuinity - use mutable to reduce allocation rate
              if (this.isRainingAt(blockposition)) {
                  DifficultyDamageScaler difficultydamagescaler = this.getDamageScaler(blockposition);
 @@ -590,61 +593,75 @@ public class WorldServer extends World {
@@ -394,9 +394,9 @@ index 2362758ea3469d05e20ae9a28ac5db965d90d026..2238f7d122216f28d02e88f95a389fc5
  
          gameprofilerfiller.exitEnter("iceandsnow");
 -        if (!this.paperConfig.disableIceAndSnow && this.random.nextInt(16) == 0) { // Paper - Disable ice and snow
--            blockposition.setValues(this.getHighestBlockYAt(HeightMap.Type.MOTION_BLOCKING, this.getRandomBlockPosition(j, 0, k, 15, blockposition))); /* Concrete - use mutable to reduce allocation rate */
+-            blockposition.setValues(this.getHighestBlockYAt(HeightMap.Type.MOTION_BLOCKING, this.getRandomBlockPosition(j, 0, k, 15, blockposition))); // Tuinity - use mutable to reduce allocation rate
 -            BlockPosition blockposition1 = blockposition.down();
-+        /* Concrete start */
++        // Tuinity start
 +        if (!this.paperConfig.disableIceAndSnow && this.randomTickRandom.nextInt(16) == 0) { // Paper - Disable ice and snow
 +            this.getRandomBlockPosition(j, 0, k, 15, blockposition);
 +            int normalY = chunk.getHighestBlockYAt(HeightMap.Type.MOTION_BLOCKING, blockposition.getX(), blockposition.getZ());
@@ -423,7 +423,7 @@ index 2362758ea3469d05e20ae9a28ac5db965d90d026..2238f7d122216f28d02e88f95a389fc5
 +            if (flag && this.getBiome(blockposition).d() == BiomeBase.Precipitation.RAIN) {
 +                this.getType(blockposition).getBlock().c((World) this, blockposition);
              }
-+            /* Concrete end */
++            // Tuinity end
          }
  
 -        gameprofilerfiller.exitEnter("tickBlocks");
@@ -439,14 +439,14 @@ index 2362758ea3469d05e20ae9a28ac5db965d90d026..2238f7d122216f28d02e88f95a389fc5
 -                    int j1 = chunksection.getYPosition();
 -
 -                    for (int k1 = 0; k1 < i; ++k1) {
--                        BlockPosition blockposition2 = this.getRandomBlockPosition(j, j1, k, 15, blockposition); /* Concrete - use mutable to reduce allocation rate */
+-                        BlockPosition blockposition2 = this.getRandomBlockPosition(j, j1, k, 15, blockposition); // Tuinity - use mutable to reduce allocation rate
 -
 -                        gameprofilerfiller.enter("randomTick");
 -                        IBlockData iblockdata = chunksection.getType(blockposition2.getX() - j, blockposition2.getY() - j1, blockposition2.getZ() - k);
 +        gameprofilerfiller.exit();
-+        /* Concrete start - optimise random block tick */
++        // Tuinity start - optimise random block tick
 +        int blocks = chunk.tickingList.size();
-+        if (i > 0 && blocks > 0) { /* Concrete */
++        if (i > 0 && blocks > 0) { // Tuinity
 +            if ((this.randomTickRandom.nextInt() & (16 * 16 * 256 - 1)) > blocks) {
 +                // we optimise random block ticking by realising that most of the blocks we will try to tick
 +                // are not tickable. Instead we only tick tickable blocks, but only if the above
@@ -473,12 +473,12 @@ index 2362758ea3469d05e20ae9a28ac5db965d90d026..2238f7d122216f28d02e88f95a389fc5
 +                }
 +                int index = this.randomTickRandom.nextInt(tickingSize);
 +                long raw = chunk.tickingList.getRaw(index);
-+                int location = ca.spottedleaf.concrete.util.IBlockDataList.getLocationFromRaw(raw);
++                int location = ca.spottedleaf.tuinity.util.IBlockDataList.getLocationFromRaw(raw);
 +                int randomX = location & 15;
 +                int randomY = (location >>> (4 + 4)) & 255;
 +                int randomZ = (location >>> 4) & 15;
 +                BlockPosition blockposition2 = blockposition.setValues(j + randomX, randomY, k + randomZ);
-+                IBlockData iblockdata = ca.spottedleaf.concrete.util.IBlockDataList.getBlockDataFromRaw(raw);
++                IBlockData iblockdata = ca.spottedleaf.tuinity.util.IBlockDataList.getBlockDataFromRaw(raw);
  
 -                        if (fluid.h()) {
 -                            fluid.b(this, blockposition2, this.random);
@@ -497,7 +497,7 @@ index 2362758ea3469d05e20ae9a28ac5db965d90d026..2238f7d122216f28d02e88f95a389fc5
 +            gameprofilerfiller.exit();
 +            timings.chunkTicksBlocks.stopTiming(); // Paper
 +            gameprofilerfiller.exit();
-+            /* Concrete end - optimise random block tick */
++            // Tuinity end - optimise random block tick
          }
 -        timings.chunkTicksBlocks.stopTiming(); // Paper
 -        gameprofilerfiller.exit();

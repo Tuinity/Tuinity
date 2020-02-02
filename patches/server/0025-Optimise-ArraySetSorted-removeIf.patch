@@ -6,22 +6,22 @@ Subject: [PATCH] Optimise ArraySetSorted#removeIf
 Remove iterator allocation and ensure the call is always O(n)
 
 diff --git a/src/main/java/net/minecraft/server/ArraySetSorted.java b/src/main/java/net/minecraft/server/ArraySetSorted.java
-index 4c6d42bdc97a1104bdfa562ea6c5b82a660d10f4..9314fb998a2fc73160d7b2d65aed68aa01e47d03 100644
+index a025fa4b8bfc2e5fa46588ebdcb18ff2bf020026..d8f9bef49835c21a1f5077627218ab17f2d6f2e9 100644
 --- a/src/main/java/net/minecraft/server/ArraySetSorted.java
 +++ b/src/main/java/net/minecraft/server/ArraySetSorted.java
 @@ -6,12 +6,13 @@ import java.util.Arrays;
  import java.util.Comparator;
  import java.util.Iterator;
  import java.util.NoSuchElementException;
-+import java.util.function.Predicate; /* Concrete */
++import java.util.function.Predicate; // Tuinity
  
  public class ArraySetSorted<T> extends AbstractSet<T> {
  
      private final Comparator<T> a;
 -    private T[] b;
 -    private int c;
-+    private T[] b; private final T[] getBackingArray() { return this.b; } /* Concrete - OBFHELPER */
-+    private int c; private final int getSize() { return this.c; } private final void setSize(int value) { this.c = value; } /* Concrete - OBFHELPER */
++    private T[] b; private final T[] getBackingArray() { return this.b; } // Tuinity - OBFHELPER
++    private int c; private final int getSize() { return this.c; } private final void setSize(int value) { this.c = value; } // Tuinity - OBFHELPER
  
      private ArraySetSorted(int i, Comparator<T> comparator) {
          this.a = comparator;
@@ -29,7 +29,7 @@ index 4c6d42bdc97a1104bdfa562ea6c5b82a660d10f4..9314fb998a2fc73160d7b2d65aed68aa
          }
      }
  
-+    /* Concrete start - optimise removeIf */
++    // Tuinity start - optimise removeIf
 +    @Override
 +    public boolean removeIf(Predicate<? super T> filter) {
 +        // prev. impl used an iterator, which could be n^2
@@ -63,8 +63,8 @@ index 4c6d42bdc97a1104bdfa562ea6c5b82a660d10f4..9314fb998a2fc73160d7b2d65aed68aa
 +        this.setSize(lastIndex);
 +        return true;
 +    }
-+    /* Concrete end - optimise removeIf */
++    // Tuinity end - optimise removeIf
 +
      public static <T extends Comparable<T>> ArraySetSorted<T> a(int i) {
-         return new ArraySetSorted<>(i, (Comparator)Comparator.naturalOrder()); /* Concrete - decompile fix */
+         return new ArraySetSorted<>(i, (Comparator)Comparator.naturalOrder()); // Tuinity - decompile fix
      }

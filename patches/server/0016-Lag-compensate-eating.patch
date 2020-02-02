@@ -8,25 +8,25 @@ Change to also use a time check instead if it passes.
 
 This can be controlled by config, and is enabled by default
 
-diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-index 242652e93cd7b24f8fb6a76293144ecbd4177633..39d0dc5e2db512b347f1b3e6f2d0b256c31f69a1 100644
---- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-+++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-@@ -109,6 +109,12 @@ public final class ConcreteConfig {
+diff --git a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+index 6bc4c213dc9fc37e15f7506790ff5eb3e5294109..2969a219d6171f97b8407e42382d0eb34cf92c7a 100644
+--- a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
++++ b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+@@ -115,6 +115,12 @@ public final class TuinityConfig {
          }
      }
  
 +    public static boolean lagCompensateEating;
 +
 +    private static void lagCompensateEating() {
-+        lagCompensateEating = ConcreteConfig.getBoolean("lag-compensate-eating", true);
++        lagCompensateEating = TuinityConfig.getBoolean("lag-compensate-eating", true);
 +    }
 +    
      public static final class WorldConnfig {
  
          public final String worldName;
 diff --git a/src/main/java/net/minecraft/server/EntityLiving.java b/src/main/java/net/minecraft/server/EntityLiving.java
-index 6184cced7319a6235db040dee205c50ef4c1ee74..fbeedb699d0910e5e4a7bfa19f47f66432555b8e 100644
+index 6184cced7319a6235db040dee205c50ef4c1ee74..2885ffe162fdbc9137c03552bf094510f32e8801 100644
 --- a/src/main/java/net/minecraft/server/EntityLiving.java
 +++ b/src/main/java/net/minecraft/server/EntityLiving.java
 @@ -113,7 +113,7 @@ public abstract class EntityLiving extends Entity {
@@ -34,7 +34,7 @@ index 6184cced7319a6235db040dee205c50ef4c1ee74..fbeedb699d0910e5e4a7bfa19f47f664
      private float bD;
      public ItemStack activeItem; // Paper - public
 -    protected int bl;
-+    protected int bl; protected final int getEatTimeTicks() { return this.bl; } protected final void setEatTimeTicks(int value) { this.bl = value; } /* Concrete - OBFHELPER */
++    protected int bl; protected final int getEatTimeTicks() { return this.bl; } protected final void setEatTimeTicks(int value) { this.bl = value; } // Tuinity - OBFHELPER
      protected int bm;
      private BlockPosition bE;
      private DamageSource bF;
@@ -52,13 +52,13 @@ index 6184cced7319a6235db040dee205c50ef4c1ee74..fbeedb699d0910e5e4a7bfa19f47f664
                  }
  
 -                if (--this.bl == 0 && !this.world.isClientSide && !this.activeItem.m()) {
-+                /* Concrete start - lag compensate eating */
++                // Tuinity start - lag compensate eating
 +                // we add 2 to the expected time to avoid lag compensating when we don't need to
 +                boolean shouldLagCompensate
-+                        = ca.spottedleaf.concrete.config.ConcreteConfig.lagCompensateEating && this.activeItem.getItem().isFood() && this.eatStartTime != -1 && (System.nanoTime() - this.eatStartTime) > ((2 + this.totalEatTimeTicks) * 50 * (1000 * 1000));
++                        = ca.spottedleaf.tuinity.config.TuinityConfig.lagCompensateEating && this.activeItem.getItem().isFood() && this.eatStartTime != -1 && (System.nanoTime() - this.eatStartTime) > ((2 + this.totalEatTimeTicks) * 50 * (1000 * 1000));
 +                if ((--this.bl == 0 || shouldLagCompensate) && !this.world.isClientSide && !this.activeItem.m()) {
 +                    this.setEatTimeTicks(0);
-+                    /* Concrete end - lag compensate eating */
++                    // Tuinity end - lag compensate eating
                      this.q();
                  }
              } else {
@@ -67,10 +67,10 @@ index 6184cced7319a6235db040dee205c50ef4c1ee74..fbeedb699d0910e5e4a7bfa19f47f664
          if (!itemstack.isEmpty() && !this.isHandRaised() || forceUpdate) { // Paper use override flag
              this.activeItem = itemstack;
 -            this.bl = itemstack.k();
-+            /* Concrete start - lag compensate eating */
++            // Tuinity start - lag compensate eating
 +            this.bl = this.totalEatTimeTicks = itemstack.k();
 +            this.eatStartTime = System.nanoTime();
-+            /* Concrete end - lag compensate eating */
++            // Tuinity end - lag compensate eating
              if (!this.world.isClientSide) {
                  this.c(1, true);
                  this.c(2, enumhand == EnumHand.OFF_HAND);
@@ -79,9 +79,9 @@ index 6184cced7319a6235db040dee205c50ef4c1ee74..fbeedb699d0910e5e4a7bfa19f47f664
              } else if (!this.isHandRaised() && !this.activeItem.isEmpty()) {
                  this.activeItem = ItemStack.a;
 -                this.bl = 0;
-+                this.bl = 0; /* Concrete - diff on change */
-+                this.totalEatTimeTicks = 0; /* Concrete - lag compensate eating */
-+                this.eatStartTime = -1L; /* Concrete - lag compensate eating */
++                this.bl = 0; // Tuinity - diff on change
++                this.totalEatTimeTicks = 0; // Tuinity - lag compensate eating
++                this.eatStartTime = -1L; // Tuinity - lag compensate eating
              }
          }
  
@@ -90,9 +90,9 @@ index 6184cced7319a6235db040dee205c50ef4c1ee74..fbeedb699d0910e5e4a7bfa19f47f664
  
          this.activeItem = ItemStack.a;
 -        this.bl = 0;
-+        this.bl = 0; /* Concrete - diff on change */
-+        this.totalEatTimeTicks = 0; /* Concrete - lag compensate eating */
-+        this.eatStartTime = -1L; /* Concrete - lag compensate eating */
++        this.bl = 0; // Tuinity - diff on change
++        this.totalEatTimeTicks = 0; // Tuinity - lag compensate eating
++        this.eatStartTime = -1L; // Tuinity - lag compensate eating
      }
  
      public boolean isBlocking() {

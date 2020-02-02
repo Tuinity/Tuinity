@@ -19,14 +19,14 @@ index c950139c0f819e87ded97dc8fb915b6755e51e71..3fdb52007a2cf53b3319e4decf84d998
          return this.a(axisalignedbb.minX, axisalignedbb.minY, axisalignedbb.minZ, axisalignedbb.maxX, axisalignedbb.maxY, axisalignedbb.maxZ);
      }
 diff --git a/src/main/java/org/spigotmc/ActivationRange.java b/src/main/java/org/spigotmc/ActivationRange.java
-index 063d1cd683a7d68131b5539a46aa9abc55bff145..cd87f68f29448793a6f72377aa336e8fceb2709c 100644
+index 3fb177f9882ca1d8ad1f6b143d8b377b3f6306aa..dcd8f045860ddba251c601d67b570b9142ec00c0 100644
 --- a/src/main/java/org/spigotmc/ActivationRange.java
 +++ b/src/main/java/org/spigotmc/ActivationRange.java
 @@ -4,6 +4,7 @@ import java.util.Collection;
  import java.util.List;
  import net.minecraft.server.AxisAlignedBB;
  import net.minecraft.server.Chunk;
-+import net.minecraft.server.ChunkProviderServer; /* Concrete */
++import net.minecraft.server.ChunkProviderServer; // Tuinity
  import net.minecraft.server.Entity;
  import net.minecraft.server.EntityAmbient;
  import net.minecraft.server.EntityAnimal;
@@ -44,7 +44,7 @@ index 063d1cd683a7d68131b5539a46aa9abc55bff145..cd87f68f29448793a6f72377aa336e8f
                  for ( int j1 = k; j1 <= l; ++j1 )
                  {
 -                    Chunk chunk = (Chunk) world.getChunkIfLoadedImmediately( i1, j1 );
-+                    Chunk chunk = chunkProviderServer.getChunkAtIfLoadedMainThreadNoCache( i1, j1 ); /* Concrete */
++                    Chunk chunk = chunkProviderServer.getChunkAtIfLoadedMainThreadNoCache( i1, j1 ); // Tuinity
                      if ( chunk != null )
                      {
                          activateChunkEntities( chunk );
@@ -55,15 +55,15 @@ index 063d1cd683a7d68131b5539a46aa9abc55bff145..cd87f68f29448793a6f72377aa336e8f
 -        for ( List<Entity> slice : chunk.entitySlices )
 -        {
 -            for ( Entity entity : (Collection<Entity>) slice )
-+        /* Concrete start - optimise this call */
-+        ca.spottedleaf.concrete.util.EntityList entityList = chunk.entityList;
++        // Tuinity start - optimise this call
++        ca.spottedleaf.tuinity.util.EntityList entityList = chunk.entityList;
 +        Entity[] rawData = entityList.getRawData();
 +        for (int i = 0, len = entityList.size(); i < len; ++i) {
 +            Entity entity = rawData[i];
 +            if ( MinecraftServer.currentTick > entity.activatedTick )
              {
 -                if ( MinecraftServer.currentTick > entity.activatedTick )
-+                if ( entity.defaultActivationState || entity.activationType.boundingBox.intersects(entity.getBoundingBox())) /* Concrete - optimise this call */
++                if ( entity.defaultActivationState || entity.activationType.boundingBox.intersects(entity.getBoundingBox())) // Tuinity - optimise this call
                  {
 -                    if ( entity.defaultActivationState )
 -                    {
@@ -76,10 +76,10 @@ index 063d1cd683a7d68131b5539a46aa9abc55bff145..cd87f68f29448793a6f72377aa336e8f
 -                    }
 -                }
 +                    entity.activatedTick = MinecraftServer.currentTick;
-+                } /* Concrete - optimise this call */
++                } // Tuinity - optimise this call
              }
          }
-+        /* Concrete end - optimise this call */
++        // Tuinity end - optimise this call
      }
  
      /**

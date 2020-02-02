@@ -35,16 +35,64 @@ Long scheduled is handled the same as TickListServer.
 into a map of entries for that chunk. Once the chunk is moved
 to ticking, the items are re-scheduled.
 
-diff --git a/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
+diff --git a/src/main/java/ca/spottedleaf/tuinity/server/TickListServerInterval.java b/src/main/java/ca/spottedleaf/tuinity/server/TickListServerInterval.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..c999e94499a4cb21d6e56a87d60cd6549c39906b
+index 0000000000000000000000000000000000000000..90dcc30943b023dd591cf43f405b0768fa841aa7
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/concrete/server/ConcreteTickList.java
-@@ -0,0 +1,583 @@
-+package ca.spottedleaf.concrete.server;
++++ b/src/main/java/ca/spottedleaf/tuinity/server/TickListServerInterval.java
+@@ -0,0 +1,42 @@
++package ca.spottedleaf.tuinity.server;
 +
-+import ca.spottedleaf.concrete.util.TickThread;
-+import ca.spottedleaf.concrete.util.Util;
++import ca.spottedleaf.tuinity.util.set.LinkedSortedSet;
++import net.minecraft.server.NextTickListEntry;
++import net.minecraft.server.TickListPriority;
++
++import java.util.Comparator;
++
++// represents a set of entries to tick at a specified time
++public final class TickListServerInterval<T> {
++
++    public static final int TOTAL_PRIORITIES = TickListPriority.values().length;
++    public static final Comparator<NextTickListEntry<?>> ENTRY_COMPARATOR_BY_ID = (entry1, entry2) -> {
++        return Long.compare(entry1.getId(), entry2.getId());
++    };
++    public static final Comparator<NextTickListEntry<?>> ENTRY_COMPARATOR = (Comparator)NextTickListEntry.comparator();
++
++    // we do not record the interval, this class is meant to be used on a ring buffer
++
++    // inlined enum map for TickListPriority
++    public final LinkedSortedSet<NextTickListEntry<T>>[] byPriority = new LinkedSortedSet[TOTAL_PRIORITIES];
++
++    {
++        for (int i = 0, len = this.byPriority.length; i < len; ++i) {
++            this.byPriority[i] = new LinkedSortedSet<>(ENTRY_COMPARATOR_BY_ID);
++        }
++    }
++
++    public void addEntryLast(final NextTickListEntry<T> entry) {
++        this.byPriority[entry.getPriority().ordinal()].addLast(entry);
++    }
++
++    public void addEntryFirst(final NextTickListEntry<T> entry) {
++        this.byPriority[entry.getPriority().ordinal()].addFirst(entry);
++    }
++
++    public void clear() {
++        for (int i = 0, len = this.byPriority.length; i < len; ++i) {
++            this.byPriority[i].clear(); // O(1) clear
++        }
++    }
++}
+diff --git a/src/main/java/ca/spottedleaf/tuinity/server/TuinityTickList.java b/src/main/java/ca/spottedleaf/tuinity/server/TuinityTickList.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..843da9cc7524bcb37012246815f6878f223fdbd7
+--- /dev/null
++++ b/src/main/java/ca/spottedleaf/tuinity/server/TuinityTickList.java
+@@ -0,0 +1,583 @@
++package ca.spottedleaf.tuinity.server;
++
++import ca.spottedleaf.tuinity.util.TickThread;
++import ca.spottedleaf.tuinity.util.Util;
 +import ca.spottedleaf.concurrentutil.util.Validate;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
@@ -76,7 +124,7 @@ index 0000000000000000000000000000000000000000..c999e94499a4cb21d6e56a87d60cd654
 +import java.util.function.Predicate;
 +import java.util.stream.Stream;
 +
-+public final class ConcreteTickList<T> extends TickListServer<T> { // extend to avoid breaking ABI
++public final class TuinityTickList<T> extends TickListServer<T> { // extend to avoid breaking ABI
 +
 +    // in the order the state is expected to change (mostly)
 +    public static final int STATE_UNSCHEDULED    = 1 << 0;
@@ -130,7 +178,7 @@ index 0000000000000000000000000000000000000000..c999e94499a4cb21d6e56a87d60cd654
 +        return next < length ? next : 0;
 +    }
 +
-+    public ConcreteTickList(final WorldServer world, final Predicate<T> excludeFromScheduling, final Function<T, MinecraftKey> getMinecraftKeyFrom,
++    public TuinityTickList(final WorldServer world, final Predicate<T> excludeFromScheduling, final Function<T, MinecraftKey> getMinecraftKeyFrom,
 +                            final Function<MinecraftKey, T> getObjectFronMinecraftKey, final Consumer<NextTickListEntry<T>> tickFunction, final String timingsType) {
 +        super(world, excludeFromScheduling, getMinecraftKeyFrom, getObjectFronMinecraftKey, tickFunction, timingsType);
 +        this.world = world;
@@ -624,61 +672,13 @@ index 0000000000000000000000000000000000000000..c999e94499a4cb21d6e56a87d60cd654
 +        return ret;
 +    }
 +}
-diff --git a/src/main/java/ca/spottedleaf/concrete/server/TickListServerInterval.java b/src/main/java/ca/spottedleaf/concrete/server/TickListServerInterval.java
+diff --git a/src/main/java/ca/spottedleaf/tuinity/util/set/LinkedSortedSet.java b/src/main/java/ca/spottedleaf/tuinity/util/set/LinkedSortedSet.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..05d85187708e310335dd1103938c83d38fd006c1
+index 0000000000000000000000000000000000000000..8299464a644566ed25dc638eafcb49115463025a
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/concrete/server/TickListServerInterval.java
-@@ -0,0 +1,42 @@
-+package ca.spottedleaf.concrete.server;
-+
-+import ca.spottedleaf.concrete.util.set.LinkedSortedSet;
-+import net.minecraft.server.NextTickListEntry;
-+import net.minecraft.server.TickListPriority;
-+
-+import java.util.Comparator;
-+
-+// represents a set of entries to tick at a specified time
-+public final class TickListServerInterval<T> {
-+
-+    public static final int TOTAL_PRIORITIES = TickListPriority.values().length;
-+    public static final Comparator<NextTickListEntry<?>> ENTRY_COMPARATOR_BY_ID = (entry1, entry2) -> {
-+        return Long.compare(entry1.getId(), entry2.getId());
-+    };
-+    public static final Comparator<NextTickListEntry<?>> ENTRY_COMPARATOR = (Comparator)NextTickListEntry.comparator();
-+
-+    // we do not record the interval, this class is meant to be used on a ring buffer
-+
-+    // inlined enum map for TickListPriority
-+    public final LinkedSortedSet<NextTickListEntry<T>>[] byPriority = new LinkedSortedSet[TOTAL_PRIORITIES];
-+
-+    {
-+        for (int i = 0, len = this.byPriority.length; i < len; ++i) {
-+            this.byPriority[i] = new LinkedSortedSet<>(ENTRY_COMPARATOR_BY_ID);
-+        }
-+    }
-+
-+    public void addEntryLast(final NextTickListEntry<T> entry) {
-+        this.byPriority[entry.getPriority().ordinal()].addLast(entry);
-+    }
-+
-+    public void addEntryFirst(final NextTickListEntry<T> entry) {
-+        this.byPriority[entry.getPriority().ordinal()].addFirst(entry);
-+    }
-+
-+    public void clear() {
-+        for (int i = 0, len = this.byPriority.length; i < len; ++i) {
-+            this.byPriority[i].clear(); // O(1) clear
-+        }
-+    }
-+}
-diff --git a/src/main/java/ca/spottedleaf/concrete/util/set/LinkedSortedSet.java b/src/main/java/ca/spottedleaf/concrete/util/set/LinkedSortedSet.java
-new file mode 100644
-index 0000000000000000000000000000000000000000..ccfe3732d9f2d123e296ab5839e439e009165631
---- /dev/null
-+++ b/src/main/java/ca/spottedleaf/concrete/util/set/LinkedSortedSet.java
++++ b/src/main/java/ca/spottedleaf/tuinity/util/set/LinkedSortedSet.java
 @@ -0,0 +1,142 @@
-+package ca.spottedleaf.concrete.util.set;
++package ca.spottedleaf.tuinity.util.set;
 +
 +import java.util.Comparator;
 +import java.util.Iterator;
@@ -821,7 +821,7 @@ index 0000000000000000000000000000000000000000..ccfe3732d9f2d123e296ab5839e439e0
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 6a5817c68266e4c75da208f88df0214b56ad1172..8b5929305ea2214fc07acaa1babc1327a5a0ae13 100644
+index de27ed72cf0c853cb19a908a1c0e242ab7147125..7d98603814aed429d1f9febb1543e136f5b89946 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -117,6 +117,11 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -830,25 +830,25 @@ index 6a5817c68266e4c75da208f88df0214b56ad1172..8b5929305ea2214fc07acaa1babc1327
      }
 +
 +    public final boolean isTickingReadyMainThread(BlockPosition pos) {
-+        PlayerChunk chunk = this.playerChunkMap.chunkMap.getUpdating(ca.spottedleaf.concrete.util.Util.getCoordinateKey(pos));
++        PlayerChunk chunk = this.playerChunkMap.chunkMap.getUpdating(ca.spottedleaf.tuinity.util.Util.getCoordinateKey(pos));
 +        return chunk != null && chunk.isTickingReady();
 +    }
-     /* Concrete end - loaded chunk cache for fast getIfLoaded calls */
+     // Tuinity end - loaded chunk cache for fast getIfLoaded calls
  
      public ChunkProviderServer(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator<?> chunkgenerator, int i, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
 @@ -531,8 +536,8 @@ public class ChunkProviderServer extends IChunkProvider {
-         /* Concrete end - optimize is ticking ready type functions */
+         // Tuinity end - optimize is ticking ready type functions
      }
  
 -    @Override
 -    public boolean a(BlockPosition blockposition) {
-+    public final boolean isTickingReady(final BlockPosition pos) { return this.a(pos); } /* Concrete - OBFHELPER */
-+    @Override public boolean a(BlockPosition blockposition) { /* Concrete - OBFHELPER */
-         /* Concrete start - optimize is ticking ready type functions */
++    public final boolean isTickingReady(final BlockPosition pos) { return this.a(pos); } // Tuinity - OBFHELPER
++    @Override public boolean a(BlockPosition blockposition) { // Tuinity - OBFHELPER
+         // Tuinity start - optimize is ticking ready type functions
          // is ticking ready
-         PlayerChunk playerChunk = this.getChunk(ca.spottedleaf.concrete.util.Util.getCoordinateKey(blockposition));
+         PlayerChunk playerChunk = this.getChunk(ca.spottedleaf.tuinity.util.Util.getCoordinateKey(blockposition));
 diff --git a/src/main/java/net/minecraft/server/NextTickListEntry.java b/src/main/java/net/minecraft/server/NextTickListEntry.java
-index 33cfeabdee03195a294f303f28044a313cb1c4ed..1697b589b21b5c8411ab99928725d816b82f85b6 100644
+index 33cfeabdee03195a294f303f28044a313cb1c4ed..11a4bb882e73df0ead6d9c5f67ea2f1a1e6d7c35 100644
 --- a/src/main/java/net/minecraft/server/NextTickListEntry.java
 +++ b/src/main/java/net/minecraft/server/NextTickListEntry.java
 @@ -5,11 +5,13 @@ import java.util.Comparator;
@@ -860,13 +860,13 @@ index 33cfeabdee03195a294f303f28044a313cb1c4ed..1697b589b21b5c8411ab99928725d816
 -    public final long b;
 -    public final TickListPriority c;
 -    private final long f;
-+    private final T e; public final T getData() { return this.e; } /* Concrete - OBFHELPER */
-+    public final BlockPosition a; public final BlockPosition getPosition() { return this.a; } /* Concrete - OBFHELPER */
-+    public final long b; public final long getTargetTick() { return this.b; } /* Concrete - OBFHELPER */
-+    public final TickListPriority c; public final TickListPriority getPriority() { return this.c; } /* Concrete - OBFHELPER */
-+    private final long f; public final long getId() { return this.f; } /* Concrete - OBFHELPER */
-+    private final int hash; /* Concrete */
-+    public int tickState; /* Concrete */
++    private final T e; public final T getData() { return this.e; } // Tuinity - OBFHELPER
++    public final BlockPosition a; public final BlockPosition getPosition() { return this.a; } // Tuinity - OBFHELPER
++    public final long b; public final long getTargetTick() { return this.b; } // Tuinity - OBFHELPER
++    public final TickListPriority c; public final TickListPriority getPriority() { return this.c; } // Tuinity - OBFHELPER
++    private final long f; public final long getId() { return this.f; } // Tuinity - OBFHELPER
++    private final int hash; // Tuinity
++    public int tickState; // Tuinity
  
      public NextTickListEntry(BlockPosition blockposition, T t0) {
          this(blockposition, t0, 0L, TickListPriority.NORMAL);
@@ -874,7 +874,7 @@ index 33cfeabdee03195a294f303f28044a313cb1c4ed..1697b589b21b5c8411ab99928725d816
          this.e = t0;
          this.b = i;
          this.c = ticklistpriority;
-+        this.hash = this.computeHash(); /* Concrete */
++        this.hash = this.computeHash(); // Tuinity
      }
  
      public boolean equals(Object object) {
@@ -882,13 +882,13 @@ index 33cfeabdee03195a294f303f28044a313cb1c4ed..1697b589b21b5c8411ab99928725d816
          }
      }
  
-+    /* Concrete start - optimize hashcode */
++    // Tuinity start - optimize hashcode
 +    @Override
      public int hashCode() {
 +        return this.hash;
 +    }
 +    public final int computeHash() {
-+        /* Concrete end - optimize hashcode */
++        // Tuinity end - optimize hashcode
          return this.a.hashCode();
      }
  
@@ -900,8 +900,8 @@ index 33cfeabdee03195a294f303f28044a313cb1c4ed..1697b589b21b5c8411ab99928725d816
 -        }).thenComparingLong((nextticklistentry) -> {
 -            return ((NextTickListEntry<T>) nextticklistentry).f; // Paper - decompile fix
 -        });
-+    /* Concrete start - let's not use more functional code for no reason. */
-+    public static <T> Comparator<Object> comparator() { return NextTickListEntry.a(); } /* Concrete - OBFHELPER */
++    // Tuinity start - let's not use more functional code for no reason.
++    public static <T> Comparator<Object> comparator() { return NextTickListEntry.a(); } // Tuinity - OBFHELPER
 +    public static <T> Comparator<Object> a() {
 +        return (Comparator)(Comparator<NextTickListEntry>)(NextTickListEntry nextticklistentry, NextTickListEntry nextticklistentry1) -> {
 +            int i = Long.compare(nextticklistentry.getTargetTick(), nextticklistentry1.getTargetTick());
@@ -914,24 +914,24 @@ index 33cfeabdee03195a294f303f28044a313cb1c4ed..1697b589b21b5c8411ab99928725d816
 +            }
 +        };
      }
-+    /* Concrete end - let's not use more functional code for no reason. */
++    // Tuinity end - let's not use more functional code for no reason.
  
      public String toString() {
          return this.e + ": " + this.a + ", " + this.b + ", " + this.c + ", " + this.f;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index b0cf7d7990429297d9584b7651f3979404252219..2bb2a96b0ae41e8bb7b2abe53cb9fd2af1e9ad9f 100644
+index eaedd1b547f0ead3f114f6febe91213c6d856a79..e4719519f7ffb7b59f71a63f8c6a96fea17647c0 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -483,6 +483,7 @@ public class PlayerChunk {
              this.tickingFuture = playerchunkmap.a(this); this.tickingFuture.thenAccept((either) -> {
                  if (either.left().isPresent()) {
                      PlayerChunk.this.isTickingReady = true;
-+                    PlayerChunk.this.chunkMap.world.onChunkSetTicking(PlayerChunk.this.location.x, PlayerChunk.this.location.z); /* Concrete */
++                    PlayerChunk.this.chunkMap.world.onChunkSetTicking(PlayerChunk.this.location.x, PlayerChunk.this.location.z); // Tuinity
                  }
              });
-             /* Concrete end - cache chunk ticking stage */
+             // Tuinity end - cache chunk ticking stage
 diff --git a/src/main/java/net/minecraft/server/StructureBoundingBox.java b/src/main/java/net/minecraft/server/StructureBoundingBox.java
-index dbb565e74d211ef35d5d40b3d024e2f07cef9031..6b7c9fd7c50d11a78499501fb2f9d6c688ed0469 100644
+index dbb565e74d211ef35d5d40b3d024e2f07cef9031..63d2c9a352db3b1c87a3b0b5aa0e48e747d47ee4 100644
 --- a/src/main/java/net/minecraft/server/StructureBoundingBox.java
 +++ b/src/main/java/net/minecraft/server/StructureBoundingBox.java
 @@ -4,12 +4,12 @@ import com.google.common.base.MoreObjects;
@@ -944,12 +944,12 @@ index dbb565e74d211ef35d5d40b3d024e2f07cef9031..6b7c9fd7c50d11a78499501fb2f9d6c6
 -    public int d;
 -    public int e;
 -    public int f;
-+    public int a; public final int getMinX() { return this.a; } /* Concrete - OBFHELPER */
-+    public int b; public final int getMinY() { return this.b; } /* Concrete - OBFHELPER */
-+    public int c; public final int getMinZ() { return this.c; } /* Concrete - OBFHELPER */
-+    public int d; public final int getMaxX() { return this.d; } /* Concrete - OBFHELPER */
-+    public int e; public final int getMaxY() { return this.e; } /* Concrete - OBFHELPER */
-+    public int f; public final int getMaxZ() { return this.f; } /* Concrete - OBFHELPER */
++    public int a; public final int getMinX() { return this.a; } // Tuinity - OBFHELPER
++    public int b; public final int getMinY() { return this.b; } // Tuinity - OBFHELPER
++    public int c; public final int getMinZ() { return this.c; } // Tuinity - OBFHELPER
++    public int d; public final int getMaxX() { return this.d; } // Tuinity - OBFHELPER
++    public int e; public final int getMaxY() { return this.e; } // Tuinity - OBFHELPER
++    public int f; public final int getMaxZ() { return this.f; } // Tuinity - OBFHELPER
  
      public StructureBoundingBox() {}
  
@@ -957,12 +957,12 @@ index dbb565e74d211ef35d5d40b3d024e2f07cef9031..6b7c9fd7c50d11a78499501fb2f9d6c6
          this.e = 512;
      }
  
-+    public final boolean intersects(StructureBoundingBox boundingBox) { return this.b(boundingBox); } /* Concrete - OBFHELPER */
++    public final boolean intersects(StructureBoundingBox boundingBox) { return this.b(boundingBox); } // Tuinity - OBFHELPER
      public boolean b(StructureBoundingBox structureboundingbox) {
          return this.d >= structureboundingbox.a && this.a <= structureboundingbox.d && this.f >= structureboundingbox.c && this.c <= structureboundingbox.f && this.e >= structureboundingbox.b && this.b <= structureboundingbox.e;
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 5f51d3065f8c73e73b8095c03011cf3bfe8bc69f..2362758ea3469d05e20ae9a28ac5db965d90d026 100644
+index 869f52289782cac2a6ea53dc3f918d7a318ac7b0..9602d1a06d10e2101ed223add8a5a73cce0aa1a9 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -190,6 +190,11 @@ public class WorldServer extends World {
@@ -971,10 +971,10 @@ index 5f51d3065f8c73e73b8095c03011cf3bfe8bc69f..2362758ea3469d05e20ae9a28ac5db96
      }
 +
 +    void onChunkSetTicking(int chunkX, int chunkZ) {
-+        ((ca.spottedleaf.concrete.server.ConcreteTickList)this.nextTickListBlock).onChunkSetTicking(chunkX, chunkZ);
-+        ((ca.spottedleaf.concrete.server.ConcreteTickList)this.nextTickListFluid).onChunkSetTicking(chunkX, chunkZ);
++        ((ca.spottedleaf.tuinity.server.TuinityTickList)this.nextTickListBlock).onChunkSetTicking(chunkX, chunkZ);
++        ((ca.spottedleaf.tuinity.server.TuinityTickList)this.nextTickListFluid).onChunkSetTicking(chunkX, chunkZ);
 +    }
-     /* Concrete end */
+     // Tuinity end
  
      // Add env and gen to constructor
 @@ -212,10 +217,10 @@ public class WorldServer extends World {
@@ -982,11 +982,11 @@ index 5f51d3065f8c73e73b8095c03011cf3bfe8bc69f..2362758ea3469d05e20ae9a28ac5db96
          worlddata.world = this;
          // CraftBukkit end
 -        this.nextTickListBlock = new TickListServer<>(this, (block) -> {
-+        this.nextTickListBlock = new ca.spottedleaf.concrete.server.ConcreteTickList<>(this, (block) -> { /* Concrete - optimise TickListServer */
++        this.nextTickListBlock = new ca.spottedleaf.tuinity.server.TuinityTickList<>(this, (block) -> { // Tuinity - optimise TickListServer
              return block == null || block.getBlockData().isAir();
          }, IRegistry.BLOCK::getKey, IRegistry.BLOCK::get, this::b, "Blocks"); // Paper - Timings
 -        this.nextTickListFluid = new TickListServer<>(this, (fluidtype) -> {
-+        this.nextTickListFluid = new ca.spottedleaf.concrete.server.ConcreteTickList<>(this, (fluidtype) -> { /* Concrete - optimise TickListServer */
++        this.nextTickListFluid = new ca.spottedleaf.tuinity.server.TuinityTickList<>(this, (fluidtype) -> { // Tuinity - optimise TickListServer
              return fluidtype == null || fluidtype == FluidTypes.EMPTY;
          }, IRegistry.FLUID::getKey, IRegistry.FLUID::get, this::a, "Fluids"); // Paper - Timings
          this.navigators = Sets.newHashSet();

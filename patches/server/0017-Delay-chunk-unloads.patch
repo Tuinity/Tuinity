@@ -12,26 +12,26 @@ It's also targetted to reduce performance regressions when
 plugins or edge cases in code do not spam sync loads since chunks
 without tickets get unloaded immediately.
 
-diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-index 39d0dc5e2db512b347f1b3e6f2d0b256c31f69a1..46974bfdb36ce2399c146262e7e9398aefac0255 100644
---- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-+++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+diff --git a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+index 2969a219d6171f97b8407e42382d0eb34cf92c7a..03b8df8080cba85d6b46d407b228d912d39f4043 100644
+--- a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
++++ b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
 @@ -1,6 +1,7 @@
- package ca.spottedleaf.concrete.config;
+ package ca.spottedleaf.tuinity.config;
  
  import ca.spottedleaf.concurrentutil.util.Throw;
 +import net.minecraft.server.TicketType;
  import org.bukkit.Bukkit;
  import org.bukkit.configuration.ConfigurationSection;
  import org.bukkit.configuration.file.YamlConfiguration;
-@@ -100,6 +101,15 @@ public final class ConcreteConfig {
-         tickThreads = ConcreteConfig.getInt("server-tick-threads", 1); // will be 4 in the future
+@@ -106,6 +107,15 @@ public final class TuinityConfig {
+         tickThreads = TuinityConfig.getInt("server-tick-threads", 1); // will be 4 in the future
      }
  
 +    public static int delayChunkUnloadsBy;
 +
 +    private static void delayChunkUnloadsBy() {
-+        delayChunkUnloadsBy = ConcreteConfig.getInt("delay-chunkunloads-by", 10) * 20;
++        delayChunkUnloadsBy = TuinityConfig.getInt("delay-chunkunloads-by", 10) * 20;
 +        if (delayChunkUnloadsBy >= 0) {
 +            TicketType.DELAYED_UNLOAD.loadPeriod = delayChunkUnloadsBy;
 +        }
@@ -41,32 +41,32 @@ index 39d0dc5e2db512b347f1b3e6f2d0b256c31f69a1..46974bfdb36ce2399c146262e7e9398a
  
      private static void maxChunkLoadsPerPlayer() {
 diff --git a/src/main/java/net/minecraft/server/ChunkMap.java b/src/main/java/net/minecraft/server/ChunkMap.java
-index 50444a2f49f07e66ff9ea55dacc1819023ea6624..b0c0e906f3bd8534a6ef0b274ffa163717b7672f 100644
+index 24ba03ae580858fde7c32c915bb447b97ea229a6..d3c616e72ddddb87e019864b0b90228c96636ebc 100644
 --- a/src/main/java/net/minecraft/server/ChunkMap.java
 +++ b/src/main/java/net/minecraft/server/ChunkMap.java
 @@ -70,6 +70,7 @@ public abstract class ChunkMap extends LightEngineGraph {
  
      protected abstract int b(long i);
  
-+    public final void update(long coordinate, int level, boolean increaseInLevel) { this.b(coordinate, level, increaseInLevel); } /* Concrete - OBFHELPER */
++    public final void update(long coordinate, int level, boolean increaseInLevel) { this.b(coordinate, level, increaseInLevel); } // Tuinity - OBFHELPER
      public void b(long i, int j, boolean flag) {
          this.a(ChunkCoordIntPair.a, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 541f36d89fc4fc03c8f4e04673010efae5d24e1b..3b3893512ce5bf878b09ec0647c16963949d1104 100644
+index 7316edc2aed0f7bf19007618d69d0dcf7242e341..7107c125393774a25bc595765756ee600f7585c7 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
-     private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2; public static int getPlayerTicketLevel() { return ChunkMapDistance.b; } /* Concrete - OBFHELPER */
+     private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2; public static int getPlayerTicketLevel() { return ChunkMapDistance.b; } // Tuinity - OBFHELPER
      private final Long2ObjectMap<ObjectSet<EntityPlayer>> c = new Long2ObjectOpenHashMap();
      public final Long2ObjectOpenHashMap<ArraySetSorted<Ticket<?>>> tickets = new Long2ObjectOpenHashMap();
 -    private final ChunkMapDistance.a e = new ChunkMapDistance.a();
-+    private final ChunkMapDistance.a e = new ChunkMapDistance.a(); final ChunkMapDistance.a getTicketTracker() { return this.e; } /* Concrete - OBFHELPER */
-     public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); /* Concrete - no longer used */
-     //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); /* Concrete - no longer used */
-     private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue /* Concrete - use a better queue */
++    private final ChunkMapDistance.a e = new ChunkMapDistance.a(); final ChunkMapDistance.a getTicketTracker() { return this.e; } // Tuinity - OBFHELPER
+     public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); // Tuinity - no longer used
+     //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); // Tuinity - no longer used
+     private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue // Tuinity - use a better queue
 @@ -45,6 +45,45 @@ public abstract class ChunkMapDistance {
-     /* Concrete start */
+     // Tuinity start
      protected PlayerChunkMap chunkMap;
      protected final ChunkMapDistance.TicketTracker playerTicketHandler = new TicketTracker();
 +
@@ -108,22 +108,22 @@ index 541f36d89fc4fc03c8f4e04673010efae5d24e1b..3b3893512ce5bf878b09ec0647c16963
 +        ticket.setTicketLevel(removedLevel);
 +        tickets.add(ticket); // re-add with new expire time and ticket level
 +    }
-     /* Concrete end */
+     // Tuinity end
  
      protected ChunkMapDistance(Executor executor, Executor executor1) {
 @@ -63,12 +102,30 @@ public abstract class ChunkMapDistance {
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
-+        int[] tempLevel = new int[] { PlayerChunkMap.GOLDEN_TICKET + 1 }; /* Concrete - delay chunk unloads */
++        int[] tempLevel = new int[] { PlayerChunkMap.GOLDEN_TICKET + 1 }; // Tuinity - delay chunk unloads
          while (objectiterator.hasNext()) {
              Entry<ArraySetSorted<Ticket<?>>> entry = (Entry) objectiterator.next();
  
              if ((entry.getValue()).removeIf((ticket) -> { // CraftBukkit - decompile error
 -                return ticket.b(this.currentTick);
-+                /* Concrete start - delay chunk unloads */
++                // Tuinity start - delay chunk unloads
 +                boolean ret = ticket.isExpired(this.currentTick);
-+                if (ca.spottedleaf.concrete.config.ConcreteConfig.delayChunkUnloadsBy <= 0) {
++                if (ca.spottedleaf.tuinity.config.TuinityConfig.delayChunkUnloadsBy <= 0) {
 +                    return ret;
 +                }
 +                if (ret && ticket.getTicketType() != TicketType.DELAYED_UNLOAD && ticket.getTicketLevel() < tempLevel[0]) {
@@ -133,13 +133,13 @@ index 541f36d89fc4fc03c8f4e04673010efae5d24e1b..3b3893512ce5bf878b09ec0647c16963
 +                    this.delayedChunks.remove(entry.getLongKey(), ticket); // clean up ticket...
 +                }
 +                return ret;
-+                /* Concrete end - delay chunk unloads */
++                // Tuinity end - delay chunk unloads
              })) {
-+                /* Concrete start - delay chunk unloads */
++                // Tuinity start - delay chunk unloads
 +                if (tempLevel[0] < (PlayerChunkMap.GOLDEN_TICKET + 1)) {
 +                    this.computeDelayedTicketFor(entry.getLongKey(), tempLevel[0], entry.getValue());
 +                }
-+                /* Concrete end - delay chunk unloads */
++                // Tuinity end - delay chunk unloads
                  this.e.b(entry.getLongKey(), a((ArraySetSorted) entry.getValue()), false);
              }
  
@@ -147,7 +147,7 @@ index 541f36d89fc4fc03c8f4e04673010efae5d24e1b..3b3893512ce5bf878b09ec0647c16963
  
      }
  
-+    private static int getLowestTicketLevel(ArraySetSorted<Ticket<?>> arraysetsorted) { return a(arraysetsorted); } /* Concrete - OBFHELPER */
++    private static int getLowestTicketLevel(ArraySetSorted<Ticket<?>> arraysetsorted) { return a(arraysetsorted); } // Tuinity - OBFHELPER
      private static int a(ArraySetSorted<Ticket<?>> arraysetsorted) {
          return !arraysetsorted.isEmpty() ? ((Ticket) arraysetsorted.b()).b() : PlayerChunkMap.GOLDEN_TICKET + 1;
      }
@@ -155,16 +155,16 @@ index 541f36d89fc4fc03c8f4e04673010efae5d24e1b..3b3893512ce5bf878b09ec0647c16963
          boolean removed = false; // CraftBukkit
          if (arraysetsorted.remove(ticket)) {
              removed = true; // CraftBukkit
-+            /* Concrete start - delay chunk unloads */
-+            if (ca.spottedleaf.concrete.config.ConcreteConfig.delayChunkUnloadsBy > 0 && ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
++            // Tuinity start - delay chunk unloads
++            if (ca.spottedleaf.tuinity.config.TuinityConfig.delayChunkUnloadsBy > 0 && ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
 +                this.computeDelayedTicketFor(i, ticket.getTicketLevel(), arraysetsorted);
 +            }
-+            /* Concrete end - delay chunk unloads */
++            // Tuinity end - delay chunk unloads
          }
  
          if (arraysetsorted.isEmpty()) {
 diff --git a/src/main/java/net/minecraft/server/Ticket.java b/src/main/java/net/minecraft/server/Ticket.java
-index 7a8397815a5b7f79f3e3a0348aeedf63fe879f8f..e98e8530f1eb6552817f7a8fa64c7c82e9962b40 100644
+index 7a8397815a5b7f79f3e3a0348aeedf63fe879f8f..0d5b1a0b7b922587afac523b4de8059809b56f65 100644
 --- a/src/main/java/net/minecraft/server/Ticket.java
 +++ b/src/main/java/net/minecraft/server/Ticket.java
 @@ -5,9 +5,10 @@ import java.util.Objects;
@@ -172,11 +172,11 @@ index 7a8397815a5b7f79f3e3a0348aeedf63fe879f8f..e98e8530f1eb6552817f7a8fa64c7c82
  
      private final TicketType<T> a;
 -    private final int b;
-+    private int b; public final void setTicketLevel(final int value) { this.b = value; } /* Concrete - remove final, add set OBFHELPER  */
++    private int b; public final void setTicketLevel(final int value) { this.b = value; } // Tuinity - remove final, add set OBFHELPER
      public final T identifier; public final T getObjectReason() { return this.identifier; } // Paper - OBFHELPER
 -    private long d; public final long getCreationTick() { return this.d; } // Paper - OBFHELPER
-+    private long d; public final long getCreationTick() { return this.d; } public final void setCreationTick(final long value) { this.d = value; }  // Paper - OBFHELPER /* Concrete - OBFHELPER */
-+    boolean isCached; /* Concrete - delay chunk unloads, this defends against really stupid plugins */
++    private long d; public final long getCreationTick() { return this.d; } public final void setCreationTick(final long value) { this.d = value; }  // Paper - OBFHELPER // Tuinity - OBFHELPER
++    boolean isCached; // Tuinity - delay chunk unloads, this defends against really stupid plugins
  
      protected Ticket(TicketType<T> tickettype, int i, T t0) {
          this.a = tickettype;
@@ -184,31 +184,31 @@ index 7a8397815a5b7f79f3e3a0348aeedf63fe879f8f..e98e8530f1eb6552817f7a8fa64c7c82
          this.d = i;
      }
  
-+    protected final boolean isExpired(long time) { return this.b(time); } /* Concrete - OBFHELPER */
++    protected final boolean isExpired(long time) { return this.b(time); } // Tuinity - OBFHELPER
      protected boolean b(long i) {
          long j = this.a.b();
  
 diff --git a/src/main/java/net/minecraft/server/TicketType.java b/src/main/java/net/minecraft/server/TicketType.java
-index 481d9548088d233869570277e8860b532240259c..7adcca1c378688e37529c3fbb85398b5155cf84c 100644
+index 481d9548088d233869570277e8860b532240259c..d4065d6d27fd6d10e48eca1af61faedca37b3fdf 100644
 --- a/src/main/java/net/minecraft/server/TicketType.java
 +++ b/src/main/java/net/minecraft/server/TicketType.java
 @@ -23,6 +23,7 @@ public class TicketType<T> {
      public static final TicketType<org.bukkit.plugin.Plugin> PLUGIN_TICKET = a("plugin_ticket", (plugin1, plugin2) -> plugin1.getClass().getName().compareTo(plugin2.getClass().getName())); // Craftbukkit
      public static final TicketType<Integer> ANTIXRAY = a("antixray", Integer::compareTo); // Paper - Anti-Xray
      public static final TicketType<Long> ASYNC_LOAD = a("async_load", Long::compareTo); // Paper
-+    public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo); /* Concrete - delay chunk unloads by 30 seconds */
++    public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo); // Tuinity - delay chunk unloads by 30 seconds
  
      public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
          return new TicketType<>(s, comparator, 0L);
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 009c23b2fff766b4e9e679ad2e980d9181b0e4da..0c2f7bd95590298635ccb7885be681645ddbfbb7 100644
+index 892cbb1aa2ba2af70f1d33eed3fe427e22b15099..89674cb0dcee8bdb96b3d4945153a063f153732a 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 @@ -463,6 +463,7 @@ public class CraftWorld implements World {
          net.minecraft.server.IChunkAccess chunk = world.getChunkProvider().getChunkAt(x, z, ChunkStatus.FULL, false);
          if (chunk != null) {
              world.getChunkProvider().removeTicket(TicketType.PLUGIN, chunk.getPos(), 1, Unit.INSTANCE);
-+            ((ChunkMapDistance)world.getChunkProvider().playerChunkMap.getChunkMapDistanceManager()).removeTickets(ChunkCoordIntPair.pair(x, z), TicketType.DELAYED_UNLOAD); /* Concrete - delay chunk unloads - let plugins override */
++            ((ChunkMapDistance)world.getChunkProvider().playerChunkMap.getChunkMapDistanceManager()).removeTickets(ChunkCoordIntPair.pair(x, z), TicketType.DELAYED_UNLOAD); // Tuinity - delay chunk unloads - let plugins override
          }
  
          return true;

@@ -8,35 +8,26 @@ for a chunk to save, as we only iterate on chunks that could be saved
 and were ordered by last save / load time
 
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 9bbb35bfcc57a38c47bb9a9feb1171131940b858..b0cf7d7990429297d9584b7651f3979404252219 100644
+index d4d4a5e7daccdf35f734e2492197c1a861b24b20..eaedd1b547f0ead3f114f6febe91213c6d856a79 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -40,6 +40,9 @@ public class PlayerChunk {
  
-     /* Concrete start */
+     // Tuinity start
      private final PlayerChunkMap chunkMap;
 +
 +    long lastAutoSaveTime;
 +    long inactiveTimeStart;
-     /* Concrete end */
+     // Tuinity end
  
      public PlayerChunk(ChunkCoordIntPair chunkcoordintpair, int i, LightEngine lightengine, PlayerChunk.c playerchunk_c, PlayerChunk.d playerchunk_d) {
-@@ -57,7 +60,7 @@ public class PlayerChunk {
-         this.ticketLevel = this.oldTicketLevel;
-         this.n = this.oldTicketLevel;
-         this.a(i);
--        this.chunkMap = (PlayerChunkMap)playerchunk_d; /* Concrete  */
-+        this.chunkMap = (PlayerChunkMap)playerchunk_d; /* Concrete */
-     }
- 
-     // CraftBukkit start
 @@ -445,7 +448,19 @@ public class PlayerChunk {
          boolean flag2 = playerchunk_state.isAtLeast(PlayerChunk.State.BORDER);
          boolean flag3 = playerchunk_state1.isAtLeast(PlayerChunk.State.BORDER);
  
-+        boolean prevHasBeenLoaded = this.hasBeenLoaded; /* Concrete */
++        boolean prevHasBeenLoaded = this.hasBeenLoaded; // Tuinity
          this.hasBeenLoaded |= flag3;
-+        /* Concrete start */
++        // Tuinity start
 +        if (this.hasBeenLoaded & !prevHasBeenLoaded) {
 +            long timeSinceAutoSave = this.inactiveTimeStart - this.lastAutoSaveTime;
 +            if (timeSinceAutoSave < 0) {
@@ -46,7 +37,7 @@ index 9bbb35bfcc57a38c47bb9a9feb1171131940b858..b0cf7d7990429297d9584b7651f39794
 +            this.lastAutoSaveTime = this.chunkMap.world.getTime() - timeSinceAutoSave;
 +            this.chunkMap.autoSaveQueue.add(this);
 +        }
-+        /* Concrete end */
++        // Tuinity end
          if (!flag2 && flag3) {
              this.fullChunkFuture = playerchunkmap.b(this);
              this.a(this.fullChunkFuture);
@@ -54,9 +45,9 @@ index 9bbb35bfcc57a38c47bb9a9feb1171131940b858..b0cf7d7990429297d9584b7651f39794
      }
  
      public void m() {
-+        boolean prev = this.hasBeenLoaded; /* Concrete */
++        boolean prev = this.hasBeenLoaded; // Tuinity
          this.hasBeenLoaded = getChunkState(this.ticketLevel).isAtLeast(PlayerChunk.State.BORDER);
-+        /* Concrete start */
++        // Tuinity start
 +        if (prev != this.hasBeenLoaded) {
 +            if (this.hasBeenLoaded) {
 +                long timeSinceAutoSave = this.inactiveTimeStart - this.lastAutoSaveTime;
@@ -71,21 +62,21 @@ index 9bbb35bfcc57a38c47bb9a9feb1171131940b858..b0cf7d7990429297d9584b7651f39794
 +                this.chunkMap.autoSaveQueue.remove(this);
 +            }
 +        }
-+        /* Concrete end */
++        // Tuinity end
      }
  
-+    /* Concrete start */
++    // Tuinity start
 +    public boolean setHasBeenLoaded() {
 +        this.hasBeenLoaded = getChunkState(this.ticketLevel).isAtLeast(PlayerChunk.State.BORDER);
 +        return this.hasBeenLoaded;
 +    }
-+    /* Concrete end */
++    // Tuinity end
 +
      public void a(ProtoChunkExtension protochunkextension) {
          for (int i = 0; i < this.statusFutures.length(); ++i) {
              CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index bb9b521145210d70449d4ca58899ee6d326a9dd0..68636931a39cc6f6b24c135a33da3efcf8fa833e 100644
+index a4d09a7c7650dfd59f84e5ff003d4da13b21756c..c624f4bbbbcd435313c2535d5e10549440d393ca 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -208,6 +208,16 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -100,16 +91,16 @@ index bb9b521145210d70449d4ca58899ee6d326a9dd0..68636931a39cc6f6b24c135a33da3efc
 +            return ret;
 +        }
 +
-+        return Long.compare(ca.spottedleaf.concrete.util.Util.getCoordinateKey(playerchunk1.location), ca.spottedleaf.concrete.util.Util.getCoordinateKey(playerchunk2.location));
++        return Long.compare(ca.spottedleaf.tuinity.util.Util.getCoordinateKey(playerchunk1.location), ca.spottedleaf.tuinity.util.Util.getCoordinateKey(playerchunk2.location));
 +    });
-     /* Concrete end */
+     // Tuinity end
  
      public PlayerChunkMap(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, IAsyncTaskHandler<Runnable> iasynctaskhandler, ILightAccess ilightaccess, ChunkGenerator<?> chunkgenerator, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier, int i) {
 @@ -551,30 +561,48 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      // Paper start - derived from below
      protected void saveIncrementally() {
          int savedThisTick = 0;
--        for (PlayerChunk playerchunk : this.chunkMap.getVisibleValues()) { /* Concrete - replace chunk map */
+-        for (PlayerChunk playerchunk : this.chunkMap.getVisibleValues()) { // Tuinity - replace chunk map
 -            if (playerchunk.hasBeenLoaded()) {
 -
 -                IChunkAccess ichunkaccess = (IChunkAccess) playerchunk.getChunkSave().getNow(null); // CraftBukkit - decompile error
@@ -125,12 +116,12 @@ index bb9b521145210d70449d4ca58899ee6d326a9dd0..68636931a39cc6f6b24c135a33da3efc
 -                    if (shouldSave && this.saveChunk(ichunkaccess, true)) { // Paper - async chunk io
 -                        ++savedThisTick;
 -                        playerchunk.m();
-+        /* Concrete start - optimize */
++        // Tuinity start - optimize
 +        // optimized since we search far less chunks to hit ones that need to be saved
 +        List<PlayerChunk> reschedule = new ArrayList<>(this.world.paperConfig.maxAutoSaveChunksPerTick);
 +        long currentTick = this.world.getTime();
 +        long maxSaveTime = currentTick - this.world.paperConfig.autoSavePeriod;
-+        for (Iterator<PlayerChunk> iterator = this.autoSaveQueue.iterator(); iterator.hasNext();) { /* Concrete - replace chunk map */
++        for (Iterator<PlayerChunk> iterator = this.autoSaveQueue.iterator(); iterator.hasNext();) { // Tuinity - replace chunk map
 +            PlayerChunk playerchunk = iterator.next();
 +            if (playerchunk.lastAutoSaveTime > maxSaveTime) {
 +                break;
@@ -169,7 +160,7 @@ index bb9b521145210d70449d4ca58899ee6d326a9dd0..68636931a39cc6f6b24c135a33da3efc
 +            playerchunk.lastAutoSaveTime = this.world.getTime();
 +            this.autoSaveQueue.add(playerchunk);
 +        }
-+        /* Concrete end */
++        // Tuinity end
      }
      // paper end
  
@@ -177,7 +168,7 @@ index bb9b521145210d70449d4ca58899ee6d326a9dd0..68636931a39cc6f6b24c135a33da3efc
                          this.world.unloadChunk(chunk);
                      }
  
-+                    this.autoSaveQueue.remove(playerchunk); /* Concrete */
++                    this.autoSaveQueue.remove(playerchunk); // Tuinity
 +
                      try {
                          this.asyncSave(ichunkaccess); // Paper - async chunk saving

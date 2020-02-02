@@ -7,7 +7,7 @@ This option is configurable under 'optimize-chunkrange-check', and is
 enabled by default
 
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index e597d44ac5b3fb6cafac44601d53fcdc68e530c4..541f36d89fc4fc03c8f4e04673010efae5d24e1b 100644
+index 394ea9a2a593f799aadee72dde63d54bfbc57886..7316edc2aed0f7bf19007618d69d0dcf7242e341 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -32,7 +32,7 @@ public abstract class ChunkMapDistance {
@@ -15,17 +15,17 @@ index e597d44ac5b3fb6cafac44601d53fcdc68e530c4..541f36d89fc4fc03c8f4e04673010efa
      public final Long2ObjectOpenHashMap<ArraySetSorted<Ticket<?>>> tickets = new Long2ObjectOpenHashMap();
      private final ChunkMapDistance.a e = new ChunkMapDistance.a();
 -    private final ChunkMapDistance.b f = new ChunkMapDistance.b(8);
-+    public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); /* Concrete - no longer used */
-     //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); /* Concrete - no longer used */
-     private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue /* Concrete - use a better queue */
++    public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); // Tuinity - no longer used
+     //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); // Tuinity - no longer used
+     private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue // Tuinity - use a better queue
      private final ChunkTaskQueueSorter i;
 @@ -92,7 +92,7 @@ public abstract class ChunkMapDistance {
      protected abstract PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k);
  
      public boolean a(PlayerChunkMap playerchunkmap) {
 -        this.f.a();
-+        //this.f.a(); /* Concrete - no longer used */
-         //this.g.a(); /* Concrete - no longer used */
++        //this.f.a(); // Tuinity - no longer used
+         //this.g.a(); // Tuinity - no longer used
          int i = Integer.MAX_VALUE - this.e.a(Integer.MAX_VALUE);
          boolean flag = i != 0;
 @@ -230,7 +230,7 @@ public abstract class ChunkMapDistance {
@@ -33,8 +33,8 @@ index e597d44ac5b3fb6cafac44601d53fcdc68e530c4..541f36d89fc4fc03c8f4e04673010efa
              return new ObjectOpenHashSet();
          })).add(entityplayer);
 -        this.f.b(i, 0, true);
-+        //this.f.b(i, 0, true); /* Concrete - no longer used */
-         //this.g.b(i, 0, true); /* Concrete - no longer used */
++        //this.f.b(i, 0, true); // Tuinity - no longer used
+         //this.g.b(i, 0, true); // Tuinity - no longer used
      }
  
 @@ -242,7 +242,7 @@ public abstract class ChunkMapDistance {
@@ -42,41 +42,41 @@ index e597d44ac5b3fb6cafac44601d53fcdc68e530c4..541f36d89fc4fc03c8f4e04673010efa
          if (objectset.isEmpty()) {
              this.c.remove(i);
 -            this.f.b(i, Integer.MAX_VALUE, false);
-+            //this.f.b(i, Integer.MAX_VALUE, false); /* Concrete - no longer used */
-             //this.g.b(i, Integer.MAX_VALUE, false); /* Concrete - no longer used */
++            //this.f.b(i, Integer.MAX_VALUE, false); // Tuinity - no longer used
+             //this.g.b(i, Integer.MAX_VALUE, false); // Tuinity - no longer used
          }
  
 @@ -273,13 +273,17 @@ public abstract class ChunkMapDistance {
-     /* Concrete end */
+     // Tuinity end
  
      public int b() {
 -        this.f.a();
 -        return this.f.a.size();
-+        /* Concrete start - use distance map to implement */
++        // Tuinity start - use distance map to implement
 +        // note: this is the spawn chunk count
 +        return this.chunkMap.playerChunkTickRangeMap.size();
-+        /* Concrete end - use distance map to implement */
++        // Tuinity end - use distance map to implement
      }
  
      public boolean d(long i) {
 -        this.f.a();
 -        return this.f.a.containsKey(i);
-+        /* Concrete start - use distance map to implement */
++        // Tuinity start - use distance map to implement
 +        // note: this is the is spawn chunk method
 +        return this.chunkMap.playerChunkTickRangeMap.getObjectsInRange(i) != null;
-+        /* Concrete end - use distance map to implement */
++        // Tuinity end - use distance map to implement
      }
  
      public String c() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 3f0833b7c630d026e6d6cc8d0a99302b80a7185e..811c6c25a89bb85be07452bb9932f776ef735e66 100644
+index 78faa771e514ac0d720c80e2b3037abad533b2d1..428531f34ff66bd047124ebffd0be611b6d71341 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -632,6 +632,36 @@ public class ChunkProviderServer extends IChunkProvider {
          boolean flag1 = this.world.getGameRules().getBoolean(GameRules.DO_MOB_SPAWNING) && !world.getPlayers().isEmpty(); // CraftBukkit
  
          if (!flag) {
-+            /* Concrete start - optimize isOutisdeRange */
++            // Tuinity start - optimize isOutisdeRange
 +            PlayerChunkMap playerChunkMap = this.playerChunkMap;
 +            for (EntityPlayer player : this.world.players) {
 +                if (!player.affectsSpawning || player.isSpectator()) {
@@ -99,13 +99,13 @@ index 3f0833b7c630d026e6d6cc8d0a99302b80a7185e..811c6c25a89bb85be07452bb9932f776
 +                }
 +
 +                int range = Math.min(event.getSpawnRadius(), 32); // limit to max view distance
-+                int chunkX = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locX());
-+                int chunkZ = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locZ());
++                int chunkX = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locX());
++                int chunkZ = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locZ());
 +
 +                playerChunkMap.playerMobSpawnMap.update(player, chunkX, chunkZ, range);
 +                player.lastEntitySpawnRadiusSquared = (double)((range << 4) * (range << 4)); // used in isOutsideRange
 +            }
-+            /* Concrete end - optimize isOutisdeRange */
++            // Tuinity end - optimize isOutisdeRange
              this.world.getMethodProfiler().enter("pollingChunks");
              int k = this.world.getGameRules().getInt(GameRules.RANDOM_TICK_SPEED);
              BlockPosition blockposition = this.world.getSpawn();
@@ -114,26 +114,26 @@ index 3f0833b7c630d026e6d6cc8d0a99302b80a7185e..811c6c25a89bb85be07452bb9932f776
  
                      // Paper start - timings
 -                    this.world.timings.chunkRangeCheckBig.startTiming();
-+                    //this.world.timings.chunkRangeCheckBig.startTiming(); /* Concrete */
++                    //this.world.timings.chunkRangeCheckBig.startTiming(); // Tuinity
                      // note: this is just a copy of the expression in the if
                      boolean bigRadiusOutsideRange = !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair);
 -                    this.world.timings.chunkRangeCheckBig.stopTiming();
-+                    //this.world.timings.chunkRangeCheckBig.stopTiming(); /* Concrete */
++                    //this.world.timings.chunkRangeCheckBig.stopTiming(); // Tuinity
                      if (bigRadiusOutsideRange) {
                          // Paper end
                          chunk.setInhabitedTime(chunk.getInhabitedTime() + j);
                          // Paper start - timings
 -                        this.world.timings.chunkRangeCheckSmall.startTiming();
-+                        //this.world.timings.chunkRangeCheckSmall.startTiming(); /* Concrete */
++                        //this.world.timings.chunkRangeCheckSmall.startTiming(); // Tuinity
                          // note: this is just a copy of the expression in the if
                          boolean smallRadiusOutsideRange = flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair, true);
 -                        this.world.timings.chunkRangeCheckSmall.stopTiming();
-+                        //this.world.timings.chunkRangeCheckSmall.stopTiming(); /* Concrete */
++                        //this.world.timings.chunkRangeCheckSmall.stopTiming(); // Tuinity
                          if (smallRadiusOutsideRange) { // Spigot
                              // Paper end
                              this.world.getMethodProfiler().enter("spawner");
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index 3b95e9941a4ffe0cbfe4253dc541b6e3af2e3bbc..b4781c3590440b3abfd97bead30c82145e649149 100644
+index ce378f3cddeef02489050f401b34187a4fabe908..47061b831c6b2e089deea0fb25121ae8baf341bf 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
 @@ -108,6 +108,8 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
@@ -141,12 +141,12 @@ index 3b95e9941a4ffe0cbfe4253dc541b6e3af2e3bbc..b4781c3590440b3abfd97bead30c8214
      }
      public boolean needsChunkCenterUpdate;
 +
-+    double lastEntitySpawnRadiusSquared; /* Concrete - optimise isOutsideRange, this field is in blocks */
-     /* Concrete end */
++    double lastEntitySpawnRadiusSquared; // Tuinity - optimise isOutsideRange, this field is in blocks
+     // Tuinity end
  
      public EntityPlayer(MinecraftServer minecraftserver, WorldServer worldserver, GameProfile gameprofile, PlayerInteractManager playerinteractmanager) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 14bfb1cda301b6b18a099c09b40133eca2777a96..a40136ac36448397181cbc42ca46262a71d29bbe 100644
+index b0198f3416adfefd373529173904a5ce0009c97c..23a13f24cefeffb7e978a726286d4ca234fd5e01 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -120,6 +120,16 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -160,8 +160,8 @@ index 14bfb1cda301b6b18a099c09b40133eca2777a96..a40136ac36448397181cbc42ca46262a
 +    // obviously this means a spawn range > 8 cannot be implemented
 +
 +    // these maps are named after spigot's uses
-+    public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerMobSpawnMap; // this map is absent from updateMaps since it's controlled at the start of a tick
-+    public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerChunkTickRangeMap;
++    public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerMobSpawnMap; // this map is absent from updateMaps since it's controlled at the start of a tick
++    public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerChunkTickRangeMap;
 +
      void addPlayerToDistanceMaps(EntityPlayer player) {
          try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapAdd.startTiming()) {
@@ -189,23 +189,23 @@ index 14bfb1cda301b6b18a099c09b40133eca2777a96..a40136ac36448397181cbc42ca46262a
          player.needsChunkCenterUpdate = false;
 +        this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, ChunkMapDistance.MOB_SPAWN_RANGE);
      }
-     /* Concrete end */
+     // Tuinity end
  
 @@ -237,6 +251,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      PlayerChunkMap.this.sendChunk(player, rangeX, rangeZ, tempPacket, true, false); // unloaded, loaded
                      java.util.Arrays.fill(tempPacket, null);
                  });
 +
-+        this.playerChunkTickRangeMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets);
-+        this.playerMobSpawnMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets);
-         /* Concrete end - distance maps */
++        this.playerChunkTickRangeMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets);
++        this.playerMobSpawnMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets);
+         // Tuinity end - distance maps
      }
  
 @@ -271,6 +288,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          return entityPlayer.mobCounts[enumCreatureType.ordinal()];
      }
  
-+    private static double getDistanceSquaredFromChunk(ChunkCoordIntPair chunkPos, Entity entity) { return a(chunkPos, entity); } /* Concrete - OBFHELPER */
++    private static double getDistanceSquaredFromChunk(ChunkCoordIntPair chunkPos, Entity entity) { return a(chunkPos, entity); } // Tuinity - OBFHELPER
      private static double a(ChunkCoordIntPair chunkcoordintpair, Entity entity) {
          double d0 = (double) (chunkcoordintpair.x * 16 + 8);
          double d1 = (double) (chunkcoordintpair.z * 16 + 8);
@@ -217,9 +217,9 @@ index 14bfb1cda301b6b18a099c09b40133eca2777a96..a40136ac36448397181cbc42ca46262a
 -        int chunkRange = world.spigotConfig.mobSpawnRange;
 -        chunkRange = (chunkRange > world.spigotConfig.viewDistance) ? (byte) world.spigotConfig.viewDistance : chunkRange;
 -        chunkRange = (chunkRange > 8) ? 8 : chunkRange;
-+    /* Concrete start */
++    // Tuinity start
 +    final boolean isOutsideOfRange(ChunkCoordIntPair chunkcoordintpair, boolean reducedRange) {
-+        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange = (reducedRange ? this.playerMobSpawnMap : this.playerChunkTickRangeMap).getObjectsInRange(chunkcoordintpair);
++        ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange = (reducedRange ? this.playerMobSpawnMap : this.playerChunkTickRangeMap).getObjectsInRange(chunkcoordintpair);
  
 -        final int finalChunkRange = chunkRange; // Paper for lambda below
 -        //double blockRange = (reducedRange) ? Math.pow(chunkRange << 4, 2) : 16384.0D; // Paper - use from event
@@ -275,7 +275,7 @@ index 14bfb1cda301b6b18a099c09b40133eca2777a96..a40136ac36448397181cbc42ca46262a
 +        // no players in range
 +        return true;
      }
-+    /* Concrete end */
++    // Tuinity end
  
-     private boolean cannotLoadChunks(EntityPlayer entityplayer) { return this.b(entityplayer); } /* Concrete - OBFHELPER */
+     private boolean cannotLoadChunks(EntityPlayer entityplayer) { return this.b(entityplayer); } // Tuinity - OBFHELPER
      private boolean b(EntityPlayer entityplayer) {

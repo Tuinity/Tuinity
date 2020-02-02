@@ -5,13 +5,13 @@ Subject: [PATCH] Use distance map to optimise entity tracker
 
 Add a new config option to enable tracking entities by a chunk range.
 
-diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-index 8f5d4fd24a2e4c716204a31455506a6e464b2dd6..242652e93cd7b24f8fb6a76293144ecbd4177633 100644
---- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-+++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-@@ -177,6 +177,26 @@ public final class ConcreteConfig {
+diff --git a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+index 4c044e8c5dbfcf0976d04f0b5d6f28820f46f58f..6bc4c213dc9fc37e15f7506790ff5eb3e5294109 100644
+--- a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
++++ b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+@@ -183,6 +183,26 @@ public final class TuinityConfig {
              final int threads = this.getInt("tick-threads", -1);
-             this.threads = threads == -1 ? ConcreteConfig.tickThreads : threads;
+             this.threads = threads == -1 ? TuinityConfig.tickThreads : threads;
          }
 +
 +        public boolean useOptimizedTracker;
@@ -38,14 +38,14 @@ index 8f5d4fd24a2e4c716204a31455506a6e464b2dd6..242652e93cd7b24f8fb6a76293144ecb
  }
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index f8461960e0ce2c16deb11a2f3fbe013f046fa5a4..c6ee983b53f1d951bb49e0b162cd9d797321fe19 100644
+index f8461960e0ce2c16deb11a2f3fbe013f046fa5a4..b0733584c2e300ee36da8f021ebc96434491aabd 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -208,6 +208,46 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
      // CraftBukkit end
  
-+    /* Concrete start */
++    // Tuinity start
 +    // We queue changes to tracker here because when adding to a chunk we do not know if the entity is in a trackable state
 +    public final it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet trackQueue = new it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet(8);
 +    public final it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet unTrackQueue = new it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet(8);
@@ -83,13 +83,13 @@ index f8461960e0ce2c16deb11a2f3fbe013f046fa5a4..c6ee983b53f1d951bb49e0b162cd9d79
 +    }
 +
 +
-+    /* Concrete end  */
++    // Tuinity end
 +
      public Entity(EntityTypes<?> entitytypes, World world) {
          this.id = Entity.entityCount.incrementAndGet();
          this.passengers = Lists.newArrayList();
 diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
-index cfc5690bc7f7fbc5aca3d0d6a42d462a0cae5ec7..12d7a088328b078965256b00205db0e2f33f3d88 100644
+index 5d365739cc9f59d1fe6e14643d9e3b4e8d25f566..0796572d592fcead148e544f82cd9a60716244a4 100644
 --- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
 +++ b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
 @@ -18,7 +18,7 @@ import org.bukkit.event.player.PlayerVelocityEvent;
@@ -97,7 +97,7 @@ index cfc5690bc7f7fbc5aca3d0d6a42d462a0cae5ec7..12d7a088328b078965256b00205db0e2
  
      private static final Logger LOGGER = LogManager.getLogger();
 -    private final WorldServer b;
-+    private final WorldServer b; private WorldServer getWorld() { return this.b; } /* Concrete - OBFHELPER */
++    private final WorldServer b; private WorldServer getWorld() { return this.b; } // Tuinity - OBFHELPER
      private final Entity tracker;
      private final int d;
      private final boolean e;
@@ -105,34 +105,34 @@ index cfc5690bc7f7fbc5aca3d0d6a42d462a0cae5ec7..12d7a088328b078965256b00205db0e2
          this.r = entity.onGround;
      }
  
-+    public final void tick() { this.a(); } /* Concrete - OBFHELPER */
++    public final void tick() { this.a(); } // Tuinity - OBFHELPER
      public void a() {
-         ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Tracker update"); /* Concrete */
+         ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Tracker update"); // Tuinity
          List<Entity> list = this.tracker.getPassengers();
 @@ -253,11 +254,13 @@ public class EntityTrackerEntry {
  
      }
  
-+    public final void onUntrack(EntityPlayer player) { this.a(player); } /* Concrete - OBFHELPER */
++    public final void onUntrack(EntityPlayer player) { this.a(player); } // Tuinity - OBFHELPER
      public void a(EntityPlayer entityplayer) {
          this.tracker.c(entityplayer);
          entityplayer.c(this.tracker);
      }
  
-+    public final void onTrack(EntityPlayer player) { this.b(player); } /* Concrete - OBFHELPER */
++    public final void onTrack(EntityPlayer player) { this.b(player); } // Tuinity - OBFHELPER
      public void b(EntityPlayer entityplayer) {
          PlayerConnection playerconnection = entityplayer.playerConnection;
  
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d326a9dd0 100644
+index 23a13f24cefeffb7e978a726286d4ca234fd5e01..a4d09a7c7650dfd59f84e5ff003d4da13b21756c 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -130,6 +130,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-     public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerMobSpawnMap; // this map is absent from updateMaps since it's controlled at the start of a tick
-     public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerChunkTickRangeMap;
+     public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerMobSpawnMap; // this map is absent from updateMaps since it's controlled at the start of a tick
+     public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerChunkTickRangeMap;
  
-+    public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerEntityTrackerTrackMap;
-+    public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerEntityTrackerUntrackMap;
++    public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerEntityTrackerTrackMap;
++    public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerEntityTrackerUntrackMap;
 +    public final int entityTrackerTrackRange;
 +    public final int entityTrackerUntrackRange;
 +
@@ -172,14 +172,14 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
 +            this.playerEntityTrackerUntrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerUntrackRange, effectiveViewDistance));
 +        }
      }
-     /* Concrete end */
+     // Tuinity end
  
 @@ -254,6 +273,70 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
-         this.playerChunkTickRangeMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets);
-         this.playerMobSpawnMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets);
+         this.playerChunkTickRangeMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets);
+         this.playerMobSpawnMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets);
 +
-+        if (!this.world.concreteConfig.useOptimizedTracker) {
++        if (!this.world.tuinityConfig.useOptimizedTracker) {
 +            this.playerEntityTrackerTrackMap = null;
 +            this.playerEntityTrackerUntrackMap = null;
 +            this.entityTrackerTrackRange = -1;
@@ -200,17 +200,17 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
 +            }
 +            maxEntityTrackRange = (maxEntityTrackRange >> 4) + ((maxEntityTrackRange & 15) != 0 ? 2 : 1);
 +
-+            if (this.world.concreteConfig.optimizedTrackerTrackRange == -1) {
++            if (this.world.tuinityConfig.optimizedTrackerTrackRange == -1) {
 +                this.entityTrackerTrackRange = Math.max(1, maxEntityTrackRange - 2);
 +                this.entityTrackerUntrackRange = Math.max(2, maxEntityTrackRange - 1);
 +            } else {
-+                this.entityTrackerTrackRange = this.world.concreteConfig.optimizedTrackerTrackRange;
-+                this.entityTrackerUntrackRange = this.world.concreteConfig.optimizedTrackerUntrackRange;
++                this.entityTrackerTrackRange = this.world.tuinityConfig.optimizedTrackerTrackRange;
++                this.entityTrackerUntrackRange = this.world.tuinityConfig.optimizedTrackerUntrackRange;
 +            }
 +
-+            this.playerEntityTrackerTrackMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets,
++            this.playerEntityTrackerTrackMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets,
 +                    (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
-+                     ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                     ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
 +                        Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfCachedImmediately(rangeX, rangeZ);
 +                        if (chunk == null) {
 +                            return;
@@ -225,10 +225,10 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
 +                        });
 +                    },
 +                    null);
-+            this.playerEntityTrackerUntrackMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets,
++            this.playerEntityTrackerUntrackMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets,
 +                    null,
 +                    (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
-+                     ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                     ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
 +                        Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfCachedImmediately(rangeX, rangeZ);
 +                        if (chunk == null) {
 +                            return;
@@ -242,14 +242,14 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
 +                        });
 +                    });
 +        }
-         /* Concrete end - distance maps */
+         // Tuinity end - distance maps
      }
  
 @@ -1445,6 +1528,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public void movePlayer(EntityPlayer entityplayer) {
-+        if (this.playerEntityTrackerTrackMap == null) { /* Concrete - optimized tracker */
++        if (this.playerEntityTrackerTrackMap == null) { // Tuinity - optimized tracker
          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
          while (objectiterator.hasNext()) {
@@ -257,7 +257,7 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
                  playerchunkmap_entitytracker.updatePlayer(entityplayer);
              }
          }
-+        } /* Concrete - optimized tracker */
++        } // Tuinity - optimized tracker
  
          int i = MathHelper.floor(entityplayer.locX()) >> 4;
          int j = MathHelper.floor(entityplayer.locZ()) >> 4;
@@ -265,13 +265,13 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
  
                      entity.tracker = playerchunkmap_entitytracker; // Paper - Fast access to tracker
                      this.trackedEntities.put(entity.getId(), playerchunkmap_entitytracker);
-+                    if (this.playerEntityTrackerTrackMap == null) { /* Concrete - implement optimized tracker */
++                    if (this.playerEntityTrackerTrackMap == null) { // Tuinity - implement optimized tracker
                      playerchunkmap_entitytracker.track(this.world.getPlayers());
-+                        /* Concrete start - implement optimized tracker */
++                        // Tuinity start - implement optimized tracker
 +                    } else {
-+                        int chunkX = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locX());
-+                        int chunkZ = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locZ());
-+                        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersTracking = this.playerEntityTrackerTrackMap.getObjectsInRange(chunkX, chunkZ);
++                        int chunkX = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(entity.locX());
++                        int chunkZ = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(entity.locZ());
++                        ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersTracking = this.playerEntityTrackerTrackMap.getObjectsInRange(chunkX, chunkZ);
 +                        if (playersTracking != null) {
 +                            Object[] backingSet = playersTracking.getBackingSet();
 +                            for (int index = 0, len = backingSet.length; index < len; ++index) {
@@ -284,12 +284,12 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
 +                            }
 +                        }
 +                    }
-+                    /* Concrete end - implement optimized tracker */
++                    // Tuinity end - implement optimized tracker
                      if (entity instanceof EntityPlayer) {
                          EntityPlayer entityplayer = (EntityPlayer) entity;
  
                          this.a(entityplayer, true);
-+                        if (this.playerEntityTrackerTrackMap == null) { /* Concrete - implement optimized tracker */
++                        if (this.playerEntityTrackerTrackMap == null) { // Tuinity - implement optimized tracker
                          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
                          while (objectiterator.hasNext()) {
@@ -297,7 +297,7 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
                                  playerchunkmap_entitytracker1.updatePlayer(entityplayer);
                              }
                          }
-+                        } /* Concrete - implement optimized tracker */
++                        } // Tuinity - implement optimized tracker
                      }
  
                  }
@@ -305,7 +305,7 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
          entity.tracker = null; // Paper - We're no longer tracked
      }
  
-+    /* Concrete start - optimized tracker */
++    // Tuinity start - optimized tracker
 +    private void processTrackQueue() {
 +        // handle queued changes
 +
@@ -325,10 +325,10 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
 +                }
 +
 +                // double-check to make sure we're in range...
-+                int chunkX = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locX());
-+                int chunkZ = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locZ());
++                int chunkX = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locX());
++                int chunkZ = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locZ());
 +
-+                ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> inRange =
++                ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> inRange =
 +                        this.playerEntityTrackerUntrackMap.getObjectsInRange(chunkX, chunkZ);
 +
 +                if (inRange != null && inRange.contains(player)) {
@@ -366,15 +366,15 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
 +        }
 +        this.world.timings.tracker2.stopTiming();
 +    }
-+    /* Concrete end - optimized tracker */
++    // Tuinity end - optimized tracker
 +
      protected void g() {
-+        /* Concrete start - optimized tracker */
++        // Tuinity start - optimized tracker
 +        if (this.playerEntityTrackerTrackMap != null) {
 +            this.processTrackQueue();
 +            return;
 +        }
-+        /* Concrete end - optimized tracker */
++        // Tuinity end - optimized tracker
          List<EntityPlayer> list = Lists.newArrayList();
          List<EntityPlayer> list1 = this.world.getPlayers();
  
@@ -382,7 +382,7 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
          PacketDebug.a(this.world, chunk.getPos());
          List<Entity> list = Lists.newArrayList();
          List<Entity> list1 = Lists.newArrayList();
-+        if (this.playerEntityTrackerTrackMap == null) { /* Concrete - implement optimized tracker */
++        if (this.playerEntityTrackerTrackMap == null) { // Tuinity - implement optimized tracker
          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
          while (objectiterator.hasNext()) {
@@ -390,13 +390,13 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
                  }
              }
          }
-+            /* Concrete  start- implement optimized tracker */
++            // Tuinity  start- implement optimized tracker
 +        } else {
-+            /* Concrete - implement optimized tracker */
-+            /* Concrete start - implement optimized tracker */
++            // Tuinity - implement optimized tracker
++            // Tuinity start - implement optimized tracker
 +            // It's important to note that this is ONLY called when the chunk is at ticking level.
 +            // At this point, the entities should be added in the chunk.
-+            ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange
++            ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange
 +                    = this.playerEntityTrackerTrackMap.getObjectsInRange(chunk.getPos());
 +            // only send entities when they're in tracking range...
 +            if (playersInRange != null && playersInRange.contains(entityplayer)) {
@@ -415,7 +415,7 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
 +                });
 +            }
 +        }
-+        /* Concrete end - implement optimized tracker */
++        // Tuinity end - implement optimized tracker
  
          Iterator iterator;
          Entity entity1;
@@ -423,12 +423,12 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
              return i;
          }
  
-+        /* Concrete start - optimized tracker */
++        // Tuinity start - optimized tracker
 +        public final void updateTrackingPlayer(EntityPlayer entityplayer) {
 +            if (entityplayer == this.tracker) {
 +                return;
 +            }
-+            ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Tracker update"); /* Concrete */
++            ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Tracker update"); // Tuinity
 +            // the same as updatePlayer except without a distance check
 +            // we also add a world check since we queue tracking changes
 +            // TODO check on update
@@ -454,25 +454,25 @@ index a40136ac36448397181cbc42ca46262a71d29bbe..bb9b521145210d70449d4ca58899ee6d
 +        }
 +
 +        public final void removeTrackingPlayer(EntityPlayer player) {
-+            ca.spottedleaf.concrete.util.TickThread.softEnsureTickThread("Tracker update"); /* Concrete */
++            ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Tracker update"); // Tuinity
 +            if (this.trackedPlayers.remove(player)) {
 +                this.trackerEntry.onUntrack(player);
 +            }
 +        }
-+        /* Concrete end - optimized tracker */
++        // Tuinity end - optimized tracker
 +
          public void track(List<EntityPlayer> list) {
              Iterator iterator = list.iterator();
  
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 60d05964995976b3eed62befc7fb8612d79315ee..06b9db541b6b79bddb36c26e70033da86ef5f53f 100644
+index f9593805e91158566b1df5388b00f8ec09c4a7a3..ba13206c0388e3cc61aa79761045265c89cf6581 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -82,6 +82,8 @@ public class WorldServer extends World {
          return new Throwable(entity + " Added to world at " + new java.util.Date());
      }
  
-+    final ca.spottedleaf.concrete.util.EntityList trackingUpdateQueue = new ca.spottedleaf.concrete.util.EntityList(); /* Concrete - optimise tracker */
++    final ca.spottedleaf.tuinity.util.EntityList trackingUpdateQueue = new ca.spottedleaf.tuinity.util.EntityList(); // Tuinity - optimise tracker
 +
      // Paper start - optimise getPlayerByUUID
      @Nullable
@@ -481,10 +481,10 @@ index 60d05964995976b3eed62befc7fb8612d79315ee..06b9db541b6b79bddb36c26e70033da8
          int k = MathHelper.floor(entity.locZ() / 16.0D);
  
          if (!entity.inChunk || entity.chunkX != i || entity.chunkY != j || entity.chunkZ != k) {
-+            /* Concrete start - optimized tracker */
++            // Tuinity start - optimized tracker
 +            int prevChunkX = entity.chunkX;
 +            int prevChunkZ = entity.chunkZ;
-+            /* Concrete end - optimized tracker */
++            // Tuinity end - optimized tracker
              if (entity.inChunk && this.isChunkLoaded(entity.chunkX, entity.chunkZ)) {
                  this.getChunkAt(entity.chunkX, entity.chunkZ).a(entity, entity.chunkY);
              }
@@ -492,16 +492,16 @@ index 60d05964995976b3eed62befc7fb8612d79315ee..06b9db541b6b79bddb36c26e70033da8
              } else {
                  this.getChunkAt(i, k).a(entity);
              }
-+            /* Concrete start - optimized tracker */
++            // Tuinity start - optimized tracker
 +            int newChunkX = entity.chunkX;
 +            int newChunkZ = entity.chunkZ;
 +            if (entity.valid && (prevChunkX != newChunkX || prevChunkZ != newChunkZ)) {
 +                PlayerChunkMap chunkMap = this.getChunkProvider().playerChunkMap;
 +                if (chunkMap.playerEntityTrackerTrackMap != null) {
 +                    // handle tracking
-+                    ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> oldRange =
++                    ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> oldRange =
 +                            chunkMap.playerEntityTrackerTrackMap.getObjectsInRange(prevChunkX, prevChunkZ);
-+                    ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newRange =
++                    ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newRange =
 +                            chunkMap.playerEntityTrackerTrackMap.getObjectsInRange(newChunkX, newChunkZ);
 +
 +                    if (oldRange != newRange) { // optimization: equal pooled sets are identity equal
@@ -566,25 +566,25 @@ index 60d05964995976b3eed62befc7fb8612d79315ee..06b9db541b6b79bddb36c26e70033da8
 +                    }
 +                }
 +            }
-+            /* Concrete end - optimized tracker */
++            // Tuinity end - optimized tracker
          }
  
          this.getMethodProfiler().exit();
 diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
-index 994ab1916f41f57a72d79d882f5c4ef8e61ad2be..4c5c20845f8f6be92cd2ac086f97313dbbedd39d 100644
+index 5976e9c65e9589df4f4b5642aa9e84fc8362579a..c50bfc0d8e1a971182e7e6d0e98d4453ef2f4a13 100644
 --- a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
 @@ -1275,7 +1275,13 @@ public class CraftPlayer extends CraftHumanEntity implements Player {
  
          PlayerChunkMap.EntityTracker entry = tracker.trackedEntities.get(other.getId());
          if (entry != null && !entry.trackedPlayers.contains(getHandle())) {
-+            if (getHandle().getWorldServer().getChunkProvider().playerChunkMap.playerEntityTrackerTrackMap == null) { /* Concrete - optimized tracker */
++            if (getHandle().getWorldServer().getChunkProvider().playerChunkMap.playerEntityTrackerTrackMap == null) { // Tuinity - optimized tracker
              entry.updatePlayer(getHandle());
-+                /* Concrete start - optimized tracker */
++                // Tuinity start - optimized tracker
 +            } else {
 +                other.addToTrackQueue(other);
 +            }
-+            /* Concrete end - optimized tracker */
++            // Tuinity end - optimized tracker
          }
      }
      // Paper start

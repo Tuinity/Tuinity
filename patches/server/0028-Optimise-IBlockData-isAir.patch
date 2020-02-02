@@ -6,7 +6,7 @@ Subject: [PATCH] Optimise IBlockData#isAir
 Assist in inlining the function by caching its result
 
 diff --git a/src/main/java/net/minecraft/server/Block.java b/src/main/java/net/minecraft/server/Block.java
-index e29ec958b3519d92cda215a50e97e6852d71c684..55a23050ade56defd91ace25cd347993df8013b4 100644
+index e29ec958b3519d92cda215a50e97e6852d71c684..44e3e1bb4921e6cf4b40fbc5279d05964a8a520c 100644
 --- a/src/main/java/net/minecraft/server/Block.java
 +++ b/src/main/java/net/minecraft/server/Block.java
 @@ -109,8 +109,8 @@ public class Block implements IMaterial {
@@ -15,13 +15,13 @@ index e29ec958b3519d92cda215a50e97e6852d71c684..55a23050ade56defd91ace25cd347993
  
 -    @Deprecated
 -    public boolean d(IBlockData iblockdata) {
-+    @Deprecated public final boolean isAir(IBlockData iblockdata) { return this.d(iblockdata); } /* Concrete - OBFHELPER */
-+    @Deprecated public boolean d(IBlockData iblockdata) { /* Concrete - OBFHELPER */
++    @Deprecated public final boolean isAir(IBlockData iblockdata) { return this.d(iblockdata); } // Tuinity - OBFHELPER
++    @Deprecated public boolean d(IBlockData iblockdata) { // Tuinity - OBFHELPER
          return false;
      }
  
 diff --git a/src/main/java/net/minecraft/server/IBlockData.java b/src/main/java/net/minecraft/server/IBlockData.java
-index 20d682d739b2a8a0eea8434334dd4d8c68318e84..3ece5060d402cb678eefc7c01a614f9485afba28 100644
+index 05f5cd4a42250a4b988b8b4ece3d86efe3b257a7..60cc055b5b749a2d29470d831561221e191db964 100644
 --- a/src/main/java/net/minecraft/server/IBlockData.java
 +++ b/src/main/java/net/minecraft/server/IBlockData.java
 @@ -22,11 +22,13 @@ public class IBlockData extends BlockDataAbstract<Block, IBlockData> implements
@@ -34,8 +34,8 @@ index 20d682d739b2a8a0eea8434334dd4d8c68318e84..3ece5060d402cb678eefc7c01a614f94
          super(block, immutablemap);
          this.d = block.a(this);
          this.e = block.o(this);
-+        this.isAir = this.getBlock().isAir(this); /* Concrete */
-         this.isTicking = this.getBlock().isTicking(this); /* Concrete */
++        this.isAir = this.getBlock().isAir(this); // Tuinity
+         this.isTicking = this.getBlock().isTicking(this); // Tuinity
      }
  
 @@ -83,7 +85,7 @@ public class IBlockData extends BlockDataAbstract<Block, IBlockData> implements
@@ -43,7 +43,7 @@ index 20d682d739b2a8a0eea8434334dd4d8c68318e84..3ece5060d402cb678eefc7c01a614f94
  
      public boolean isAir() {
 -        return this.getBlock().d(this);
-+        return this.isAir; /* Concrete - optimise this function */
++        return this.isAir; // Tuinity - optimise this function
      }
  
      public MaterialMapColor c(IBlockAccess iblockaccess, BlockPosition blockposition) {

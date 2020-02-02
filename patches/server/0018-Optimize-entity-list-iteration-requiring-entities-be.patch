@@ -7,14 +7,14 @@ Subject: [PATCH] Optimize entity list iteration requiring entities be in
 We retain a list of loaded entities specifically for this usage
 
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 1d49034b803a051440766a4b62a2616cb31a1ed2..5b027da1cf5189197fcecd488c3ae781b2a58abc 100644
+index d7fe18600c7757cbce0d38318f1dbb59c970ef63..0b2a8a5258cab2e57f054ca4c5ba98314885488a 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -144,20 +144,11 @@ public class Chunk implements IChunkAccess {
      // CraftBukkit end
  
-     /* Concrete start */
-+    public final ca.spottedleaf.concrete.util.EntityList entityList = new ca.spottedleaf.concrete.util.EntityList();
+     // Tuinity start
++    public final ca.spottedleaf.tuinity.util.EntityList entityList = new ca.spottedleaf.tuinity.util.EntityList();
      public void forEachEntity(final Consumer<Entity> consumer) {
 -        final List<Entity>[] slices = this.entitySlices;
 -        for (int i = 0, slicesLen = slices.length; i < slicesLen; ++i) {
@@ -39,12 +39,12 @@ index 1d49034b803a051440766a4b62a2616cb31a1ed2..5b027da1cf5189197fcecd488c3ae781
          entity.chunkY = k;
          entity.chunkZ = this.loc.z;
          this.entitySlices[k].add(entity);
-+        /* Concrete start - per chunk entity list */
++        // Tuinity start - per chunk entity list
 +        this.entityList.add(entity);
 +        if (this.loadedTicketLevel) {
 +            ((WorldServer)this.world).loadedEntities.add(entity);
 +        }
-+        /* Concrete end - per chunk entity list */
++        // Tuinity end - per chunk entity list
          // Paper start
          if (entity instanceof EntityItem) {
              itemCounts[k]++;
@@ -52,7 +52,7 @@ index 1d49034b803a051440766a4b62a2616cb31a1ed2..5b027da1cf5189197fcecd488c3ae781
          if (!this.entitySlices[i].remove(entity)) {
              return;
          }
-+        this.entityList.remove(entity); /* Concrete - per chunk entity list */
++        this.entityList.remove(entity); // Tuinity - per chunk entity list
          if (entity instanceof EntityItem) {
              itemCounts[i]--;
          } else if (entity instanceof IInventory) {
@@ -61,7 +61,7 @@ index 1d49034b803a051440766a4b62a2616cb31a1ed2..5b027da1cf5189197fcecd488c3ae781
          this.loadedTicketLevel = true;
          chunkProvider.addLoadedChunk(this);
 +        ((WorldServer)this.world).onChunkLoad(this);
-         /* Concrete end - neighbour cache */
+         // Tuinity end - neighbour cache
          org.bukkit.Server server = this.world.getServer();
          if (server != null) {
 @@ -767,6 +766,7 @@ public class Chunk implements IChunkAccess {
@@ -70,10 +70,10 @@ index 1d49034b803a051440766a4b62a2616cb31a1ed2..5b027da1cf5189197fcecd488c3ae781
          chunkProvider.removeLoadedChunk(this);
 +        ((WorldServer)this.world).onChunkUnload(this);
          this.resetNeighbours();
-         /* Concrete end - neighbour cache */
+         // Tuinity end - neighbour cache
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 06b9db541b6b79bddb36c26e70033da86ef5f53f..5f51d3065f8c73e73b8095c03011cf3bfe8bc69f 100644
+index ba13206c0388e3cc61aa79761045265c89cf6581..869f52289782cac2a6ea53dc3f918d7a318ac7b0 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -172,6 +172,26 @@ public class WorldServer extends World {
@@ -81,10 +81,10 @@ index 06b9db541b6b79bddb36c26e70033da86ef5f53f..5f51d3065f8c73e73b8095c03011cf3b
      // Paper end
  
 +
-+    /* Concrete start */
-+    public final ca.spottedleaf.concrete.util.EntityList loadedEntities = new ca.spottedleaf.concrete.util.EntityList();
++    // Tuinity start
++    public final ca.spottedleaf.tuinity.util.EntityList loadedEntities = new ca.spottedleaf.tuinity.util.EntityList();
 +    void onChunkLoad(final Chunk chunk) {
-+        final ca.spottedleaf.concrete.util.EntityList list = chunk.entityList;
++        final ca.spottedleaf.tuinity.util.EntityList list = chunk.entityList;
 +        final Entity[] entities = list.getRawData();
 +        for (int i = 0, size = list.size(); i < size; ++i) {
 +            this.loadedEntities.add(entities[i]);
@@ -92,13 +92,13 @@ index 06b9db541b6b79bddb36c26e70033da86ef5f53f..5f51d3065f8c73e73b8095c03011cf3b
 +    }
 +
 +    void onChunkUnload(final Chunk chunk) {
-+        final ca.spottedleaf.concrete.util.EntityList list = chunk.entityList;
++        final ca.spottedleaf.tuinity.util.EntityList list = chunk.entityList;
 +        final Entity[] entities = list.getRawData();
 +        for (int i = 0, size = list.size(); i < size; ++i) {
 +            this.loadedEntities.remove(entities[i]);
 +        }
 +    }
-+    /* Concrete end */
++    // Tuinity end
 +
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
@@ -107,8 +107,8 @@ index 06b9db541b6b79bddb36c26e70033da86ef5f53f..5f51d3065f8c73e73b8095c03011cf3b
  
              gameprofilerfiller.exitEnter("regular");
              this.tickingEntities = true;
--            ObjectIterator objectiterator = this.entitiesById.int2ObjectEntrySet().fastIterator(); /* Concrete - use fast iterator to reduce entry creation */
-+            Iterator<Entity> objectiterator = this.loadedEntities.iterator(); /* Concrete - use fast iterator to reduce entry creation */ /* Concrete - use loaded entity list */
+-            ObjectIterator objectiterator = this.entitiesById.int2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to reduce entry creation
++            Iterator<Entity> objectiterator = this.loadedEntities.iterator(); // Tuinity - use fast iterator to reduce entry creation // Tuinity - use loaded entity list
  
              org.spigotmc.ActivationRange.activateEntities(this); // Spigot
              timings.entityTick.startTiming(); // Spigot
@@ -116,7 +116,7 @@ index 06b9db541b6b79bddb36c26e70033da86ef5f53f..5f51d3065f8c73e73b8095c03011cf3b
              while (objectiterator.hasNext()) {
 -                Entry<Entity> entry = (Entry) objectiterator.next();
 -                Entity entity1 = (Entity) entry.getValue();
-+                Entity entity1 = (Entity) objectiterator.next(); /* Concrete - use loaded entity list */
++                Entity entity1 = (Entity) objectiterator.next(); // Tuinity - use loaded entity list
                  Entity entity2 = entity1.getVehicle();
  
                  /* CraftBukkit start - We prevent spawning in general, so this butchering is not needed
@@ -125,7 +125,7 @@ index 06b9db541b6b79bddb36c26e70033da86ef5f53f..5f51d3065f8c73e73b8095c03011cf3b
                  if (entity1.dead) {
                      this.removeEntityFromChunk(entity1);
 -                    objectiterator.remove();
-+                    objectiterator.remove(); this.entitiesById.remove(entity1.getId()); /* Concrete - use loaded entity list */
++                    objectiterator.remove(); this.entitiesById.remove(entity1.getId()); // Tuinity - use loaded entity list
                      this.unregisterEntity(entity1);
                  }
  
@@ -133,7 +133,7 @@ index 06b9db541b6b79bddb36c26e70033da86ef5f53f..5f51d3065f8c73e73b8095c03011cf3b
          if (entity instanceof EntityInsentient) {
              this.navigators.remove(((EntityInsentient) entity).getNavigation());
          }
-+        this.loadedEntities.remove(entity); /* Concrete - loaded entity list */
++        this.loadedEntities.remove(entity); // Tuinity - loaded entity list
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
          entity.valid = false; // CraftBukkit
      }
@@ -141,16 +141,16 @@ index 06b9db541b6b79bddb36c26e70033da86ef5f53f..5f51d3065f8c73e73b8095c03011cf3b
              }
              // Paper end
              entity.shouldBeRemoved = false; // Paper - shouldn't be removed after being re-added
-+            /* Concrete start - loaded entity list */
-+            if (this.isChunkLoaded(ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locX()), ca.spottedleaf.concrete.util.Util.getChunkCoordinate(entity.locZ()))) {
++            // Tuinity start - loaded entity list
++            if (this.isChunkLoaded(ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(entity.locX()), ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(entity.locZ()))) {
 +                this.loadedEntities.add(entity);
 +            }
-+            /* Concrete end - loaded entity list */
++            // Tuinity end - loaded entity list
              new com.destroystokyo.paper.event.entity.EntityAddToWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
          }
  
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 0c2f7bd95590298635ccb7885be681645ddbfbb7..038dddf6bbe8abf29bd35e93732b4599744ab502 100644
+index 89674cb0dcee8bdb96b3d4945153a063f153732a..92e46cee22c63c9dd9c220c27d50a7994b33472b 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 @@ -1080,16 +1080,16 @@ public class CraftWorld implements World {
@@ -158,10 +158,10 @@ index 0c2f7bd95590298635ccb7885be681645ddbfbb7..038dddf6bbe8abf29bd35e93732b4599
      @Override
      public List<Entity> getEntities() {
 -        List<Entity> list = new ArrayList<Entity>();
-+        List<Entity> list = new ArrayList<Entity>(world.loadedEntities.size()); /* Concrete - optimize this call */
++        List<Entity> list = new ArrayList<Entity>(world.loadedEntities.size()); // Tuinity - optimize this call
  
 -        for (Object o : world.entitiesById.values()) {
-+        for (Object o : world.loadedEntities) { /* Concrete - optimize this call */
++        for (Object o : world.loadedEntities) { // Tuinity - optimize this call
              if (o instanceof net.minecraft.server.Entity) {
                  net.minecraft.server.Entity mcEnt = (net.minecraft.server.Entity) o;
                  if (mcEnt.shouldBeRemoved) continue; // Paper
@@ -169,7 +169,7 @@ index 0c2f7bd95590298635ccb7885be681645ddbfbb7..038dddf6bbe8abf29bd35e93732b4599
  
                  // Assuming that bukkitEntity isn't null
 -                if (bukkitEntity != null && bukkitEntity.isValid()) {
-+                if (bukkitEntity != null && CraftEntity.canBeSeenByPlugins(bukkitEntity)) { /* Concrete - optimize this call */
++                if (bukkitEntity != null && CraftEntity.canBeSeenByPlugins(bukkitEntity)) { // Tuinity - optimize this call
                      list.add(bukkitEntity);
                  }
              }
@@ -178,10 +178,10 @@ index 0c2f7bd95590298635ccb7885be681645ddbfbb7..038dddf6bbe8abf29bd35e93732b4599
      @Override
      public List<LivingEntity> getLivingEntities() {
 -        List<LivingEntity> list = new ArrayList<LivingEntity>();
-+        List<LivingEntity> list = new ArrayList<LivingEntity>(world.loadedEntities.size()); /* Concrete - optimize this call */
++        List<LivingEntity> list = new ArrayList<LivingEntity>(world.loadedEntities.size()); // Tuinity - optimize this call
  
 -        for (Object o : world.entitiesById.values()) {
-+        for (Object o : world.loadedEntities) { /* Concrete - optimize this call */
++        for (Object o : world.loadedEntities) { // Tuinity - optimize this call
              if (o instanceof net.minecraft.server.Entity) {
                  net.minecraft.server.Entity mcEnt = (net.minecraft.server.Entity) o;
                  if (mcEnt.shouldBeRemoved) continue; // Paper
@@ -189,7 +189,7 @@ index 0c2f7bd95590298635ccb7885be681645ddbfbb7..038dddf6bbe8abf29bd35e93732b4599
  
                  // Assuming that bukkitEntity isn't null
 -                if (bukkitEntity != null && bukkitEntity instanceof LivingEntity && bukkitEntity.isValid()) {
-+                if (bukkitEntity != null && bukkitEntity instanceof LivingEntity && CraftEntity.canBeSeenByPlugins(bukkitEntity)) { /* Concrete - optimize this call */
++                if (bukkitEntity != null && bukkitEntity instanceof LivingEntity && CraftEntity.canBeSeenByPlugins(bukkitEntity)) { // Tuinity - optimize this call
                      list.add((LivingEntity) bukkitEntity);
                  }
              }
@@ -198,7 +198,7 @@ index 0c2f7bd95590298635ccb7885be681645ddbfbb7..038dddf6bbe8abf29bd35e93732b4599
          Collection<T> list = new ArrayList<T>();
  
 -        for (Object entity: world.entitiesById.values()) {
-+        for (Object entity: world.loadedEntities) { /* Concrete - optimize this call */
++        for (Object entity: world.loadedEntities) { // Tuinity - optimize this call
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
@@ -207,7 +207,7 @@ index 0c2f7bd95590298635ccb7885be681645ddbfbb7..038dddf6bbe8abf29bd35e93732b4599
                  Class<?> bukkitClass = bukkitEntity.getClass();
  
 -                if (clazz.isAssignableFrom(bukkitClass) && bukkitEntity.isValid()) {
-+                if (clazz.isAssignableFrom(bukkitClass) && CraftEntity.canBeSeenByPlugins(bukkitEntity)) { /* Concrete - optimize this call */
++                if (clazz.isAssignableFrom(bukkitClass) && CraftEntity.canBeSeenByPlugins(bukkitEntity)) { // Tuinity - optimize this call
                      list.add((T) bukkitEntity);
                  }
              }
@@ -216,7 +216,7 @@ index 0c2f7bd95590298635ccb7885be681645ddbfbb7..038dddf6bbe8abf29bd35e93732b4599
          Collection<Entity> list = new ArrayList<Entity>();
  
 -        for (Object entity: world.entitiesById.values()) {
-+        for (Object entity: world.loadedEntities) { /* Concrete - optimize this call */
++        for (Object entity: world.loadedEntities) { // Tuinity - optimize this call
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
@@ -225,19 +225,19 @@ index 0c2f7bd95590298635ccb7885be681645ddbfbb7..038dddf6bbe8abf29bd35e93732b4599
                  for (Class<?> clazz : classes) {
                      if (clazz.isAssignableFrom(bukkitClass)) {
 -                        if (bukkitEntity.isValid()) {
-+                        if (CraftEntity.canBeSeenByPlugins(bukkitEntity)) { /* Concrete - optimize this call */
++                        if (CraftEntity.canBeSeenByPlugins(bukkitEntity)) { // Tuinity - optimize this call
                              list.add(bukkitEntity);
                          }
                          break;
 diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
-index dfa15372b8bbe0f53a1ec8bd40934ed4ce6f43e1..51930897a3db20d2a1bf28340d3d510070420a3b 100644
+index dfa15372b8bbe0f53a1ec8bd40934ed4ce6f43e1..949acb1d3242c9770ed8b66dd2723dc283343c09 100644
 --- a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
 +++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
 @@ -180,6 +180,18 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
          this.entity = entity;
      }
  
-+    /* Concrete start */
++    // Tuinity start
 +    // note: this does not check isChunkLoaded, use Entity#isValid to do that
 +    public static boolean canBeSeenByPlugins(org.bukkit.entity.Entity entity) {
 +        Entity handle = ((CraftEntity)entity).getHandle();
@@ -247,7 +247,7 @@ index dfa15372b8bbe0f53a1ec8bd40934ed4ce6f43e1..51930897a3db20d2a1bf28340d3d5100
 +        // if no-one's complained.
 +        return !handle.shouldBeRemoved && handle.isAlive() && handle.valid;
 +    }
-+    /* Concrete end */
++    // Tuinity end
 +
      @Override
      public Chunk getChunk() {

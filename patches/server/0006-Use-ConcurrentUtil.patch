@@ -5,13 +5,13 @@ Subject: [PATCH] Use ConcurrentUtil
 
 
 diff --git a/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java b/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java
-index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..fffb2d4f616a74c4d52d3989b3c3989fb8756675 100644
+index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..8a789326885a8de7de595a9d4b13427f008d5bbf 100644
 --- a/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java
 +++ b/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java
 @@ -1,5 +1,6 @@
  package com.destroystokyo.paper.io;
  
-+import ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue; /* Concrete - use concurrentutil */
++import ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue; // Tuinity - use concurrentutil
  import java.util.concurrent.ConcurrentLinkedQueue;
  import java.util.concurrent.atomic.AtomicBoolean;
  import java.util.concurrent.atomic.AtomicInteger;
@@ -20,14 +20,14 @@ index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..fffb2d4f616a74c4d52d3989b3c3989f
      private static final int TOTAL_PRIORITIES     = 6;
  
 -    final ConcurrentLinkedQueue<T>[] queues = (ConcurrentLinkedQueue<T>[])new ConcurrentLinkedQueue[TOTAL_PRIORITIES];
-+    final MultiThreadedQueue<T>[] queues = new MultiThreadedQueue[TOTAL_PRIORITIES]; /* Concrete - use concurrentutil */
++    final MultiThreadedQueue<T>[] queues = new MultiThreadedQueue[TOTAL_PRIORITIES]; // Tuinity - use concurrentutil
  
      private final AtomicBoolean shutdown = new AtomicBoolean();
  
      {
          for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
 -            this.queues[i] = new ConcurrentLinkedQueue<>();
-+            this.queues[i] = new MultiThreadedQueue<>(); /* Concrete - use concurrentutil */
++            this.queues[i] = new MultiThreadedQueue<>(); // Tuinity - use concurrentutil
          }
      }
  
@@ -38,8 +38,8 @@ index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..fffb2d4f616a74c4d52d3989b3c3989f
 -        this.queues[task.getPriority()].add(task);
 -        if (this.shutdown.get()) {
 -            // note: we're not actually sure at this point if our task will go through
-+        if (!this.queues[task.getPriority()].add(task)) { /* Concrete - use concurrentutil */
-+            // note: we're not actually sure at this point if our task will go through /* Concrete - we are certain now */
++        if (!this.queues[task.getPriority()].add(task)) { // Tuinity - use concurrentutil
++            // note: we're not actually sure at this point if our task will go through // Tuinity - we are certain now
              throw new IllegalStateException("Queue has shutdown, refusing to execute task " + IOUtil.genericToString(task));
          }
      }
@@ -48,7 +48,7 @@ index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..fffb2d4f616a74c4d52d3989b3c3989f
          T task;
          for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
 -            final ConcurrentLinkedQueue<T> queue = this.queues[i];
-+            final MultiThreadedQueue<T> queue = this.queues[i]; /* Concrete - use concurrentutil */
++            final MultiThreadedQueue<T> queue = this.queues[i]; // Tuinity - use concurrentutil
  
              while ((task = queue.poll()) != null) {
                  final int prevPriority = task.tryComplete(i);
@@ -57,7 +57,7 @@ index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..fffb2d4f616a74c4d52d3989b3c3989f
      public boolean hasTasks() {
          for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
 -            final ConcurrentLinkedQueue<T> queue = this.queues[i];
-+            final MultiThreadedQueue<T> queue = this.queues[i]; /* Concrete - use concurrentutil */
++            final MultiThreadedQueue<T> queue = this.queues[i]; // Tuinity - use concurrentutil
  
              if (queue.peek() != null) {
                  return true;
@@ -65,17 +65,17 @@ index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..fffb2d4f616a74c4d52d3989b3c3989f
       * @return {@code true} if the queue was shutdown, {@code false} if it has shut down already
       */
      public boolean shutdown() {
-+        /* Concrete start - use concurrentutil */
++        // Tuinity start - use concurrentutil
 +        for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
 +            final MultiThreadedQueue<T> queue = this.queues[i];
 +            queue.preventAdds();
 +        }
-+        /* Concrete end - use concurrentutil */
++        // Tuinity end - use concurrentutil
          return this.shutdown.getAndSet(false);
      }
  
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index c100df3aa52fca9da52512b87a0ee36a64d2fa8d..b51f01b6ddcd181e66965a9850e476fc9273371c 100644
+index ed763a61f2ad8bb5318835abd2db3e89cbab5c12..4ab56dbede11a88c2dd3c4501a9e28b7459abc53 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
 @@ -44,7 +44,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
@@ -83,12 +83,12 @@ index c100df3aa52fca9da52512b87a0ee36a64d2fa8d..b51f01b6ddcd181e66965a9850e476fc
      private static final Logger LOGGER = LogManager.getLogger();
      private static final Pattern i = Pattern.compile("^[a-fA-F0-9]{40}$");
 -    private final java.util.Queue<ServerCommand> serverCommandQueue = new java.util.concurrent.ConcurrentLinkedQueue<ServerCommand>(); // Paper - use a proper queue
-+    private final java.util.Queue<ServerCommand> serverCommandQueue = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); // Paper - use a proper queue /* Concrete - Use a better queue */
++    private final java.util.Queue<ServerCommand> serverCommandQueue = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); // Paper - use a proper queue // Tuinity - Use a better queue
      private RemoteStatusListener remoteStatusListener;
      public final RemoteControlCommandListener remoteControlCommandListener;
      private RemoteControlListener remoteControlListener;
 diff --git a/src/main/java/net/minecraft/server/IAsyncTaskHandler.java b/src/main/java/net/minecraft/server/IAsyncTaskHandler.java
-index cfe43e882e524b6ab3d9702e81269c97e6b75eba..d1e64620d78b43a55a8970d3e46648a25f931cd3 100644
+index cfe43e882e524b6ab3d9702e81269c97e6b75eba..e7a58989dd4842a07a3168dccc27788d49476cff 100644
 --- a/src/main/java/net/minecraft/server/IAsyncTaskHandler.java
 +++ b/src/main/java/net/minecraft/server/IAsyncTaskHandler.java
 @@ -13,7 +13,7 @@ public abstract class IAsyncTaskHandler<R extends Runnable> implements Mailbox<R
@@ -96,12 +96,12 @@ index cfe43e882e524b6ab3d9702e81269c97e6b75eba..d1e64620d78b43a55a8970d3e46648a2
      private final String b;
      private static final Logger LOGGER = LogManager.getLogger();
 -    private final Queue<R> d = Queues.newConcurrentLinkedQueue();
-+    private final ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<R> d = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); /* Concrete - Use a better queue */
++    private final ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<R> d = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); // Tuinity - Use a better queue
      private int e;
  
      protected IAsyncTaskHandler(String s) {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index e4ac8f37d92931d76561fdc0d17edf5a898fe565..7560af8bfc09c3a8e64efce2b94bf9546d510d39 100644
+index 0a52800caa8ea8faa1739ee4d3d47e5e344ade6f..af004ab23f9b5bfbfa0c88c952611d9e7dda3d7c 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
 @@ -166,7 +166,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
@@ -109,7 +109,7 @@ index e4ac8f37d92931d76561fdc0d17edf5a898fe565..7560af8bfc09c3a8e64efce2b94bf954
      //public ConsoleReader reader; // Paper
      public static int currentTick = 0; // Paper - Further improve tick loop
 -    public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
-+    public final java.util.Queue<Runnable> processQueue = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); /* Concrete - Use CLL */
++    public final java.util.Queue<Runnable> processQueue = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); // Tuinity - Use CLL
      public int autosavePeriod;
      public boolean serverAutoSave = false; // Paper
      public File bukkitDataPackFolder;
@@ -120,12 +120,12 @@ index e4ac8f37d92931d76561fdc0d17edf5a898fe565..7560af8bfc09c3a8e64efce2b94bf954
 -        while (!processQueue.isEmpty()) {
 -            processQueue.remove().run();
 -        }
-+        ((ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<Runnable>)processQueue).drain(Runnable::run); /* Concrete - Use efficient drain method */
++        ((ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<Runnable>)processQueue).drain(Runnable::run); // Tuinity - Use efficient drain method
          MinecraftTimings.processQueueTimer.stopTiming(); // Spigot
  
          MinecraftTimings.timeUpdateTimer.startTiming(); // Spigot // Paper
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..0490675ac9f01097f428fde5e4d457bc552adb5e 100644
+index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..211a6d7206788cbac80f2117d106f39ac3ef6dd5 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -42,7 +42,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -133,12 +133,12 @@ index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..0490675ac9f01097f428fde5e4d457bc
      });
      private final EnumProtocolDirection h;
 -    private final Queue<NetworkManager.QueuedPacket> packetQueue = Queues.newConcurrentLinkedQueue(); private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER
-+    private final Queue<NetworkManager.QueuedPacket> packetQueue = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER /* Concrete - Use CLL */
++    private final Queue<NetworkManager.QueuedPacket> packetQueue = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>(); private final Queue<NetworkManager.QueuedPacket> getPacketQueue() { return this.packetQueue; } // Paper - OBFHELPER // Tuinity - Use CLL
      public Channel channel;
      public SocketAddress socketAddress; public void setSpoofedRemoteAddress(SocketAddress address) { this.socketAddress = address; } // Paper - OBFHELPER
      // Spigot Start
 diff --git a/src/main/java/net/minecraft/server/ThreadedMailbox.java b/src/main/java/net/minecraft/server/ThreadedMailbox.java
-index 3bfbf972484298dd0d091b925b6f0845100ce89b..f477da66e5b59ae25307ddcebd12376aec3e4f8d 100644
+index 2dd3f003accebb05f3d27800867635b01af6755b..4942cc07c14eec8d7d8223d8f18a3951bc9d6fa7 100644
 --- a/src/main/java/net/minecraft/server/ThreadedMailbox.java
 +++ b/src/main/java/net/minecraft/server/ThreadedMailbox.java
 @@ -17,7 +17,7 @@ public class ThreadedMailbox<T> implements Mailbox<T>, AutoCloseable, Runnable {
@@ -146,7 +146,7 @@ index 3bfbf972484298dd0d091b925b6f0845100ce89b..f477da66e5b59ae25307ddcebd12376a
  
      public static ThreadedMailbox<Runnable> a(Executor executor, String s) {
 -        return new ThreadedMailbox<>(new PairedQueue.c<>(new ConcurrentLinkedQueue()), executor, s);
-+        return new ThreadedMailbox<>(new PairedQueue.c<>(new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>()), executor, s); /* Concrete - use concurrentutil */
++        return new ThreadedMailbox<>(new PairedQueue.c<>(new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>()), executor, s); // Tuinity - use concurrentutil
      }
  
      public ThreadedMailbox(PairedQueue<? super T, ? extends Runnable> pairedqueue, Executor executor, String s) {

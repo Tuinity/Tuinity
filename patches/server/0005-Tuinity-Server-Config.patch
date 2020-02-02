@@ -1,16 +1,16 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Sun, 3 Mar 2019 18:25:06 -0800
-Subject: [PATCH] Concrete Server Config
+Subject: [PATCH] Tuinity Server Config
 
 
-diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
+diff --git a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..75cb933f9f7070031557bf05ad3a044340a34d9f
+index 0000000000000000000000000000000000000000..c1b7d0d20531ce933d34f64cd981d07387d7e2f0
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-@@ -0,0 +1,153 @@
-+package ca.spottedleaf.concrete.config;
++++ b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+@@ -0,0 +1,159 @@
++package ca.spottedleaf.tuinity.config;
 +
 +import ca.spottedleaf.concurrentutil.util.Throw;
 +import org.bukkit.Bukkit;
@@ -22,9 +22,9 @@ index 0000000000000000000000000000000000000000..75cb933f9f7070031557bf05ad3a0443
 +import java.lang.reflect.Modifier;
 +import java.util.logging.Level;
 +
-+public final class ConcreteConfig {
++public final class TuinityConfig {
 +
-+    public static final String CONFIG_HEADER = "Configuration file for Concrete.";
++    public static final String CONFIG_HEADER = "Configuration file for Tuinity.";
 +    public static final int CURRENT_CONFIG_VERSION = 0;
 +
 +    private static final Object[] EMPTY = new Object[0];
@@ -34,7 +34,13 @@ index 0000000000000000000000000000000000000000..75cb933f9f7070031557bf05ad3a0443
 +    private static int configVersion;
 +
 +    public static void init(final File file) {
-+        ConcreteConfig.configFile = file;
++        // TODO remove this in the future...
++        final File tuinityConfig = new File(file.getParent(), "tuinity.yml");
++        if (!tuinityConfig.exists()) {
++            final File oldConfig = new File(file.getParent(), "concrete.yml");
++            oldConfig.renameTo(tuinityConfig);
++        }
++        TuinityConfig.configFile = file;
 +        final YamlConfiguration config = new YamlConfiguration();
 +        config.options().header(CONFIG_HEADER);
 +        config.options().copyDefaults(true);
@@ -43,26 +49,26 @@ index 0000000000000000000000000000000000000000..75cb933f9f7070031557bf05ad3a0443
 +            try {
 +                file.createNewFile();
 +            } catch (final Exception ex) {
-+                Bukkit.getLogger().log(Level.SEVERE, "Failure to create concrete config", ex);
++                Bukkit.getLogger().log(Level.SEVERE, "Failure to create tuinity config", ex);
 +            }
 +        } else {
 +            try {
 +                config.load(file);
 +            } catch (final Exception ex) {
-+                Bukkit.getLogger().log(Level.SEVERE, "Failure to load concrete config", ex);
++                Bukkit.getLogger().log(Level.SEVERE, "Failure to load tuinity config", ex);
 +                Throw.rethrow(ex); /* Rethrow, this is critical */
 +                throw new RuntimeException(ex); // unreachable
 +            }
 +        }
 +
-+        ConcreteConfig.load(config);
++        TuinityConfig.load(config);
 +    }
 +
 +    public static void load(final YamlConfiguration config) {
-+        ConcreteConfig.config = config;
-+        ConcreteConfig.configVersion = ConcreteConfig.getInt("config-version-please-do-not-modify-me", CURRENT_CONFIG_VERSION);
++        TuinityConfig.config = config;
++        TuinityConfig.configVersion = TuinityConfig.getInt("config-version-please-do-not-modify-me", CURRENT_CONFIG_VERSION);
 +
-+        for (final Method method : ConcreteConfig.class.getDeclaredMethods()) {
++        for (final Method method : TuinityConfig.class.getDeclaredMethods()) {
 +            if (method.getReturnType() != void.class || method.getParameterCount() != 0 ||
 +                    !Modifier.isPrivate(method.getModifiers()) || !Modifier.isStatic(method.getModifiers())) {
 +                continue;
@@ -79,25 +85,25 @@ index 0000000000000000000000000000000000000000..75cb933f9f7070031557bf05ad3a0443
 +
 +        /* We re-save to add new options */
 +        try {
-+            config.save(ConcreteConfig.configFile);
++            config.save(TuinityConfig.configFile);
 +        } catch (final Exception ex) {
-+            Bukkit.getLogger().log(Level.SEVERE, "Unable to save concrete config", ex);
++            Bukkit.getLogger().log(Level.SEVERE, "Unable to save tuinity config", ex);
 +        }
 +    }
 +
 +    private static boolean getBoolean(final String path, final boolean dfl) {
-+        ConcreteConfig.config.addDefault(path, Boolean.valueOf(dfl));
-+        return ConcreteConfig.config.getBoolean(path, dfl);
++        TuinityConfig.config.addDefault(path, Boolean.valueOf(dfl));
++        return TuinityConfig.config.getBoolean(path, dfl);
 +    }
 +
 +    private static int getInt(final String path, final int dfl) {
-+        ConcreteConfig.config.addDefault(path, Integer.valueOf(dfl));
-+        return ConcreteConfig.config.getInt(path, dfl);
++        TuinityConfig.config.addDefault(path, Integer.valueOf(dfl));
++        return TuinityConfig.config.getInt(path, dfl);
 +    }
 +
 +    private static double getDouble(final String path, final double dfl) {
-+        ConcreteConfig.config.addDefault(path, Double.valueOf(dfl));
-+        return ConcreteConfig.config.getDouble(path, dfl);
++        TuinityConfig.config.addDefault(path, Double.valueOf(dfl));
++        return TuinityConfig.config.getDouble(path, dfl);
 +    }
 +
 +    public static final class WorldConnfig {
@@ -111,11 +117,11 @@ index 0000000000000000000000000000000000000000..75cb933f9f7070031557bf05ad3a0443
 +        }
 +
 +        public void init() {
-+            ConfigurationSection section = ConcreteConfig.config.getConfigurationSection(this.worldName);
++            ConfigurationSection section = TuinityConfig.config.getConfigurationSection(this.worldName);
 +            if (section == null) {
-+                section = ConcreteConfig.config.createSection(this.worldName);
++                section = TuinityConfig.config.createSection(this.worldName);
 +            }
-+            ConcreteConfig.config.set(this.worldName, section);
++            TuinityConfig.config.set(this.worldName, section);
 +
 +            this.load(section);
 +        }
@@ -123,7 +129,7 @@ index 0000000000000000000000000000000000000000..75cb933f9f7070031557bf05ad3a0443
 +        public void load(final ConfigurationSection config) {
 +            this.config = config;
 +
-+            for (final Method method : ConcreteConfig.WorldConnfig.class.getDeclaredMethods()) {
++            for (final Method method : TuinityConfig.WorldConnfig.class.getDeclaredMethods()) {
 +                if (method.getReturnType() != void.class || method.getParameterCount() != 0 ||
 +                        !Modifier.isPrivate(method.getModifiers()) || Modifier.isStatic(method.getModifiers())) {
 +                    continue;
@@ -140,9 +146,9 @@ index 0000000000000000000000000000000000000000..75cb933f9f7070031557bf05ad3a0443
 +
 +            /* We re-save to add new options */
 +            try {
-+                ConcreteConfig.config.save(ConcreteConfig.configFile);
++                TuinityConfig.config.save(TuinityConfig.configFile);
 +            } catch (final Exception ex) {
-+                Bukkit.getLogger().log(Level.SEVERE, "Unable to save concrete config", ex);
++                Bukkit.getLogger().log(Level.SEVERE, "Unable to save tuinity config", ex);
 +            }
 +        }
 +
@@ -165,26 +171,26 @@ index 0000000000000000000000000000000000000000..75cb933f9f7070031557bf05ad3a0443
 +}
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index a74fae9ed556e70340550b9675d32bed192e0c7a..c100df3aa52fca9da52512b87a0ee36a64d2fa8d 100644
+index a74fae9ed556e70340550b9675d32bed192e0c7a..ed763a61f2ad8bb5318835abd2db3e89cbab5c12 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
 @@ -187,6 +187,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
          com.destroystokyo.paper.PaperConfig.registerCommands();
          com.destroystokyo.paper.VersionHistoryManager.INSTANCE.getClass(); // load version history now
          // Paper end
-+        ca.spottedleaf.concrete.config.ConcreteConfig.init((File) options.valueOf("concrete-settings")); /* Concrete - Server Config */
++        ca.spottedleaf.tuinity.config.TuinityConfig.init((File) options.valueOf("tuinity-settings")); // Tuinity - Server Config
  
          this.setSpawnAnimals(dedicatedserverproperties.spawnAnimals);
          this.setSpawnNPCs(dedicatedserverproperties.spawnNpcs);
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index c9921d08e1c783da59654999b583f91e3d57ec5e..2cc0edad23119245e98be7f207d0437449ab96bd 100644
+index 5ca6c853df799ddb193683366e65d76c4abe4050..2d8cf7c8efa73e9732ca8eba9fb4e717814ea38a 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -96,6 +96,8 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
      public final com.destroystokyo.paper.PaperWorldConfig paperConfig; // Paper
      public final ChunkPacketBlockController chunkPacketBlockController; // Paper - Anti-Xray
  
-+    public final ca.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig concreteConfig; /* Concrete - Server Config */
++    public final ca.spottedleaf.tuinity.config.TuinityConfig.WorldConnfig tuinityConfig; // Tuinity - Server Config
 +
      public final co.aikar.timings.WorldTimingsHandler timings; // Paper
      public static BlockPosition lastPhysicsProblem; // Spigot
@@ -193,19 +199,19 @@ index c9921d08e1c783da59654999b583f91e3d57ec5e..2cc0edad23119245e98be7f207d04374
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig( worlddata.getName() ); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(worlddata.getName(), this.spigotConfig); // Paper
          this.chunkPacketBlockController = this.paperConfig.antiXray ? new ChunkPacketBlockControllerAntiXray(this.paperConfig) : ChunkPacketBlockController.NO_OPERATION_INSTANCE; // Paper - Anti-Xray
-+        this.concreteConfig = new ca.spottedleaf.concrete.config.ConcreteConfig.WorldConnfig(worlddata.getName()); /* Concrete - Server Config */
++        this.tuinityConfig = new ca.spottedleaf.tuinity.config.TuinityConfig.WorldConnfig(worlddata.getName()); // Tuinity - Server Config
          this.generator = gen;
          this.world = new CraftWorld((WorldServer) this, gen, env);
          this.ticksPerAnimalSpawns = this.getServer().getTicksPerAnimalSpawns(); // CraftBukkit
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 3f434ecce36b410801d0b04299bf8723226ce7e8..a6cb9dc9be41ff028a6f14f0fdbc042447063343 100644
+index 7a0c139a195f0a3d05ba5acaac863cbd35ede36c..d6b3b9e7ab780d2e79e2aebf11602cae0868988e 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -794,6 +794,7 @@ public final class CraftServer implements Server {
  
          org.spigotmc.SpigotConfig.init((File) console.options.valueOf("spigot-settings")); // Spigot
          com.destroystokyo.paper.PaperConfig.init((File) console.options.valueOf("paper-settings")); // Paper
-+        ca.spottedleaf.concrete.config.ConcreteConfig.init((File) console.options.valueOf("concrete-settings")); /* Concrete - Server Config */
++        ca.spottedleaf.tuinity.config.TuinityConfig.init((File) console.options.valueOf("tuinity-settings")); // Tuinity - Server Config
          for (WorldServer world : console.getWorlds()) {
              world.worldData.setDifficulty(config.difficulty);
              world.setSpawnFlags(config.spawnMonsters, config.spawnAnimals);
@@ -213,23 +219,23 @@ index 3f434ecce36b410801d0b04299bf8723226ce7e8..a6cb9dc9be41ff028a6f14f0fdbc0424
              }
              world.spigotConfig.init(); // Spigot
              world.paperConfig.init(); // Paper
-+            world.concreteConfig.init(); /* Concrete - Server Config */
++            world.tuinityConfig.init(); // Tuinity - Server Config
          }
  
          Plugin[] pluginClone = pluginManager.getPlugins().clone(); // Paper
 diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
-index eb5f44e30002953318a2b3e3558a82ab7c97258a..21b503f8b1f95db154b4417f9f08a386f6c9b7c7 100644
+index eb5f44e30002953318a2b3e3558a82ab7c97258a..ee38ae794fbe440c6ccb8fe1ef012300ab4b4af2 100644
 --- a/src/main/java/org/bukkit/craftbukkit/Main.java
 +++ b/src/main/java/org/bukkit/craftbukkit/Main.java
 @@ -137,6 +137,13 @@ public class Main {
                          .defaultsTo(new File("paper.yml"))
                          .describedAs("Yml file");
                  // Paper end
-+                /* Concrete Start - Server Config */
-+                acceptsAll(asList("concrete", "concrete-settings"), "File for concrete settings")
++                // Tuinity Start - Server Config
++                acceptsAll(asList("tuinity", "tuinity-settings"), "File for tuinity settings")
 +                        .withRequiredArg()
 +                        .ofType(File.class)
-+                        .defaultsTo(new File("concrete.yml"))
++                        .defaultsTo(new File("tuinity.yml"))
 +                        .describedAs("Yml file");
 +                /* Conctete End - Server Config */
  

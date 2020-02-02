@@ -25,18 +25,18 @@ This patch moves the order of the distance map update in movePlayer
 until after a client is sent a center section packet. This is required
 to avoid the client rejecting chunks it receives when teleporting.
 
-diff --git a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-index d2942e46bcf0c8e0cdbf3c71e60bd66d5ddb81ec..8f5d4fd24a2e4c716204a31455506a6e464b2dd6 100644
---- a/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-+++ b/src/main/java/ca/spottedleaf/concrete/config/ConcreteConfig.java
-@@ -100,6 +100,15 @@ public final class ConcreteConfig {
-         tickThreads = ConcreteConfig.getInt("server-tick-threads", 1); // will be 4 in the future
+diff --git a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+index da5334fa3ea4631bc331759721e02a32b2d16b1b..4c044e8c5dbfcf0976d04f0b5d6f28820f46f58f 100644
+--- a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
++++ b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+@@ -106,6 +106,15 @@ public final class TuinityConfig {
+         tickThreads = TuinityConfig.getInt("server-tick-threads", 1); // will be 4 in the future
      }
  
 +    public static int maxChunkLoadsPerPlayer;
 +
 +    private static void maxChunkLoadsPerPlayer() {
-+        maxChunkLoadsPerPlayer = ConcreteConfig.getInt("max-pending-chunk-tickets-per-player", 49);
++        maxChunkLoadsPerPlayer = TuinityConfig.getInt("max-pending-chunk-tickets-per-player", 49);
 +        if (maxChunkLoadsPerPlayer <= -1) {
 +            maxChunkLoadsPerPlayer = Integer.MAX_VALUE;
 +        }
@@ -46,7 +46,7 @@ index d2942e46bcf0c8e0cdbf3c71e60bd66d5ddb81ec..8f5d4fd24a2e4c716204a31455506a6e
  
          public final String worldName;
 diff --git a/src/main/java/co/aikar/timings/WorldTimingsHandler.java b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-index fd3776d6f013f79c692bc217315683e15cd616a6..f9cd05765e16afe24012996b54531965d05a0541 100644
+index 61a0efe59b1cc23bdd0d14f948b9451b8991f8ae..61b8cafb4048bc82523267df080a514f6689b361 100644
 --- a/src/main/java/co/aikar/timings/WorldTimingsHandler.java
 +++ b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
 @@ -47,6 +47,9 @@ public class WorldTimingsHandler {
@@ -56,7 +56,7 @@ index fd3776d6f013f79c692bc217315683e15cd616a6..f9cd05765e16afe24012996b54531965
 +
 +
 +    public final Timing playerTicketTrackerTick;
-     /* Concrete end */
+     // Tuinity end
  
      public final Timing syncChunkLoadTimer;
 @@ -88,6 +91,9 @@ public class WorldTimingsHandler {
@@ -66,17 +66,17 @@ index fd3776d6f013f79c692bc217315683e15cd616a6..f9cd05765e16afe24012996b54531965
 +
 +
 +        playerTicketTrackerTick = Timings.ofSafe("Player ticket tracker tick");
-         /* Concrete end */
+         // Tuinity end
  
          mobSpawn = Timings.ofSafe(name + "mobSpawn");
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc74557baee 100644
+index 88b4d22005c2532cab57ef822abef72ac678f1be..7eb5d177e47346fee108ea7a4158fc379cda9dd8 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -1,5 +1,6 @@
  package net.minecraft.server;
  
-+import ca.spottedleaf.concrete.util.Util; /* Concrete */
++import ca.spottedleaf.tuinity.util.Util; // Tuinity
  import com.google.common.collect.ImmutableList;
  import com.google.common.collect.Sets;
  import com.mojang.datafixers.util.Either;
@@ -85,13 +85,13 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc7
  
      private static final Logger LOGGER = LogManager.getLogger();
 -    private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2;
-+    private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2; public static int getPlayerTicketLevel() { return ChunkMapDistance.b; } /* Concrete - OBFHELPER */
++    private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2; public static int getPlayerTicketLevel() { return ChunkMapDistance.b; } // Tuinity - OBFHELPER
      private final Long2ObjectMap<ObjectSet<EntityPlayer>> c = new Long2ObjectOpenHashMap();
      public final Long2ObjectOpenHashMap<ArraySetSorted<Ticket<?>>> tickets = new Long2ObjectOpenHashMap();
      private final ChunkMapDistance.a e = new ChunkMapDistance.a();
      private final ChunkMapDistance.b f = new ChunkMapDistance.b(8);
 -    private final ChunkMapDistance.c g = new ChunkMapDistance.c(33);
-+    //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); /* Concrete - no longer used */
++    //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); // Tuinity - no longer used
      private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.LinkedList<>(); // PAIL pendingChunkUpdates // Paper - use a queue
      private final ChunkTaskQueueSorter i;
      private final Mailbox<ChunkTaskQueueSorter.a<Runnable>> j;
@@ -99,10 +99,10 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc7
      private final Executor m;
      private long currentTick;
  
-+    /* Concrete start */
++    // Tuinity start
 +    protected PlayerChunkMap chunkMap;
 +    protected final ChunkMapDistance.TicketTracker playerTicketHandler = new TicketTracker();
-+    /* Concrete end */
++    // Tuinity end
 +
      protected ChunkMapDistance(Executor executor, Executor executor1) {
          executor1.getClass();
@@ -112,7 +112,7 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc7
      public boolean a(PlayerChunkMap playerchunkmap) {
          this.f.a();
 -        this.g.a();
-+        //this.g.a(); /* Concrete - no longer used */
++        //this.g.a(); // Tuinity - no longer used
          int i = Integer.MAX_VALUE - this.e.a(Integer.MAX_VALUE);
          boolean flag = i != 0;
  
@@ -121,7 +121,7 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc7
          })).add(entityplayer);
          this.f.b(i, 0, true);
 -        this.g.b(i, 0, true);
-+        //this.g.b(i, 0, true); /* Concrete - no longer used */
++        //this.g.b(i, 0, true); // Tuinity - no longer used
      }
  
      public void b(SectionPosition sectionposition, EntityPlayer entityplayer) {
@@ -130,7 +130,7 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc7
              this.c.remove(i);
              this.f.b(i, Integer.MAX_VALUE, false);
 -            this.g.b(i, Integer.MAX_VALUE, false);
-+            //this.g.b(i, Integer.MAX_VALUE, false); /* Concrete - no longer used */
++            //this.g.b(i, Integer.MAX_VALUE, false); // Tuinity - no longer used
          }
  
      }
@@ -138,17 +138,17 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc7
          return s;
      }
  
-+    protected void setViewDistance(int viewDistance) { this.a(viewDistance); } /* Concrete - OBFHELPER */
++    protected void setViewDistance(int viewDistance) { this.a(viewDistance); } // Tuinity - OBFHELPER
      protected void a(int i) {
 -        this.g.a(i);
-+        //this.g.a(i); /* Concrete - no longer used */
++        //this.g.a(i); // Tuinity - no longer used
 +    }
-+    /* Concrete start - per player view distance */
++    // Tuinity start - per player view distance
 +    protected void setGlobalViewDistance(int viewDistance, PlayerChunkMap chunkMap) {
 +        this.chunkMap = chunkMap;
 +        this.setViewDistance(viewDistance);
      }
-+    /* Concrete end */
++    // Tuinity end
  
      public int b() {
          this.f.a();
@@ -156,7 +156,7 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc7
          }
      }
  
-+    /* Concrete start - Per player view distance */
++    // Tuinity start - Per player view distance
 +    class TicketTracker {
 +
 +        static final int LOADED_PLAYER_REFERENCE = -2;
@@ -217,7 +217,7 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc7
 +                    }
 +                }
 +
-+                int maxChunkLoads = ca.spottedleaf.concrete.config.ConcreteConfig.maxChunkLoadsPerPlayer; // per-player limits instead of global?
++                int maxChunkLoads = ca.spottedleaf.tuinity.config.TuinityConfig.maxChunkLoadsPerPlayer; // per-player limits instead of global?
 +
 +                int radius = lastLoadedRadius + 1;
 +                int viewDistance = chunkMap.playerViewDistanceTicketMap.getLastViewDistance(player);
@@ -347,29 +347,29 @@ index ca0efec1c42e1997e255dd06055b704028664e9a..c1985e3d3b7c0d56c1d738a0df6a7fc7
 +            }
 +        }
 +    }
-+    /* Concrete end - per player view distance */
++    // Tuinity end - per player view distance
 +
      class c extends ChunkMapDistance.b {
  
          private int e = 0;
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index e01390418d416782e2f9dcb686af339475d13d7f..3f0833b7c630d026e6d6cc8d0a99302b80a7185e 100644
+index 59126f5425cda207c90027cec09416a318fcbca7..78faa771e514ac0d720c80e2b3037abad533b2d1 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -599,6 +599,11 @@ public class ChunkProviderServer extends IChunkProvider {
          this.chunkMapDistance.purgeTickets();
          this.tickDistanceManager();
          this.world.timings.doChunkMap.stopTiming(); // Spigot
-+        /* Concrete start */
++        // Tuinity start
 +        this.world.timings.playerTicketTrackerTick.startTiming();
 +        this.playerChunkMap.getChunkMapDistanceManager().playerTicketHandler.tick();
 +        this.world.timings.playerTicketTrackerTick.stopTiming();
-+        /* Concrete end */
++        // Tuinity end
          this.world.getMethodProfiler().exitEnter("chunks");
          this.world.timings.chunks.startTiming(); // Paper - timings
          this.tickChunks();
 diff --git a/src/main/java/net/minecraft/server/EntityEnderDragon.java b/src/main/java/net/minecraft/server/EntityEnderDragon.java
-index 9acdd6e5665e506ab55f0cb0525212a0d8db3be9..f89281b1c2ad1edc5701f611ef0a745b28dbb087 100644
+index 9acdd6e5665e506ab55f0cb0525212a0d8db3be9..407b90bf2f7d4b04b56fd989f6b5cf857c11e9c2 100644
 --- a/src/main/java/net/minecraft/server/EntityEnderDragon.java
 +++ b/src/main/java/net/minecraft/server/EntityEnderDragon.java
 @@ -579,9 +579,9 @@ public class EntityEnderDragon extends EntityInsentient implements IMonster {
@@ -377,32 +377,32 @@ index 9acdd6e5665e506ab55f0cb0525212a0d8db3be9..f89281b1c2ad1edc5701f611ef0a745b
                  // this.world.b(1028, new BlockPosition(this), 0);
                  // Paper start
 -                int viewDistance = ((WorldServer) this.world).spigotConfig.viewDistance * 16; // Paper - updated to use worlds actual view distance incase we have to uncomment this due to removal of player view distance API
-+                //int viewDistance = ((WorldServer) this.world).spigotConfig.viewDistance * 16; // Paper - updated to use worlds actual view distance incase we have to uncomment this due to removal of player view distance API /* Concrete - per player view distance */
++                //int viewDistance = ((WorldServer) this.world).spigotConfig.viewDistance * 16; // Paper - updated to use worlds actual view distance incase we have to uncomment this due to removal of player view distance API // Tuinity - per player view distance
                  for (EntityPlayer player : ((WorldServer)world).getPlayers()) {
 -                    //final int viewDistance = player.getViewDistance(); // TODO apply view distance api patch
-+                    final int viewDistance = player.getEffectiveViewDistance(player.getWorldServer().getChunkProvider().playerChunkMap) << 4; /* Concrete - per player view distance */
++                    final int viewDistance = player.getEffectiveViewDistance(player.getWorldServer().getChunkProvider().playerChunkMap) << 4; // Tuinity - per player view distance
                      // Paper end
                      double deltaX = this.locX() - player.locX();
                      double deltaZ = this.locZ() - player.locZ();
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index eb844cfb4b38c19c81e82780073d176d15eac0f6..3b95e9941a4ffe0cbfe4253dc541b6e3af2e3bbc 100644
+index ea531f378f2454c1b1288d95d17da122cb4d94cb..ce378f3cddeef02489050f401b34187a4fabe908 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
 @@ -102,6 +102,12 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
  
-     /* Concrete start */
-     public final ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> cachedSingleHashSet;
+     // Tuinity start
+     public final ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> cachedSingleHashSet;
 +
 +    public int viewDistance = -1;
 +    public int getEffectiveViewDistance(PlayerChunkMap chunkMap) {
 +        return this.viewDistance == -1 ? chunkMap.viewDistance : this.viewDistance;
 +    }
 +    public boolean needsChunkCenterUpdate;
-     /* Concrete end */
+     // Tuinity end
  
      public EntityPlayer(MinecraftServer minecraftserver, WorldServer worldserver, GameProfile gameprofile, PlayerInteractManager playerinteractmanager) {
 diff --git a/src/main/java/net/minecraft/server/EntityWither.java b/src/main/java/net/minecraft/server/EntityWither.java
-index 8977c3516b2ee9b970b6274a5c71982b019ac2a6..38de74d95c5cac1a6ae11f226726a7a11c4781e9 100644
+index 8977c3516b2ee9b970b6274a5c71982b019ac2a6..bace6cf36a9e888278a6c7a5c5866d9f3b9ecf87 100644
 --- a/src/main/java/net/minecraft/server/EntityWither.java
 +++ b/src/main/java/net/minecraft/server/EntityWither.java
 @@ -208,9 +208,9 @@ public class EntityWither extends EntityMonster implements IRangedEntity {
@@ -410,28 +410,28 @@ index 8977c3516b2ee9b970b6274a5c71982b019ac2a6..38de74d95c5cac1a6ae11f226726a7a1
                  // this.world.b(1023, new BlockPosition(this), 0);
                  // Paper start
 -                int viewDistance = ((WorldServer) this.world).spigotConfig.viewDistance * 16; // Paper - updated to use worlds actual view distance incase we have to uncomment this due to removal of player view distance API
-+                //int viewDistance = ((WorldServer) this.world).spigotConfig.viewDistance * 16; // Paper - updated to use worlds actual view distance incase we have to uncomment this due to removal of player view distance API /* Concrete - per player view distance */
++                //int viewDistance = ((WorldServer) this.world).spigotConfig.viewDistance * 16; // Paper - updated to use worlds actual view distance incase we have to uncomment this due to removal of player view distance API // Tuinity - per player view distance
                  for (EntityPlayer player : ((WorldServer)world).getPlayers()) {
 -                    //final int viewDistance = player.getViewDistance(); // TODO apply view distance api patch
-+                    final int viewDistance = player.getEffectiveViewDistance(player.getWorldServer().getChunkProvider().playerChunkMap) << 4; /* Concrete - per player view distance */
++                    final int viewDistance = player.getEffectiveViewDistance(player.getWorldServer().getChunkProvider().playerChunkMap) << 4; // Tuinity - per player view distance
                      // Paper end
                      double deltaX = this.locX() - player.locX();
                      double deltaZ = this.locZ() - player.locZ();
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index a02baa7a0845e3b7ccca0e279c602c1a8e7d3019..9bbb35bfcc57a38c47bb9a9feb1171131940b858 100644
+index bd26678c2fe3d87a6ced55dfaf794bbd8640b131..d4d4a5e7daccdf35f734e2492197c1a861b24b20 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -290,6 +290,50 @@ public class PlayerChunk {
      }
  
      private void a(Packet<?> packet, boolean flag) {
-+        /* Concrete start - per player view distance */
++        // Tuinity start - per player view distance
 +        // there can be potential desync with player's last mapped section and the view distance map, so use the
 +        // view distance map here.
 +        if (this.players instanceof PlayerChunkMap) {
 +            PlayerChunkMap chunkMap = ((PlayerChunkMap)this.players);
-+            ca.spottedleaf.concrete.util.map.PlayerAreaMap viewDistanceMap = ((PlayerChunkMap)this.players).playerViewDistanceBroadcastMap;
-+            ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = viewDistanceMap.getObjectsInRange(this.location);
++            ca.spottedleaf.tuinity.util.map.PlayerAreaMap viewDistanceMap = ((PlayerChunkMap)this.players).playerViewDistanceBroadcastMap;
++            ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = viewDistanceMap.getObjectsInRange(this.location);
 +            if (players == null) {
 +                return;
 +            }
@@ -447,8 +447,8 @@ index a02baa7a0845e3b7ccca0e279c602c1a8e7d3019..9bbb35bfcc57a38c47bb9a9feb117113
 +                    int viewDistance = viewDistanceMap.getLastViewDistance(player);
 +                    long lastPosition = viewDistanceMap.getLastCoordinate(player);
 +
-+                    int distX = Math.abs(ca.spottedleaf.concrete.util.Util.getCoordinateX(lastPosition) - this.location.x);
-+                    int distZ = Math.abs(ca.spottedleaf.concrete.util.Util.getCoordinateZ(lastPosition) - this.location.z);
++                    int distX = Math.abs(ca.spottedleaf.tuinity.util.Util.getCoordinateX(lastPosition) - this.location.x);
++                    int distZ = Math.abs(ca.spottedleaf.tuinity.util.Util.getCoordinateZ(lastPosition) - this.location.z);
 +
 +                    if (Math.max(distX, distZ) == viewDistance) {
 +                        player.playerConnection.sendPacket(packet);
@@ -468,7 +468,7 @@ index a02baa7a0845e3b7ccca0e279c602c1a8e7d3019..9bbb35bfcc57a38c47bb9a9feb117113
 +
 +            return;
 +        }
-+        /* Concrete end - per player view distance */
++        // Tuinity end - per player view distance
          this.players.a(this.location, flag).forEach((entityplayer) -> {
              entityplayer.playerConnection.sendPacket(packet);
          });
@@ -476,12 +476,12 @@ index a02baa7a0845e3b7ccca0e279c602c1a8e7d3019..9bbb35bfcc57a38c47bb9a9feb117113
                      } else {
                          chunkProvder.entityTickingChunks.add(chunk);
                      }
-+                    PlayerChunk.this.chunkMap.getChunkMapDistanceManager().playerTicketHandler.onChunkSetEntityTicking(this.location.x, this.location.z); /* Concrete - per player view distance implementation */
++                    PlayerChunk.this.chunkMap.getChunkMapDistanceManager().playerTicketHandler.onChunkSetEntityTicking(this.location.x, this.location.z); // Tuinity - per player view distance implementation
                  }
              });
-             /* Concrete end - cache chunk ticking stage */
+             // Tuinity end - cache chunk ticking stage
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133eca2777a96 100644
+index c862a73f81e4e239add845bbcd39fecb70ff8eda..b0198f3416adfefd373529173904a5ce0009c97c 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -79,7 +79,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -489,19 +489,19 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
      public final Int2ObjectMap<PlayerChunkMap.EntityTracker> trackedEntities;
      private final Queue<Runnable> z;
 -    int viewDistance; // Paper - private -> package private
-+    int viewDistance; public final int getViewDistance() { return this.viewDistance; } /* Concrete - OBFHELPER */ // Paper - private -> package private
-     //public final com.destroystokyo.paper.util.PlayerMobDistanceMap playerMobDistanceMap; // Paper /* Concrete - replaced by view distance map */
++    int viewDistance; public final int getViewDistance() { return this.viewDistance; } // Tuinity - OBFHELPER // Paper - private -> package private
+     //public final com.destroystokyo.paper.util.PlayerMobDistanceMap playerMobDistanceMap; // Paper // Tuinity - replaced by view distance map
  
      // CraftBukkit start - recursion-safe executor for Chunk loadCallback() and unloadCallback()
 @@ -110,15 +110,29 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-     /* Concrete start */
-     public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerViewDistanceMap;
+     // Tuinity start
+     public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerViewDistanceMap;
  
 +
 +    // we use this map to broadcast chunks to clients
 +    // they do not render chunks without having at least neighbours in a 1 chunk radius loaded
-+    public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerViewDistanceBroadcastMap;
-+    public final ca.spottedleaf.concrete.util.map.PlayerAreaMap playerViewDistanceTicketMap;
++    public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerViewDistanceBroadcastMap;
++    public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerViewDistanceTicketMap;
 +
 +    private static int getTicketLevelDistance(final int distance) {
 +        return distance;
@@ -530,8 +530,8 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 +    public void updateViewDistance(EntityPlayer player, int viewDistance) {
 +        player.viewDistance = viewDistance;
 +
-+        int chunkX = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locX());
-+        int chunkZ = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locZ());
++        int chunkX = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locX());
++        int chunkZ = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locZ());
 +
 +        int effectiveViewDistance = viewDistance == -1 ? this.viewDistance : viewDistance;
 +
@@ -547,8 +547,8 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 +    }
 +
      private void updateMaps(EntityPlayer player) {
-         int chunkX = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locX());
-         int chunkZ = ca.spottedleaf.concrete.util.Util.getChunkCoordinate(player.locZ());
+         int chunkX = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locX());
+         int chunkZ = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locZ());
  
 -        this.playerViewDistanceMap.update(player, chunkX, chunkZ, this.viewDistance);
 +        int effectiveViewDistance = player.getEffectiveViewDistance(this);
@@ -556,34 +556,34 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 +        if (!this.cannotLoadChunks(player)) {
 +            this.playerViewDistanceTicketMap.update(player, chunkX, chunkZ, getTicketLevelDistance(effectiveViewDistance));
 +        }
-+        this.playerViewDistanceMap.update(player, chunkX, chunkZ, effectiveViewDistance); /* Concrete - per player view distance */
++        this.playerViewDistanceMap.update(player, chunkX, chunkZ, effectiveViewDistance); // Tuinity - per player view distance
 +        player.needsChunkCenterUpdate = true;
 +        this.playerViewDistanceBroadcastMap.update(player, chunkX, chunkZ, effectiveViewDistance + 1); // clients need chunk neighbours
 +        player.needsChunkCenterUpdate = false;
      }
-     /* Concrete end */
+     // Tuinity end
  
 @@ -168,7 +209,35 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.m = new VillagePlace(new File(this.w, "poi"), datafixer, this.world); // Paper
          this.setViewDistance(i);
-         //this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper /* Concrete - use the distance map */
--        this.playerViewDistanceMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(); /* Concrete */
-+        /* Concrete start - distance maps */
-+        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets<EntityPlayer> sets = new ca.spottedleaf.concrete.util.map.PooledLinkedHashSets<>();
-+        this.playerViewDistanceTicketMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets,
+         //this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper // Tuinity - use the distance map
+-        this.playerViewDistanceMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(); // Tuinity
++        // Tuinity start - distance maps
++        ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets<EntityPlayer> sets = new ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets<>();
++        this.playerViewDistanceTicketMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets,
 +                null,
 +                (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
-+                 ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                 ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
 +                    if (newState != null) {
 +                        return;
 +                    }
 +                    PlayerChunkMap.this.chunkDistanceManager.playerTicketHandler.playerMoveOutOfRange(rangeX, rangeZ);
 +                });
-+        this.playerViewDistanceMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets);
++        this.playerViewDistanceMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets);
 +        final Packet[] tempPacket = new Packet[2];
-+        this.playerViewDistanceBroadcastMap = new ca.spottedleaf.concrete.util.map.PlayerAreaMap(sets,
++        this.playerViewDistanceBroadcastMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets,
 +                (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
-+                ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
 +                    if (player.needsChunkCenterUpdate) {
 +                        player.needsChunkCenterUpdate = false;
 +                        player.playerConnection.sendPacket(new PacketPlayOutViewCentre(currPosX, currPosZ));
@@ -592,11 +592,11 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 +                    java.util.Arrays.fill(tempPacket, null);
 +                },
 +                (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
-+                 ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                 ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
 +                    PlayerChunkMap.this.sendChunk(player, rangeX, rangeZ, tempPacket, true, false); // unloaded, loaded
 +                    java.util.Arrays.fill(tempPacket, null);
 +                });
-+        /* Concrete end - distance maps */
++        // Tuinity end - distance maps
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
@@ -607,10 +607,10 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 -                this.a(chunkcoordintpair, false).forEach((entityplayer) -> {
 -                    this.a(entityplayer, apacket, chunk);
 -                });
-+                /* Concrete start - per player view distance */
++                // Tuinity start - per player view distance
 +                // there can be potential desync with player's last mapped section and the view distance map, so use the
 +                // view distance map here.
-+                ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = PlayerChunkMap.this.playerViewDistanceBroadcastMap.getObjectsInRange(chunkcoordintpair);
++                ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = PlayerChunkMap.this.playerViewDistanceBroadcastMap.getObjectsInRange(chunkcoordintpair);
 +                if (players != null) {
 +                    Object[] backingSet = players.getBackingSet();
 +                    for (int i = 0, len = backingSet.length; i < len; ++i) {
@@ -622,7 +622,7 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 +                        this.a(player, apacket, chunk);
 +                    }
 +                }
-+                /* Concrete end - per player view distance */
++                // Tuinity end - per player view distance
                  return Either.left(chunk);
              });
          }, (runnable) -> {
@@ -631,14 +631,14 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
  
      protected void setViewDistance(int i) {
 -        int j = MathHelper.clamp(i + 1, 3, 33);
-+        int j = MathHelper.clamp(i + 1, 3, 33) - 1; /* Concrete - we correctly handle view distance, no need to add 1 */
++        int j = MathHelper.clamp(i + 1, 3, 33) - 1; // Tuinity - we correctly handle view distance, no need to add 1
  
          if (j != this.viewDistance) {
              int k = this.viewDistance;
  
              this.viewDistance = j;
 -            this.chunkDistanceManager.a(this.viewDistance);
--            Iterator objectiterator = this.chunkMap.getUpdatingValues().iterator(); /* Concrete - replace chunk map */
+-            Iterator objectiterator = this.chunkMap.getUpdatingValues().iterator(); // Tuinity - replace chunk map
 -
 -            while (objectiterator.hasNext()) {
 -                PlayerChunk playerchunk = (PlayerChunk) objectiterator.next();
@@ -652,8 +652,8 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 -
 -                    this.sendChunk(entityplayer, chunkcoordintpair, apacket, flag, flag1);
 -                });
-+            this.chunkDistanceManager.setGlobalViewDistance(this.viewDistance, this); /* Concrete - per player view distance */
-+            /* Concrete start - view distance map handles this */
++            this.chunkDistanceManager.setGlobalViewDistance(this.viewDistance, this); // Tuinity - per player view distance
++            // Tuinity start - view distance map handles this
 +            if (this.world != null && this.world.players != null) { // ... called inside constructor, where these may not be initialized
 +                for (EntityPlayer player : this.world.players) {
 +                    if (player.viewDistance == -1) {
@@ -661,7 +661,7 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 +                    }
 +                }
              }
-+            /* Concrete end - view distance map handles this */
++            // Tuinity end - view distance map handles this
          }
  
      }
@@ -669,7 +669,7 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
          });
      }
  
-+    private boolean cannotLoadChunks(EntityPlayer entityplayer) { return this.b(entityplayer); } /* Concrete - OBFHELPER */
++    private boolean cannotLoadChunks(EntityPlayer entityplayer) { return this.b(entityplayer); } // Tuinity - OBFHELPER
      private boolean b(EntityPlayer entityplayer) {
          return entityplayer.isSpectator() && !this.world.getGameRules().getBoolean(GameRules.SPECTATORS_GENERATE_CHUNKS);
      }
@@ -677,19 +677,19 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
              }
          }
  
--        Packet[] cachedPackets = new Packet[2]; /* Concrete */
+-        Packet[] cachedPackets = new Packet[2]; // Tuinity
 -        for (int k = i - this.viewDistance; k <= i + this.viewDistance; ++k) {
 -            for (int l = j - this.viewDistance; l <= j + this.viewDistance; ++l) {
--                /* Concrete start - remove excess object creation (ChunkCoordIntPair and Packet[]) */
+-                // Tuinity start - remove excess object creation (ChunkCoordIntPair and Packet[])
 -                this.sendChunk(entityplayer, k, l, cachedPackets, !flag, flag);
 -                java.util.Arrays.fill(cachedPackets, null);
--                /* Concrete end */
+-                // Tuinity end
 -            }
-+        /* Concrete start - view distance map handles this */
++        // Tuinity start - view distance map handles this
 +        if (flag) {
 +            this.updateMaps(entityplayer);
          }
-+        /* Concrete end - view distance map handles this */
++        // Tuinity end - view distance map handles this
  
      }
  
@@ -698,12 +698,12 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
  
          entityplayer.a(sectionposition);
 -        entityplayer.playerConnection.sendPacket(new PacketPlayOutViewCentre(sectionposition.a(), sectionposition.c()));
-+        //entityplayer.playerConnection.sendPacket(new PacketPlayOutViewCentre(sectionposition.a(), sectionposition.c())); /* Concrete - distance map handles this now */
++        //entityplayer.playerConnection.sendPacket(new PacketPlayOutViewCentre(sectionposition.a(), sectionposition.c())); // Tuinity - distance map handles this now
          return sectionposition;
      }
  
      public void movePlayer(EntityPlayer entityplayer) {
--        this.updateDistanceMaps(entityplayer); /* Concrete - distance maps */
+-        this.updateDistanceMaps(entityplayer); // Tuinity - distance maps
          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
          while (objectiterator.hasNext()) {
@@ -716,22 +716,22 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 -            l1 = Math.min(j, j1) - this.viewDistance;
 -            int i2 = Math.max(i, i1) + this.viewDistance;
 -            int j2 = Math.max(j, j1) + this.viewDistance;
-+        this.updateDistanceMaps(entityplayer); /* Concrete - this is replaced by the calllbacks in the view distance map */
++        this.updateDistanceMaps(entityplayer); // Tuinity - this is replaced by the calllbacks in the view distance map
  
--            Packet[] cachedPackets = new Packet[2]; /* Concrete */
+-            Packet[] cachedPackets = new Packet[2]; // Tuinity
 +    }
  
 -            for (int k2 = k1; k2 <= i2; ++k2) {
 -                for (int l2 = l1; l2 <= j2; ++l2) {
--                    /* Concrete start - remove ChunkCoordIntPair allocation */
+-                    // Tuinity start - remove ChunkCoordIntPair allocation
 -                    boolean flag3 = getSquareRadiusDistance(k2, l2, i1, j1) <= this.viewDistance;
 -                    boolean flag4 = getSquareRadiusDistance(k2, l2, i, j) <= this.viewDistance;
 +    @Override
 +    public Stream<EntityPlayer> a(ChunkCoordIntPair chunkcoordintpair, boolean flag) {
-+        /* Concrete start - per player view distance */
++        // Tuinity start - per player view distance
 +        // there can be potential desync with player's last mapped section and the view distance map, so use the
 +        // view distance map here.
-+        ca.spottedleaf.concrete.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> inRange = this.playerViewDistanceBroadcastMap.getObjectsInRange(chunkcoordintpair);
++        ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> inRange = this.playerViewDistanceBroadcastMap.getObjectsInRange(chunkcoordintpair);
 +
 +        if (inRange == null) {
 +            return Stream.empty();
@@ -750,44 +750,44 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 +                int viewDistance = this.playerViewDistanceBroadcastMap.getLastViewDistance(player);
 +                long lastPosition = this.playerViewDistanceBroadcastMap.getLastCoordinate(player);
 +
-+                int distX = Math.abs(ca.spottedleaf.concrete.util.Util.getCoordinateX(lastPosition) - chunkcoordintpair.x);
-+                int distZ = Math.abs(ca.spottedleaf.concrete.util.Util.getCoordinateZ(lastPosition) - chunkcoordintpair.z);
++                int distX = Math.abs(ca.spottedleaf.tuinity.util.Util.getCoordinateX(lastPosition) - chunkcoordintpair.x);
++                int distZ = Math.abs(ca.spottedleaf.tuinity.util.Util.getCoordinateZ(lastPosition) - chunkcoordintpair.z);
  
 -                    this.sendChunk(entityplayer, k2, l2, cachedPackets, flag3, flag4);
 -                    java.util.Arrays.fill(cachedPackets, null);
--                    /* Concrete end */
+-                    // Tuinity end
 +                if (Math.max(distX, distZ) == viewDistance) {
 +                    players.add(player);
                  }
              }
          } else {
--            //ChunkCoordIntPair chunkcoordintpair1; /* Concrete - we don't set, so compile fail on further uses */
+-            //ChunkCoordIntPair chunkcoordintpair1; // Tuinity - we don't set, so compile fail on further uses
 -            boolean flag5;
 -            boolean flag6;
 -
--            Packet[] cachedPackets = new Packet[2]; /* Concrete */
+-            Packet[] cachedPackets = new Packet[2]; // Tuinity
 -
 -            for (k1 = i1 - this.viewDistance; k1 <= i1 + this.viewDistance; ++k1) {
 -                for (l1 = j1 - this.viewDistance; l1 <= j1 + this.viewDistance; ++l1) {
--                    /* Concrete - remove ChunkCoordIntPair allocation */
+-                    // Tuinity - remove ChunkCoordIntPair allocation
 -                    flag5 = true;
 -                    flag6 = false;
--                    /* Concrete start - remove ChunkCoordIntPair allocation */
+-                    // Tuinity start - remove ChunkCoordIntPair allocation
 -                    this.sendChunk(entityplayer, k1, l1, cachedPackets, true, false);
 -                    java.util.Arrays.fill(cachedPackets, null);
--                    /* Concrete end */
+-                    // Tuinity end
 -                }
 -            }
 -
 -            for (k1 = i - this.viewDistance; k1 <= i + this.viewDistance; ++k1) {
 -                for (l1 = j - this.viewDistance; l1 <= j + this.viewDistance; ++l1) {
--                    /* Concrete - remove ChunkCoordIntPair allocation */
+-                    // Tuinity - remove ChunkCoordIntPair allocation
 -                    flag5 = false;
 -                    flag6 = true;
--                    /* Concrete start - remove ChunkCoordIntPair allocation */
+-                    // Tuinity start - remove ChunkCoordIntPair allocation
 -                    this.sendChunk(entityplayer, k1, l1, cachedPackets, false, true);
 -                    java.util.Arrays.fill(cachedPackets, null);
--                    /* Concrete end */
+-                    // Tuinity end
 +            for (int i = 0, len = backingSet.length; i < len; ++i) {
 +                Object temp = backingSet[i];
 +                if (!(temp instanceof EntityPlayer)) {
@@ -808,17 +808,17 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
 -            return i > this.viewDistance ? false : !flag || i == this.viewDistance;
 -        });
 +        return players.stream();
-+        /* Concrete end - per player view distance */
++        // Tuinity end - per player view distance
      }
  
      protected void addEntity(Entity entity) {
 @@ -1704,7 +1763,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                  double vec3d_dy = entityplayer.locY() - this.tracker.locY();
                  double vec3d_dz = entityplayer.locZ() - this.tracker.locZ();
-                 /* Concrete end - remove allocation of Vec3d here */
+                 // Tuinity end - remove allocation of Vec3d here
 -                int i = Math.min(this.b(), (PlayerChunkMap.this.viewDistance - 1) * 16);
-+                int i = Math.min(this.b(), (entityplayer.getEffectiveViewDistance(PlayerChunkMap.this)) * 16);  /* Concrete - per player view distance */
-                 boolean flag = vec3d_dx >= (double) (-i) && vec3d_dx <= (double) i && vec3d_dz >= (double) (-i) && vec3d_dz <= (double) i && this.tracker.a(entityplayer); /* Concrete start - remove allocation of Vec3d here */
++                int i = Math.min(this.b(), (entityplayer.getEffectiveViewDistance(PlayerChunkMap.this)) * 16);  // Tuinity - per player view distance
+                 boolean flag = vec3d_dx >= (double) (-i) && vec3d_dx <= (double) i && vec3d_dz >= (double) (-i) && vec3d_dz <= (double) i && this.tracker.a(entityplayer); // Tuinity start - remove allocation of Vec3d here
                  if (flag) {
                      boolean flag1 = this.tracker.attachedToPlayer;
 @@ -1714,7 +1773,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -826,12 +826,12 @@ index 8bea9724cc003997418903d9ff03b1fd3ccccc02..14bfb1cda301b6b18a099c09b40133ec
  
                          if (playerchunk != null && playerchunk.getChunk() != null) {
 -                            flag1 = PlayerChunkMap.b(chunkcoordintpair, entityplayer, false) <= PlayerChunkMap.this.viewDistance;
-+                            flag1 = PlayerChunkMap.b(chunkcoordintpair, entityplayer, false) <= PlayerChunkMap.this.playerViewDistanceBroadcastMap.getLastViewDistance(entityplayer); /* Concrete - per player view distance */
++                            flag1 = PlayerChunkMap.b(chunkcoordintpair, entityplayer, false) <= PlayerChunkMap.this.playerViewDistanceBroadcastMap.getLastViewDistance(entityplayer); // Tuinity - per player view distance
                          }
                      }
  
 diff --git a/src/main/java/net/minecraft/server/PlayerList.java b/src/main/java/net/minecraft/server/PlayerList.java
-index 7b79ee4fe5893d0c8c5825776c3c09ca8553abc8..b93545b0da26a97312377403e5733c2ea6d7552c 100644
+index 7b79ee4fe5893d0c8c5825776c3c09ca8553abc8..5ae2ba82fcacd7c9543bb63f3182ad73df0896da 100644
 --- a/src/main/java/net/minecraft/server/PlayerList.java
 +++ b/src/main/java/net/minecraft/server/PlayerList.java
 @@ -156,7 +156,7 @@ public abstract class PlayerList {
@@ -839,7 +839,7 @@ index 7b79ee4fe5893d0c8c5825776c3c09ca8553abc8..b93545b0da26a97312377403e5733c2e
          // CraftBukkit - getType()
          // Spigot - view distance
 -        playerconnection.sendPacket(new PacketPlayOutLogin(entityplayer.getId(), entityplayer.playerInteractManager.getGameMode(), WorldData.c(worlddata.getSeed()), worlddata.isHardcore(), worldserver.worldProvider.getDimensionManager().getType(), this.getMaxPlayers(), worlddata.getType(), worldserver.spigotConfig.viewDistance, flag1, !flag));
-+        playerconnection.sendPacket(new PacketPlayOutLogin(entityplayer.getId(), entityplayer.playerInteractManager.getGameMode(), WorldData.c(worlddata.getSeed()), worlddata.isHardcore(), worldserver.worldProvider.getDimensionManager().getType(), this.getMaxPlayers(), worlddata.getType(), entityplayer.getEffectiveViewDistance(worldserver.getChunkProvider().playerChunkMap), flag1, !flag)); /* Concrete - per player view distance */
++        playerconnection.sendPacket(new PacketPlayOutLogin(entityplayer.getId(), entityplayer.playerInteractManager.getGameMode(), WorldData.c(worlddata.getSeed()), worlddata.isHardcore(), worldserver.worldProvider.getDimensionManager().getType(), this.getMaxPlayers(), worlddata.getType(), entityplayer.getEffectiveViewDistance(worldserver.getChunkProvider().playerChunkMap), flag1, !flag)); // Tuinity - per player view distance
          entityplayer.getBukkitEntity().sendSupportedChannels(); // CraftBukkit
          playerconnection.sendPacket(new PacketPlayOutCustomPayload(PacketPlayOutCustomPayload.a, (new PacketDataSerializer(Unpooled.buffer())).a(this.getServer().getServerModName())));
          playerconnection.sendPacket(new PacketPlayOutServerDifficulty(worlddata.getDifficulty(), worlddata.isDifficultyLocked()));
@@ -848,7 +848,7 @@ index 7b79ee4fe5893d0c8c5825776c3c09ca8553abc8..b93545b0da26a97312377403e5733c2e
  
          entityplayer1.playerConnection.sendPacket(new PacketPlayOutRespawn(worldserver.worldProvider.getDimensionManager().getType(),  WorldData.c(worldserver.getWorldData().getSeed()), worldserver.getWorldData().getType(), entityplayer1.playerInteractManager.getGameMode()));
 -        entityplayer1.playerConnection.sendPacket(new PacketPlayOutViewDistance(worldserver.spigotConfig.viewDistance)); // Spigot
-+        entityplayer1.playerConnection.sendPacket(new PacketPlayOutViewDistance(entityplayer1.getEffectiveViewDistance(worldserver.getChunkProvider().playerChunkMap))); // Spigot /* Concrete - per player view distance */
++        entityplayer1.playerConnection.sendPacket(new PacketPlayOutViewDistance(entityplayer1.getEffectiveViewDistance(worldserver.getChunkProvider().playerChunkMap))); // Spigot // Tuinity - per player view distance
          entityplayer1.spawnIn(worldserver);
          entityplayer1.dead = false;
          entityplayer1.playerConnection.teleport(new Location(worldserver.getWorld(), entityplayer1.locX(), entityplayer1.locY(), entityplayer1.locZ(), entityplayer1.yaw, entityplayer1.pitch));
@@ -857,18 +857,18 @@ index 7b79ee4fe5893d0c8c5825776c3c09ca8553abc8..b93545b0da26a97312377403e5733c2e
      public void a(int i) {
          this.viewDistance = i;
 -        this.sendAll(new PacketPlayOutViewDistance(i));
-+        //this.sendAll(new PacketPlayOutViewDistance(i)); /* Concrete - move into setViewDistance */
++        //this.sendAll(new PacketPlayOutViewDistance(i)); // Tuinity - move into setViewDistance
          Iterator iterator = this.server.getWorlds().iterator();
  
          while (iterator.hasNext()) {
 diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
-index c1acec87f9291291c6adffad7f69283bb8f9ff96..994ab1916f41f57a72d79d882f5c4ef8e61ad2be 100644
+index c1acec87f9291291c6adffad7f69283bb8f9ff96..5976e9c65e9589df4f4b5642aa9e84fc8362579a 100644
 --- a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
 @@ -1,5 +1,6 @@
  package org.bukkit.craftbukkit.entity;
  
-+import ca.spottedleaf.concrete.util.TickThread; /* Concrete */
++import ca.spottedleaf.tuinity.util.TickThread; // Tuinity
  import com.destroystokyo.paper.Title;
  import com.destroystokyo.paper.profile.CraftPlayerProfile;
  import com.destroystokyo.paper.profile.PlayerProfile;
@@ -877,33 +877,33 @@ index c1acec87f9291291c6adffad7f69283bb8f9ff96..994ab1916f41f57a72d79d882f5c4ef8
      @Override
      public int getViewDistance() {
 -        throw new NotImplementedException("Per-Player View Distance APIs need further understanding to properly implement"); // TODO
-+        return getHandle().viewDistance == -1 ? ((WorldServer)getHandle().world).getChunkProvider().playerChunkMap.getViewDistance() : getHandle().viewDistance; /* Concrete - per player view distance */
++        return getHandle().viewDistance == -1 ? ((WorldServer)getHandle().world).getChunkProvider().playerChunkMap.getViewDistance() : getHandle().viewDistance; // Tuinity - per player view distance
      }
  
      @Override
      public void setViewDistance(int viewDistance) {
 -        throw new NotImplementedException("Per-Player View Distance APIs need further understanding to properly implement"); // TODO
 +        TickThread.ensureTickThread("Cannot update view distance safely off of the main thread");
-+        /* Concrete start - per player view distance */
++        // Tuinity start - per player view distance
 +        if ((viewDistance < 2 || viewDistance > 32) && viewDistance != -1) {
 +            throw new IllegalArgumentException("View distance " + viewDistance + " is out of range of [2, 32]");
 +        }
 +        if (viewDistance != getHandle().viewDistance) {
 +            ((WorldServer)getHandle().world).getChunkProvider().playerChunkMap.updateViewDistance(getHandle(), viewDistance);
 +        }
-+        /* Concrete end - per player view distance */
++        // Tuinity end - per player view distance
      }
      // Paper end
  
 diff --git a/src/main/java/org/spigotmc/ActivationRange.java b/src/main/java/org/spigotmc/ActivationRange.java
-index 6e165a16498c9f84fd00ed3fdc28a1774d9827bc..063d1cd683a7d68131b5539a46aa9abc55bff145 100644
+index 6e165a16498c9f84fd00ed3fdc28a1774d9827bc..3fb177f9882ca1d8ad1f6b143d8b377b3f6306aa 100644
 --- a/src/main/java/org/spigotmc/ActivationRange.java
 +++ b/src/main/java/org/spigotmc/ActivationRange.java
 @@ -38,6 +38,7 @@ import net.minecraft.server.EntityInsentient;
  import net.minecraft.server.EntityLlama;
  import net.minecraft.server.EntityWaterAnimal;
  // Paper end
-+import net.minecraft.server.WorldServer; /* Concrete */
++import net.minecraft.server.WorldServer; // Tuinity
  
  public class ActivationRange
  {
@@ -915,7 +915,7 @@ index 6e165a16498c9f84fd00ed3fdc28a1774d9827bc..063d1cd683a7d68131b5539a46aa9abc
 -        maxRange = Math.max( maxRange, raiderActivationRange );
 -        maxRange = Math.max( maxRange, miscActivationRange );
 -        maxRange = Math.min( ( world.spigotConfig.viewDistance << 4 ) - 8, maxRange );
-+        /* Concrete start - per player view distance */
++        // Tuinity start - per player view distance
 +        int maxRangeTemp = Math.max( monsterActivationRange, animalActivationRange );
 +        maxRangeTemp = Math.max( maxRangeTemp, raiderActivationRange );
 +        maxRangeTemp = Math.max( maxRangeTemp, miscActivationRange );
@@ -924,7 +924,7 @@ index 6e165a16498c9f84fd00ed3fdc28a1774d9827bc..063d1cd683a7d68131b5539a46aa9abc
          {
 -
 +            final int maxRange = Math.min( ( ( player instanceof net.minecraft.server.EntityPlayer ? ((net.minecraft.server.EntityPlayer)player).getEffectiveViewDistance(((WorldServer)world).getChunkProvider().playerChunkMap) : world.spigotConfig.viewDistance ) << 4 ) - 8, maxRangeTemp );
-+            /* Concrete end - per player view distance */
++            // Tuinity end - per player view distance
              player.activatedTick = MinecraftServer.currentTick;
              maxBB = player.getBoundingBox().grow( maxRange, 256, maxRange );
              ActivationType.MISC.boundingBox = player.getBoundingBox().grow( miscActivationRange, 256, miscActivationRange );

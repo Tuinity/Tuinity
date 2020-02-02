@@ -6,7 +6,7 @@ production server (or at all). The fork is based off of aikar's EMC framework fo
 https://github.com/starlis/empirecraft
 
 ## Contact
-[IRC](http://irc.spi.gt/iris/?channels=concrete) | [Discord](https://discord.gg/CgDPu27)
+[IRC](http://irc.spi.gt/iris/?channels=tuinity) | [Discord](https://discord.gg/CgDPu27)
 
 ## License
 The PATCHES-LICENSE file describes the license for api & server patches,
@@ -24,8 +24,8 @@ your dependency you must re-build tuinity.
 Tuinity-API maven dependency:
 ```xml
 <dependency>
-    <groupId>ca.spottedleaf.concrete</groupId>
-    <artifactId>concrete-api</artifactId>
+    <groupId>ca.spottedleaf.tuinity</groupId>
+    <artifactId>tuinity-api</artifactId>
     <version>1.15.2-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
  </dependency>
@@ -34,8 +34,8 @@ Tuinity-API maven dependency:
  Tuinity-Server maven dependency:
  ```xml
  <dependency>
-     <groupId>ca.spottedleaf.concrete</groupId>
-     <artifactId>concrete</artifactId>
+     <groupId>ca.spottedleaf.tuinity</groupId>
+     <artifactId>tuinity</artifactId>
      <version>1.15.2-R0.1-SNAPSHOT</version>
      <scope>provided</scope>
   </dependency>
