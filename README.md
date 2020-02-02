@@ -1,4 +1,4 @@
-Concrete
+Tuinity
 ==
 
 Experimental fork of paper. I would personally not recommend using this in a
@@ -9,19 +9,19 @@ https://github.com/starlis/empirecraft
 [IRC](http://irc.spi.gt/iris/?channels=concrete) | [Discord](https://discord.gg/CgDPu27)
 
 ## License
-The PATCHES-LICENSE file describes the license for api & server patches, 
+The PATCHES-LICENSE file describes the license for api & server patches,
 found in `./patches` and its subdirectories except when noted otherwise.
 
-Everything else is licensed under the MIT license, except when note otherwise. 
-See https://github.com/starlis/empirecraft and https://github.com/electronicboy/byof 
+Everything else is licensed under the MIT license, except when note otherwise.
+See https://github.com/starlis/empirecraft and https://github.com/electronicboy/byof
 for the license of material used/modified by this project.
 
 ## Plugin developers
-In order to use Concrete as a dependency you must following the steps laid out
-in `Building and setting up` and build concrete. Each time you want to update
-your dependency you must re-build concrete.
+In order to use Tuinity as a dependency you must following the steps laid out
+in `Building and setting up` and build tuinity. Each time you want to update
+your dependency you must re-build tuinity.
 
-Concrete-API maven dependency:
+Tuinity-API maven dependency:
 ```xml
 <dependency>
     <groupId>ca.spottedleaf.concrete</groupId>
@@ -30,8 +30,8 @@ Concrete-API maven dependency:
     <scope>provided</scope>
  </dependency>
  ```
- 
- Concrete-Server maven dependency:
+
+ Tuinity-Server maven dependency:
  ```xml
  <dependency>
      <groupId>ca.spottedleaf.concrete</groupId>
@@ -42,29 +42,29 @@ Concrete-API maven dependency:
   ```
 
 There is no repository required since the artifacts should be locally installed
-via building concrete.
+via building tuinity.
 
 ## Building and setting up
 Run the following commands in the root directory:
 
 ```
-./concrete patch
+./tuinity patch
 ```
 
-This should initialize the repo such that you can now start modifying and creating 
-patches. The folder `Concrete-API` is the api repo and the `Concrete-Server` folder
+This should initialize the repo such that you can now start modifying and creating
+patches. The folder `Tuinity-API` is the api repo and the `Tuinity-Server` folder
 is the server repo and will contain the source files you will modify.
 
 #### Creating a patch
-Patches are effectively just commits in either `Concrete-API` or `Concrete-Server`. 
-To create one, just add a commit to either repo and run `./concrete rb`, and a 
-patch will be placed in the patches folder. Modifying commits will also modify its 
+Patches are effectively just commits in either `Tuinity-API` or `Tuinity-Server`.
+To create one, just add a commit to either repo and run `./tuinity rb`, and a
+patch will be placed in the patches folder. Modifying commits will also modify its
 corresponding patch file.
 
 
 #### Building
 
-Use the command `./concrete build` to build the api and server. Compiled jars
-will be placed under `Concrete-API/target` and `Concrete-Server/target`.
+Use the command `./tuinity build` to build the api and server. Compiled jars
+will be placed under `Tuinity-API/target` and `Tuinity-Server/target`.
 
-To get paperclip jars, run `./concrete jar`.
+To get paperclip jars, run `./tuinity jar`.
