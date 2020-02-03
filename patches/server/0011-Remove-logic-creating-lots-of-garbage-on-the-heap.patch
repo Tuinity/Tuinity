@@ -42,6 +42,15 @@ creating lots of garbage entries.
 
 - Iterator usage in hot areas
 
+- Entry iteration in LightEngineStorage
+   Fast iterator might look like it could not be used since that's only p
+   rovided via the Long2ObjectOpenHashMap interface, and the map was
+   synchronized via Long2ObjectMaps.synchronize - however the
+   synchronized map does not wrap the iterator, so we can freely
+   use the fast iterator without causing synchronization
+   issues. Also target next() vs nextLong(), although they really
+   did not show up in the profiler at all.
+
 diff --git a/src/main/java/ca/spottedleaf/tuinity/util/fastutil/ExtendedAbstractDoubleList.java b/src/main/java/ca/spottedleaf/tuinity/util/fastutil/ExtendedAbstractDoubleList.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..2075945dcc467a8394116dacd97194b86f10133b
@@ -594,10 +603,10 @@ index 2301a982e17ab9568e3da9ca84c4a024c7c1b214..488d4f289f0934022c7fb040350eb145
  
                  if (mutableint.getValue() >= 15) {
 diff --git a/src/main/java/net/minecraft/server/LightEngineStorage.java b/src/main/java/net/minecraft/server/LightEngineStorage.java
-index a3f919816eb2a742ed09b553995e6508684e5ea5..3b00f8612ec72fa50f7252661e743cc46cb013e9 100644
+index a3f919816eb2a742ed09b553995e6508684e5ea5..dacc96414f6b381700c72a0f61af3f8e517a2b62 100644
 --- a/src/main/java/net/minecraft/server/LightEngineStorage.java
 +++ b/src/main/java/net/minecraft/server/LightEngineStorage.java
-@@ -19,8 +19,8 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+@@ -19,11 +19,12 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
      protected final LongSet b = new LongOpenHashSet();
      protected final LongSet c = new LongOpenHashSet();
      protected final LongSet d = new LongOpenHashSet();
@@ -607,7 +616,55 @@ index a3f919816eb2a742ed09b553995e6508684e5ea5..3b00f8612ec72fa50f7252661e743cc4
 +    protected final M f; // Tuinity - diff on change, should be "updating"
      protected final LongSet g = new LongOpenHashSet();
      protected final LongSet h = new LongOpenHashSet();
-     protected final Long2ObjectMap<NibbleArray> i = Long2ObjectMaps.synchronize(new Long2ObjectOpenHashMap());
+-    protected final Long2ObjectMap<NibbleArray> i = Long2ObjectMaps.synchronize(new Long2ObjectOpenHashMap());
++    protected final Long2ObjectOpenHashMap<NibbleArray> synchronized_map_real = new Long2ObjectOpenHashMap<>(); // Tuinity - store wrapped map, we need fastIterator
++    protected final Long2ObjectMap<NibbleArray> i = Long2ObjectMaps.synchronize(this.synchronized_map_real); // Tuinity - store wrapped map, we need fastIterator
+     private final LongSet n = new LongOpenHashSet();
+     private final LongSet o = new LongOpenHashSet();
+     protected volatile boolean j;
+@@ -178,7 +179,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+             NibbleArray nibblearray;
+ 
+             while (longiterator.hasNext()) {
+-                i = (Long) longiterator.next();
++                i = longiterator.nextLong(); // Tuinity - use nextLong
+                 this.a(lightenginelayer, i);
+                 NibbleArray nibblearray1 = (NibbleArray) this.i.remove(i);
+ 
+@@ -196,13 +197,13 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+             longiterator = this.o.iterator();
+ 
+             while (longiterator.hasNext()) {
+-                i = (Long) longiterator.next();
++                i = longiterator.nextLong(); // Tuinity - use nextLong
+                 this.l(i);
+             }
+ 
+             this.o.clear();
+             this.j = false;
+-            ObjectIterator objectiterator = this.i.long2ObjectEntrySet().iterator();
++            ObjectIterator objectiterator = this.synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to reduce entry creation
+ 
+             Entry entry;
+             long j;
+@@ -225,7 +226,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+                 longiterator = this.i.keySet().iterator();
+ 
+                 while (longiterator.hasNext()) {
+-                    i = (Long) longiterator.next();
++                    i = longiterator.nextLong(); // Tuinity - use nextLong
+                     if (this.g(i)) {
+                         int k = SectionPosition.c(SectionPosition.b(i));
+                         int l = SectionPosition.c(SectionPosition.c(i));
+@@ -279,7 +280,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+                 }
+             }
+ 
+-            objectiterator = this.i.long2ObjectEntrySet().iterator();
++            objectiterator = this.synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to avoid entry creation
+ 
+             while (objectiterator.hasNext()) {
+                 entry = (Entry) objectiterator.next();
 diff --git a/src/main/java/net/minecraft/server/LightEngineStorageArray.java b/src/main/java/net/minecraft/server/LightEngineStorageArray.java
 index b978723a66d001f70325df0c7521025e079d7cfa..76e9a892423a9291fcd235bc68012c5e010323ab 100644
 --- a/src/main/java/net/minecraft/server/LightEngineStorageArray.java
