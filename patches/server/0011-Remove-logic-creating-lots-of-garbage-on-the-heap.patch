@@ -51,6 +51,9 @@ creating lots of garbage entries.
    issues. Also target next() vs nextLong(), although they really
    did not show up in the profiler at all.
 
+- Iterator creation in ProtoChunk#setType
+   Avoid using an array
+
 diff --git a/src/main/java/ca/spottedleaf/tuinity/util/fastutil/ExtendedAbstractDoubleList.java b/src/main/java/ca/spottedleaf/tuinity/util/fastutil/ExtendedAbstractDoubleList.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..2075945dcc467a8394116dacd97194b86f10133b
@@ -499,6 +502,28 @@ index a9fe70d0b1fd8787e3da8908273f2dd412ddb090..59126f5425cda207c90027cec09416a3
              this.world.getMethodProfiler().enter("customSpawners");
              if (flag1) {
                  try (co.aikar.timings.Timing ignored = this.world.timings.miscMobSpawning.startTiming()) { // Paper - timings
+diff --git a/src/main/java/net/minecraft/server/ChunkStatus.java b/src/main/java/net/minecraft/server/ChunkStatus.java
+index 88f1674616ef0af9d7491402ce672125f4b7fe83..25654520e7300fe5b1a4e5c445fcb142aa139bcf 100644
+--- a/src/main/java/net/minecraft/server/ChunkStatus.java
++++ b/src/main/java/net/minecraft/server/ChunkStatus.java
+@@ -103,7 +103,7 @@ public class ChunkStatus {
+     private final ChunkStatus.c w;
+     private final int x;
+     private final ChunkStatus.Type y;
+-    private final EnumSet<HeightMap.Type> z;
++    private final EnumSet<HeightMap.Type> z; public final HeightMap.Type[] heightMaps; // Tuinity
+ 
+     private static CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> a(ChunkStatus chunkstatus, LightEngineThreaded lightenginethreaded, IChunkAccess ichunkaccess) {
+         boolean flag = a(chunkstatus, ichunkaccess);
+@@ -165,7 +165,7 @@ public class ChunkStatus {
+         this.w = chunkstatus_c;
+         this.x = i;
+         this.y = chunkstatus_type;
+-        this.z = enumset;
++        this.z = enumset; this.heightMaps = new java.util.ArrayList<>(this.z).toArray(new HeightMap.Type[0]); // Tuinity
+         this.t = chunkstatus == null ? 0 : chunkstatus.c() + 1;
+     }
+ 
 diff --git a/src/main/java/net/minecraft/server/DoubleListOffset.java b/src/main/java/net/minecraft/server/DoubleListOffset.java
 index 73657f740731b9bc606e64d0a2a3f32a842db3f5..d5c33ce2df0b780f7653c1162b1b24f32ac168cd 100644
 --- a/src/main/java/net/minecraft/server/DoubleListOffset.java
@@ -1600,6 +1625,42 @@ index d103cfaace4f42aaad677103f4eef578490699da..1b8cb3fc61e83d52625d221495173c30
              if (i < nonnulllist.size()) {
                  list = nonnulllist;
                  break;
+diff --git a/src/main/java/net/minecraft/server/ProtoChunk.java b/src/main/java/net/minecraft/server/ProtoChunk.java
+index f376e210687fb30fbe8e093c397b710d3bd07ecc..5a883aac14052f6637acbf4cf96236936fee98c3 100644
+--- a/src/main/java/net/minecraft/server/ProtoChunk.java
++++ b/src/main/java/net/minecraft/server/ProtoChunk.java
+@@ -180,14 +180,11 @@ public class ProtoChunk implements IChunkAccess {
+                     lightengine.a(blockposition);
+                 }
+ 
+-                EnumSet<HeightMap.Type> enumset = this.getChunkStatus().h();
++                HeightMap.Type[] enumset = this.getChunkStatus().heightMaps; // Tuinity - reduce iterator creation
+                 EnumSet<HeightMap.Type> enumset1 = null;
+-                Iterator iterator = enumset.iterator();
++                // Tuinity - reduce iterator creation
+ 
+-                HeightMap.Type heightmap_type;
+-
+-                while (iterator.hasNext()) {
+-                    heightmap_type = (HeightMap.Type) iterator.next();
++                for (HeightMap.Type heightmap_type : enumset) { // Tuinity - reduce iterator creation
+                     HeightMap heightmap = (HeightMap) this.f.get(heightmap_type);
+ 
+                     if (heightmap == null) {
+@@ -203,10 +200,9 @@ public class ProtoChunk implements IChunkAccess {
+                     HeightMap.a(this, enumset1);
+                 }
+ 
+-                iterator = enumset.iterator();
+-
+-                while (iterator.hasNext()) {
+-                    heightmap_type = (HeightMap.Type) iterator.next();
++                // Tuinity start - reduce iterator creation
++                for (HeightMap.Type heightmap_type : enumset) {
++                    // Tuinity end
+                     ((HeightMap) this.f.get(heightmap_type)).a(i & 15, j, k & 15, iblockdata);
+                 }
+ 
 diff --git a/src/main/java/net/minecraft/server/VoxelShapeArray.java b/src/main/java/net/minecraft/server/VoxelShapeArray.java
 index caf297fe977942ca68fdb963d97dd9fc0f78d883..4fd1c474ce09549f7cb405cd92f5228b2185ddb2 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapeArray.java
