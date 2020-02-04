@@ -7,14 +7,14 @@ Subject: [PATCH] Optimize entity list iteration requiring entities be in
 We retain a list of loaded entities specifically for this usage
 
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index d7fe18600c7757cbce0d38318f1dbb59c970ef63..0b2a8a5258cab2e57f054ca4c5ba98314885488a 100644
+index 23c5c951779cb6e54ef02c62b6da8d675d2b2586..39f163d12d629aabe91273bf1badf41ed1ea380e 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -144,20 +144,11 @@ public class Chunk implements IChunkAccess {
      // CraftBukkit end
  
      // Tuinity start
-+    public final ca.spottedleaf.tuinity.util.EntityList entityList = new ca.spottedleaf.tuinity.util.EntityList();
++    public final com.tuinity.tuinity.util.EntityList entityList = new com.tuinity.tuinity.util.EntityList();
      public void forEachEntity(final Consumer<Entity> consumer) {
 -        final List<Entity>[] slices = this.entitySlices;
 -        for (int i = 0, slicesLen = slices.length; i < slicesLen; ++i) {
@@ -73,7 +73,7 @@ index d7fe18600c7757cbce0d38318f1dbb59c970ef63..0b2a8a5258cab2e57f054ca4c5ba9831
          // Tuinity end - neighbour cache
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index ba13206c0388e3cc61aa79761045265c89cf6581..869f52289782cac2a6ea53dc3f918d7a318ac7b0 100644
+index 77afce41709a092692d7f1d8cca150192c8216e1..6c370b1ddd5805edeedd4d4097c8e68fa5ea507c 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -172,6 +172,26 @@ public class WorldServer extends World {
@@ -82,9 +82,9 @@ index ba13206c0388e3cc61aa79761045265c89cf6581..869f52289782cac2a6ea53dc3f918d7a
  
 +
 +    // Tuinity start
-+    public final ca.spottedleaf.tuinity.util.EntityList loadedEntities = new ca.spottedleaf.tuinity.util.EntityList();
++    public final com.tuinity.tuinity.util.EntityList loadedEntities = new com.tuinity.tuinity.util.EntityList();
 +    void onChunkLoad(final Chunk chunk) {
-+        final ca.spottedleaf.tuinity.util.EntityList list = chunk.entityList;
++        final com.tuinity.tuinity.util.EntityList list = chunk.entityList;
 +        final Entity[] entities = list.getRawData();
 +        for (int i = 0, size = list.size(); i < size; ++i) {
 +            this.loadedEntities.add(entities[i]);
@@ -92,7 +92,7 @@ index ba13206c0388e3cc61aa79761045265c89cf6581..869f52289782cac2a6ea53dc3f918d7a
 +    }
 +
 +    void onChunkUnload(final Chunk chunk) {
-+        final ca.spottedleaf.tuinity.util.EntityList list = chunk.entityList;
++        final com.tuinity.tuinity.util.EntityList list = chunk.entityList;
 +        final Entity[] entities = list.getRawData();
 +        for (int i = 0, size = list.size(); i < size; ++i) {
 +            this.loadedEntities.remove(entities[i]);
@@ -142,7 +142,7 @@ index ba13206c0388e3cc61aa79761045265c89cf6581..869f52289782cac2a6ea53dc3f918d7a
              // Paper end
              entity.shouldBeRemoved = false; // Paper - shouldn't be removed after being re-added
 +            // Tuinity start - loaded entity list
-+            if (this.isChunkLoaded(ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(entity.locX()), ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(entity.locZ()))) {
++            if (this.isChunkLoaded(com.tuinity.tuinity.util.Util.getChunkCoordinate(entity.locX()), com.tuinity.tuinity.util.Util.getChunkCoordinate(entity.locZ()))) {
 +                this.loadedEntities.add(entity);
 +            }
 +            // Tuinity end - loaded entity list

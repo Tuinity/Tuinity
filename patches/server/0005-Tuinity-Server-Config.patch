@@ -4,13 +4,13 @@ Date: Sun, 3 Mar 2019 18:25:06 -0800
 Subject: [PATCH] Tuinity Server Config
 
 
-diff --git a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..c1b7d0d20531ce933d34f64cd981d07387d7e2f0
+index 0000000000000000000000000000000000000000..41a466293150a4a9878c8af9d373ee0437adafb9
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
++++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -0,0 +1,159 @@
-+package ca.spottedleaf.tuinity.config;
++package com.tuinity.tuinity.config;
 +
 +import ca.spottedleaf.concurrentutil.util.Throw;
 +import org.bukkit.Bukkit;
@@ -37,7 +37,7 @@ index 0000000000000000000000000000000000000000..c1b7d0d20531ce933d34f64cd981d073
 +        // TODO remove this in the future...
 +        final File tuinityConfig = new File(file.getParent(), "tuinity.yml");
 +        if (!tuinityConfig.exists()) {
-+            final File oldConfig = new File(file.getParent(), "concrete.yml");
++            final File oldConfig = new File(file.getParent(), "tuinity.yml");
 +            oldConfig.renameTo(tuinityConfig);
 +        }
 +        TuinityConfig.configFile = file;
@@ -171,26 +171,26 @@ index 0000000000000000000000000000000000000000..c1b7d0d20531ce933d34f64cd981d073
 +}
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index a74fae9ed556e70340550b9675d32bed192e0c7a..ed763a61f2ad8bb5318835abd2db3e89cbab5c12 100644
+index a74fae9ed556e70340550b9675d32bed192e0c7a..791fa0aae063a51d29a60e7950d1a4ce564fe3e0 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
 @@ -187,6 +187,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
          com.destroystokyo.paper.PaperConfig.registerCommands();
          com.destroystokyo.paper.VersionHistoryManager.INSTANCE.getClass(); // load version history now
          // Paper end
-+        ca.spottedleaf.tuinity.config.TuinityConfig.init((File) options.valueOf("tuinity-settings")); // Tuinity - Server Config
++        com.tuinity.tuinity.config.TuinityConfig.init((File) options.valueOf("tuinity-settings")); // Tuinity - Server Config
  
          this.setSpawnAnimals(dedicatedserverproperties.spawnAnimals);
          this.setSpawnNPCs(dedicatedserverproperties.spawnNpcs);
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 5ca6c853df799ddb193683366e65d76c4abe4050..2d8cf7c8efa73e9732ca8eba9fb4e717814ea38a 100644
+index 5ca6c853df799ddb193683366e65d76c4abe4050..aa18e2475b542e8547c92fe1083d08e17c1bcfe3 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -96,6 +96,8 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
      public final com.destroystokyo.paper.PaperWorldConfig paperConfig; // Paper
      public final ChunkPacketBlockController chunkPacketBlockController; // Paper - Anti-Xray
  
-+    public final ca.spottedleaf.tuinity.config.TuinityConfig.WorldConnfig tuinityConfig; // Tuinity - Server Config
++    public final com.tuinity.tuinity.config.TuinityConfig.WorldConnfig tuinityConfig; // Tuinity - Server Config
 +
      public final co.aikar.timings.WorldTimingsHandler timings; // Paper
      public static BlockPosition lastPhysicsProblem; // Spigot
@@ -199,19 +199,19 @@ index 5ca6c853df799ddb193683366e65d76c4abe4050..2d8cf7c8efa73e9732ca8eba9fb4e717
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig( worlddata.getName() ); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(worlddata.getName(), this.spigotConfig); // Paper
          this.chunkPacketBlockController = this.paperConfig.antiXray ? new ChunkPacketBlockControllerAntiXray(this.paperConfig) : ChunkPacketBlockController.NO_OPERATION_INSTANCE; // Paper - Anti-Xray
-+        this.tuinityConfig = new ca.spottedleaf.tuinity.config.TuinityConfig.WorldConnfig(worlddata.getName()); // Tuinity - Server Config
++        this.tuinityConfig = new com.tuinity.tuinity.config.TuinityConfig.WorldConnfig(worlddata.getName()); // Tuinity - Server Config
          this.generator = gen;
          this.world = new CraftWorld((WorldServer) this, gen, env);
          this.ticksPerAnimalSpawns = this.getServer().getTicksPerAnimalSpawns(); // CraftBukkit
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 7a0c139a195f0a3d05ba5acaac863cbd35ede36c..d6b3b9e7ab780d2e79e2aebf11602cae0868988e 100644
+index 7a0c139a195f0a3d05ba5acaac863cbd35ede36c..39405ba1e2c8230df0fc1b4b6bfd0c3ceb168ad7 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -794,6 +794,7 @@ public final class CraftServer implements Server {
  
          org.spigotmc.SpigotConfig.init((File) console.options.valueOf("spigot-settings")); // Spigot
          com.destroystokyo.paper.PaperConfig.init((File) console.options.valueOf("paper-settings")); // Paper
-+        ca.spottedleaf.tuinity.config.TuinityConfig.init((File) console.options.valueOf("tuinity-settings")); // Tuinity - Server Config
++        com.tuinity.tuinity.config.TuinityConfig.init((File) console.options.valueOf("tuinity-settings")); // Tuinity - Server Config
          for (WorldServer world : console.getWorlds()) {
              world.worldData.setDifficulty(config.difficulty);
              world.setSpawnFlags(config.spawnMonsters, config.spawnAnimals);

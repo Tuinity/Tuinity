@@ -5,12 +5,12 @@ Subject: [PATCH] Add soft async catcher
 
 Must be enabled via -Dtuinity.strict-thread-checks=true
 
-diff --git a/src/main/java/ca/spottedleaf/tuinity/util/TickThread.java b/src/main/java/ca/spottedleaf/tuinity/util/TickThread.java
-index 7c4c2dd69908fff008370aba0b5f6389563f7f18..92e70040fb88ef4034917447f03a1bff358b6cb8 100644
---- a/src/main/java/ca/spottedleaf/tuinity/util/TickThread.java
-+++ b/src/main/java/ca/spottedleaf/tuinity/util/TickThread.java
+diff --git a/src/main/java/com/tuinity/tuinity/util/TickThread.java b/src/main/java/com/tuinity/tuinity/util/TickThread.java
+index 9c95f0a16b21ff9bd3b070edc73fc164870187ad..8cbac284b6125cb2917f7b93d738ab1e5dc6e342 100644
+--- a/src/main/java/com/tuinity/tuinity/util/TickThread.java
++++ b/src/main/java/com/tuinity/tuinity/util/TickThread.java
 @@ -1,11 +1,36 @@
- package ca.spottedleaf.tuinity.util;
+ package com.tuinity.tuinity.util;
  
 +import net.minecraft.server.MinecraftServer;
 +import org.bukkit.Bukkit;
@@ -48,14 +48,14 @@ index 7c4c2dd69908fff008370aba0b5f6389563f7f18..92e70040fb88ef4034917447f03a1bff
  }
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 0a5f312555fd7664c52a3bea5b1fe84b52701937..abd8801bc2afeb8f9a9e620d302add17ffa14f10 100644
+index 45bb90653e8172b9ee2368a49c796ccb07211c1b..d83fcefec727d7169f75b6736264929c838dfdaf 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -446,6 +446,7 @@ public class Chunk implements IChunkAccess {
  
      @Override
      public void a(Entity entity) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async addEntity call"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async addEntity call"); // Tuinity
          this.q = true;
          int i = MathHelper.floor(entity.locX() / 16.0D);
          int j = MathHelper.floor(entity.locZ() / 16.0D);
@@ -63,7 +63,7 @@ index 0a5f312555fd7664c52a3bea5b1fe84b52701937..abd8801bc2afeb8f9a9e620d302add17
      }
  
      public void a(Entity entity, int i) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async removeEntity call"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async removeEntity call"); // Tuinity
          if (i < 0) {
              i = 0;
          }
@@ -71,7 +71,7 @@ index 0a5f312555fd7664c52a3bea5b1fe84b52701937..abd8801bc2afeb8f9a9e620d302add17
      }
  
      public void a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<Entity> list, @Nullable Predicate<? super Entity> predicate) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
          int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
@@ -79,7 +79,7 @@ index 0a5f312555fd7664c52a3bea5b1fe84b52701937..abd8801bc2afeb8f9a9e620d302add17
      }
  
      public <T extends Entity> void a(@Nullable EntityTypes<?> entitytypes, AxisAlignedBB axisalignedbb, List<? super T> list, Predicate<? super T> predicate) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
          int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
@@ -87,19 +87,19 @@ index 0a5f312555fd7664c52a3bea5b1fe84b52701937..abd8801bc2afeb8f9a9e620d302add17
      }
  
      public <T extends Entity> void a(Class<? extends T> oclass, AxisAlignedBB axisalignedbb, List<T> list, @Nullable Predicate<? super T> predicate) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
          int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 8c1945687537bad2cc039e347d77810b55042264..43c26c275d9ae6305e945ac06c5787246c18dae7 100644
+index 8c1945687537bad2cc039e347d77810b55042264..c1487fb9fa967984596554be41d065e026add7a2 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -53,6 +53,7 @@ public abstract class ChunkMapDistance {
      }
  
      protected void purgeTickets() {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async purge tickets"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async purge tickets"); // Tuinity
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
@@ -107,7 +107,7 @@ index 8c1945687537bad2cc039e347d77810b55042264..43c26c275d9ae6305e945ac06c578724
      }
  
      private boolean addTicket(long i, Ticket<?> ticket) { // CraftBukkit - void -> boolean
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async ticket add"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async ticket add"); // Tuinity
          ArraySetSorted<Ticket<?>> arraysetsorted = this.e(i);
          int j = a(arraysetsorted);
          Ticket<?> ticket1 = (Ticket) arraysetsorted.a(ticket); // CraftBukkit - decompile error
@@ -115,7 +115,7 @@ index 8c1945687537bad2cc039e347d77810b55042264..43c26c275d9ae6305e945ac06c578724
      }
  
      private boolean removeTicket(long i, Ticket<?> ticket) { // CraftBukkit - void -> boolean
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async ticket remove"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async ticket remove"); // Tuinity
          ArraySetSorted<Ticket<?>> arraysetsorted = this.e(i);
  
          boolean removed = false; // CraftBukkit
@@ -123,7 +123,7 @@ index 8c1945687537bad2cc039e347d77810b55042264..43c26c275d9ae6305e945ac06c578724
      }
  
      private ArraySetSorted<Ticket<?>> e(long i) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async tickets compute"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async tickets compute"); // Tuinity
          return (ArraySetSorted) this.tickets.computeIfAbsent(i, (j) -> {
              return ArraySetSorted.a(4);
          });
@@ -131,7 +131,7 @@ index 8c1945687537bad2cc039e347d77810b55042264..43c26c275d9ae6305e945ac06c578724
      }
  
      public void a(SectionPosition sectionposition, EntityPlayer entityplayer) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async player add"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async player add"); // Tuinity
          long i = sectionposition.u().pair();
  
          ((ObjectSet) this.c.computeIfAbsent(i, (j) -> {
@@ -139,7 +139,7 @@ index 8c1945687537bad2cc039e347d77810b55042264..43c26c275d9ae6305e945ac06c578724
      }
  
      public void b(SectionPosition sectionposition, EntityPlayer entityplayer) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async player remove"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async player remove"); // Tuinity
          long i = sectionposition.u().pair();
          ObjectSet<EntityPlayer> objectset = (ObjectSet) this.c.get(i);
  
@@ -147,43 +147,43 @@ index 8c1945687537bad2cc039e347d77810b55042264..43c26c275d9ae6305e945ac06c578724
  
      // CraftBukkit start
      public <T> void removeAllTicketsFor(TicketType<T> ticketType, int ticketLevel, T ticketIdentifier) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async ticket remove"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async ticket remove"); // Tuinity
          Ticket<T> target = new Ticket<>(ticketType, ticketLevel, ticketIdentifier);
  
          for (java.util.Iterator<ArraySetSorted<Ticket<?>>> iterator = this.tickets.values().iterator(); iterator.hasNext();) {
 diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
-index 3a88c9a67062eb73ad8257ea786efca7e7e99f65..9f7c8d29d66cf753456039bdd4bade188c95a852 100644
+index 3a88c9a67062eb73ad8257ea786efca7e7e99f65..3e5d6a9e151fb990b777c1ac48cabea653ea1c27 100644
 --- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
 +++ b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
 @@ -71,6 +71,7 @@ public class EntityTrackerEntry {
      }
  
      public void a() {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Tracker update"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Tracker update"); // Tuinity
          List<Entity> list = this.tracker.getPassengers();
  
          if (!list.equals(this.p)) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 8e25c84da5e58a5bf321336b196651d597f23d9e..10eebb664eb0cef29f3b134aa28c4f5d0033b4fc 100644
+index d57975ad8b211b587289a18a9b47263e8c36a68f..1e717aa6133e4276e2b073683394a1825967c0bc 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -323,6 +323,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      @Nullable
      private PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Chunk holder update"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Chunk holder update"); // Tuinity
          if (k > PlayerChunkMap.GOLDEN_TICKET && j > PlayerChunkMap.GOLDEN_TICKET) {
              return playerchunk;
          } else {
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 2d8cf7c8efa73e9732ca8eba9fb4e717814ea38a..506780f00889e180d8c245d0031f49df2cca4594 100644
+index aa18e2475b542e8547c92fe1083d08e17c1bcfe3..0cc341106fb11ed38589de11e4f310e8efca4cb0 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -350,6 +350,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
  
      @Override
      public boolean setTypeAndData(BlockPosition blockposition, IBlockData iblockdata, int i) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async set type call"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async set type call"); // Tuinity
          // CraftBukkit start - tree generation
          if (this.captureTreeGeneration) {
              CraftBlockState blockstate = null;
@@ -191,12 +191,12 @@ index 2d8cf7c8efa73e9732ca8eba9fb4e717814ea38a..506780f00889e180d8c245d0031f49df
  
      // CraftBukkit start - Split off from above in order to directly send client and physic updates
      public void notifyAndUpdatePhysics(BlockPosition blockposition, Chunk chunk, IBlockData oldBlock, IBlockData newBlock, IBlockData actualBlock, int i) {
-+        ca.spottedleaf.tuinity.util.TickThread.softEnsureTickThread("Async notify and update"); // Tuinity
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async notify and update"); // Tuinity
          IBlockData iblockdata = newBlock;
          IBlockData iblockdata1 = oldBlock;
          IBlockData iblockdata2 = actualBlock;
 diff --git a/src/main/java/org/spigotmc/AsyncCatcher.java b/src/main/java/org/spigotmc/AsyncCatcher.java
-index 10606ed03e88e4e467de2d5424df12466c4e7873..cc1ccac6ee539d7b2503e48a599beead2a754f2c 100644
+index 10606ed03e88e4e467de2d5424df12466c4e7873..c3ac1a46c3e06bfe06ad9ff9f4ec49c055a790b0 100644
 --- a/src/main/java/org/spigotmc/AsyncCatcher.java
 +++ b/src/main/java/org/spigotmc/AsyncCatcher.java
 @@ -10,7 +10,7 @@ public class AsyncCatcher
@@ -204,7 +204,7 @@ index 10606ed03e88e4e467de2d5424df12466c4e7873..cc1ccac6ee539d7b2503e48a599beead
      public static void catchOp(String reason)
      {
 -        if ( enabled && !org.bukkit.Bukkit.isPrimaryThread() ) // Tuinity
-+        if ( ( enabled || ca.spottedleaf.tuinity.util.TickThread.STRICT_THREAD_CHECKS ) && !org.bukkit.Bukkit.isPrimaryThread() ) // Tuinity
++        if ( ( enabled || com.tuinity.tuinity.util.TickThread.STRICT_THREAD_CHECKS ) && !org.bukkit.Bukkit.isPrimaryThread() ) // Tuinity
          {
              throw new IllegalStateException( "Asynchronous " + reason + "!" );
          }

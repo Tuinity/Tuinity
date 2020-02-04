@@ -12,12 +12,12 @@ It's also targetted to reduce performance regressions when
 plugins or edge cases in code do not spam sync loads since chunks
 without tickets get unloaded immediately.
 
-diff --git a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
-index 2969a219d6171f97b8407e42382d0eb34cf92c7a..03b8df8080cba85d6b46d407b228d912d39f4043 100644
---- a/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
-+++ b/src/main/java/ca/spottedleaf/tuinity/config/TuinityConfig.java
+diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+index 2c4813006ffb6511261c277c982b16e95a8ab414..7b3609f015b2b53d83a8cc148f71fc3f2080abdd 100644
+--- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
++++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -1,6 +1,7 @@
- package ca.spottedleaf.tuinity.config;
+ package com.tuinity.tuinity.config;
  
  import ca.spottedleaf.concurrentutil.util.Throw;
 +import net.minecraft.server.TicketType;
@@ -53,7 +53,7 @@ index 24ba03ae580858fde7c32c915bb447b97ea229a6..d3c616e72ddddb87e019864b0b90228c
          this.a(ChunkCoordIntPair.a, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 7316edc2aed0f7bf19007618d69d0dcf7242e341..7107c125393774a25bc595765756ee600f7585c7 100644
+index d62a9d08dbde2e6e1e245f5fd4240dffb9da02a0..42f066fc7d7da80433da39982ee9f40f657f31ad 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
@@ -123,7 +123,7 @@ index 7316edc2aed0f7bf19007618d69d0dcf7242e341..7107c125393774a25bc595765756ee60
 -                return ticket.b(this.currentTick);
 +                // Tuinity start - delay chunk unloads
 +                boolean ret = ticket.isExpired(this.currentTick);
-+                if (ca.spottedleaf.tuinity.config.TuinityConfig.delayChunkUnloadsBy <= 0) {
++                if (com.tuinity.tuinity.config.TuinityConfig.delayChunkUnloadsBy <= 0) {
 +                    return ret;
 +                }
 +                if (ret && ticket.getTicketType() != TicketType.DELAYED_UNLOAD && ticket.getTicketLevel() < tempLevel[0]) {
@@ -156,7 +156,7 @@ index 7316edc2aed0f7bf19007618d69d0dcf7242e341..7107c125393774a25bc595765756ee60
          if (arraysetsorted.remove(ticket)) {
              removed = true; // CraftBukkit
 +            // Tuinity start - delay chunk unloads
-+            if (ca.spottedleaf.tuinity.config.TuinityConfig.delayChunkUnloadsBy > 0 && ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
++            if (com.tuinity.tuinity.config.TuinityConfig.delayChunkUnloadsBy > 0 && ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
 +                this.computeDelayedTicketFor(i, ticket.getTicketLevel(), arraysetsorted);
 +            }
 +            // Tuinity end - delay chunk unloads

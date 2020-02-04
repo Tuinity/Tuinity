@@ -4,13 +4,43 @@ Date: Sat, 18 May 2019 12:25:19 -0700
 Subject: [PATCH] Util patch
 
 
-diff --git a/src/main/java/ca/spottedleaf/tuinity/chunk/QueuedChangesMapLong2Int.java b/src/main/java/ca/spottedleaf/tuinity/chunk/QueuedChangesMapLong2Int.java
+diff --git a/src/main/java/co/aikar/timings/WorldTimingsHandler.java b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
+index e25544f116fe38cb340c6b2dc99045f6fd132d1c..61a0efe59b1cc23bdd0d14f948b9451b8991f8ae 100644
+--- a/src/main/java/co/aikar/timings/WorldTimingsHandler.java
++++ b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
+@@ -43,6 +43,12 @@ public class WorldTimingsHandler {
+     public final Timing broadcastChunkUpdates;
+     public final Timing countNaturalMobs;
+ 
++    // Tuinity start
++    public final Timing playerViewDistanceMapUpdate;
++    public final Timing playerViewDistanceMapAdd;
++    public final Timing playerViewDistanceMapRemove;
++    // Tuinity end
++
+     public final Timing syncChunkLoadTimer;
+     public final Timing syncChunkLoadDataTimer;
+     public final Timing syncChunkLoadStructuresTimer;
+@@ -78,6 +84,12 @@ public class WorldTimingsHandler {
+     public WorldTimingsHandler(World server) {
+         String name = server.worldData.getName() +" - ";
+ 
++        // Tuinity start
++        playerViewDistanceMapUpdate = Timings.ofSafe("Player View Distance Map - Update");
++        playerViewDistanceMapAdd = Timings.ofSafe("Player View Distance Map - Add");
++        playerViewDistanceMapRemove = Timings.ofSafe("Player View Distance Map - Remove");
++        // Tuinity end
++
+         mobSpawn = Timings.ofSafe(name + "mobSpawn");
+         doChunkUnload = Timings.ofSafe(name + "doChunkUnload");
+         scheduledBlocks = Timings.ofSafe(name + "Scheduled Blocks");
+diff --git a/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java b/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..6e217ae86547282800ff93f6b9abf649eea4dd6b
+index 0000000000000000000000000000000000000000..d528d08ea5c17059e3f252acd3192f3c1e13f309
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/chunk/QueuedChangesMapLong2Int.java
++++ b/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java
 @@ -0,0 +1,155 @@
-+package ca.spottedleaf.tuinity.chunk;
++package com.tuinity.tuinity.chunk;
 +
 +import ca.spottedleaf.concurrentutil.lock.WeakSeqLock;
 +import it.unimi.dsi.fastutil.longs.Long2IntMap;
@@ -165,13 +195,13 @@ index 0000000000000000000000000000000000000000..6e217ae86547282800ff93f6b9abf649
 +    }
 +
 +}
-diff --git a/src/main/java/ca/spottedleaf/tuinity/chunk/QueuedChangesMapLong2Object.java b/src/main/java/ca/spottedleaf/tuinity/chunk/QueuedChangesMapLong2Object.java
+diff --git a/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Object.java b/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Object.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..6fa7a5fa92d534fabfc9c9cab13f876a081b0584
+index 0000000000000000000000000000000000000000..e5bb56cca9cabf08070a66929ae13ed9483a6b92
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/chunk/QueuedChangesMapLong2Object.java
++++ b/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Object.java
 @@ -0,0 +1,170 @@
-+package ca.spottedleaf.tuinity.chunk;
++package com.tuinity.tuinity.chunk;
 +
 +import ca.spottedleaf.concurrentutil.lock.WeakSeqLock;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
@@ -342,13 +372,13 @@ index 0000000000000000000000000000000000000000..6fa7a5fa92d534fabfc9c9cab13f876a
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/ca/spottedleaf/tuinity/util/ChunkList.java b/src/main/java/ca/spottedleaf/tuinity/util/ChunkList.java
+diff --git a/src/main/java/com/tuinity/tuinity/util/ChunkList.java b/src/main/java/com/tuinity/tuinity/util/ChunkList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..91b5190671b16deaff4f420ec69078fe453075c8
+index 0000000000000000000000000000000000000000..66c64be8f33bf99768e20c883f1d2145174376c0
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/util/ChunkList.java
++++ b/src/main/java/com/tuinity/tuinity/util/ChunkList.java
 @@ -0,0 +1,119 @@
-+package ca.spottedleaf.tuinity.util;
++package com.tuinity.tuinity.util;
 +
 +import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 +import net.minecraft.server.Chunk;
@@ -467,13 +497,13 @@ index 0000000000000000000000000000000000000000..91b5190671b16deaff4f420ec69078fe
 +    }
 +
 +}
-diff --git a/src/main/java/ca/spottedleaf/tuinity/util/EntityList.java b/src/main/java/ca/spottedleaf/tuinity/util/EntityList.java
+diff --git a/src/main/java/com/tuinity/tuinity/util/EntityList.java b/src/main/java/com/tuinity/tuinity/util/EntityList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..30ae2365151cf671af0271b7869ca5f430b869cb
+index 0000000000000000000000000000000000000000..570c44e26af96c2d3ef467be4fb42b5d8562de43
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/util/EntityList.java
++++ b/src/main/java/com/tuinity/tuinity/util/EntityList.java
 @@ -0,0 +1,124 @@
-+package ca.spottedleaf.tuinity.util;
++package com.tuinity.tuinity.util;
 +
 +import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 +import net.minecraft.server.Entity;
@@ -597,13 +627,13 @@ index 0000000000000000000000000000000000000000..30ae2365151cf671af0271b7869ca5f4
 +        };
 +    }
 +}
-diff --git a/src/main/java/ca/spottedleaf/tuinity/util/IBlockDataList.java b/src/main/java/ca/spottedleaf/tuinity/util/IBlockDataList.java
+diff --git a/src/main/java/com/tuinity/tuinity/util/IBlockDataList.java b/src/main/java/com/tuinity/tuinity/util/IBlockDataList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..200f7325d8550b8823f425be3999229f978acadc
+index 0000000000000000000000000000000000000000..ce15ce532b86dba60f3f1be8cea1718a92e3b5d3
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/util/IBlockDataList.java
++++ b/src/main/java/com/tuinity/tuinity/util/IBlockDataList.java
 @@ -0,0 +1,123 @@
-+package ca.spottedleaf.tuinity.util;
++package com.tuinity.tuinity.util;
 +
 +import it.unimi.dsi.fastutil.longs.LongIterator;
 +import it.unimi.dsi.fastutil.shorts.Short2LongOpenHashMap;
@@ -727,13 +757,13 @@ index 0000000000000000000000000000000000000000..200f7325d8550b8823f425be3999229f
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/ca/spottedleaf/tuinity/util/OptimizedSmallEnumSet.java b/src/main/java/ca/spottedleaf/tuinity/util/OptimizedSmallEnumSet.java
+diff --git a/src/main/java/com/tuinity/tuinity/util/OptimizedSmallEnumSet.java b/src/main/java/com/tuinity/tuinity/util/OptimizedSmallEnumSet.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..fdd9005402e378215c4f62a018c1f301a5912a65
+index 0000000000000000000000000000000000000000..934792ad396aa427ffd4ca99279fa863e14762b3
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/util/OptimizedSmallEnumSet.java
++++ b/src/main/java/com/tuinity/tuinity/util/OptimizedSmallEnumSet.java
 @@ -0,0 +1,65 @@
-+package ca.spottedleaf.tuinity.util;
++package com.tuinity.tuinity.util;
 +
 +import java.util.Collection;
 +
@@ -799,13 +829,13 @@ index 0000000000000000000000000000000000000000..fdd9005402e378215c4f62a018c1f301
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/ca/spottedleaf/tuinity/util/Util.java b/src/main/java/ca/spottedleaf/tuinity/util/Util.java
+diff --git a/src/main/java/com/tuinity/tuinity/util/Util.java b/src/main/java/com/tuinity/tuinity/util/Util.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..04bb07eaa6108e88cefbe03ab258b8518ed9b80e
+index 0000000000000000000000000000000000000000..9b3f9d040e9cb32107f6d6aa6e087d141876d436
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/util/Util.java
++++ b/src/main/java/com/tuinity/tuinity/util/Util.java
 @@ -0,0 +1,105 @@
-+package ca.spottedleaf.tuinity.util;
++package com.tuinity.tuinity.util;
 +
 +import it.unimi.dsi.fastutil.objects.ObjectRBTreeSet;
 +import net.minecraft.server.BlockPosition;
@@ -910,15 +940,15 @@ index 0000000000000000000000000000000000000000..04bb07eaa6108e88cefbe03ab258b851
 +        return (int)((randomInteger * limit) >>> 32);
 +    }
 +}
-diff --git a/src/main/java/ca/spottedleaf/tuinity/util/map/AreaMap.java b/src/main/java/ca/spottedleaf/tuinity/util/map/AreaMap.java
+diff --git a/src/main/java/com/tuinity/tuinity/util/map/AreaMap.java b/src/main/java/com/tuinity/tuinity/util/map/AreaMap.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..dd32e7b6228bd712f416236737184a16af60da60
+index 0000000000000000000000000000000000000000..dfb7a417eaf44013824aef8d1b27b6c0a61b2e92
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/util/map/AreaMap.java
++++ b/src/main/java/com/tuinity/tuinity/util/map/AreaMap.java
 @@ -0,0 +1,388 @@
-+package ca.spottedleaf.tuinity.util.map;
++package com.tuinity.tuinity.util.map;
 +
-+import ca.spottedleaf.tuinity.util.Util;
++import com.tuinity.tuinity.util.Util;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -1305,13 +1335,13 @@ index 0000000000000000000000000000000000000000..dd32e7b6228bd712f416236737184a16
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/ca/spottedleaf/tuinity/util/map/PlayerAreaMap.java b/src/main/java/ca/spottedleaf/tuinity/util/map/PlayerAreaMap.java
+diff --git a/src/main/java/com/tuinity/tuinity/util/map/PlayerAreaMap.java b/src/main/java/com/tuinity/tuinity/util/map/PlayerAreaMap.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..ce1b4db33ad45c44b3fd4c7e22a6e732e1e79df6
+index 0000000000000000000000000000000000000000..b5a23664f68567d37e7ee5d26c4b289a4ea9c71f
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/util/map/PlayerAreaMap.java
++++ b/src/main/java/com/tuinity/tuinity/util/map/PlayerAreaMap.java
 @@ -0,0 +1,25 @@
-+package ca.spottedleaf.tuinity.util.map;
++package com.tuinity.tuinity.util.map;
 +
 +
 +import net.minecraft.server.EntityPlayer;
@@ -1337,13 +1367,13 @@ index 0000000000000000000000000000000000000000..ce1b4db33ad45c44b3fd4c7e22a6e732
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/ca/spottedleaf/tuinity/util/map/PooledLinkedHashSets.java b/src/main/java/ca/spottedleaf/tuinity/util/map/PooledLinkedHashSets.java
+diff --git a/src/main/java/com/tuinity/tuinity/util/map/PooledLinkedHashSets.java b/src/main/java/com/tuinity/tuinity/util/map/PooledLinkedHashSets.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..171f35daad3f09d7394f30b5b77700bf5da5ae74
+index 0000000000000000000000000000000000000000..cf888454c18cf659f378e3fc494d109a3c7d977d
 --- /dev/null
-+++ b/src/main/java/ca/spottedleaf/tuinity/util/map/PooledLinkedHashSets.java
++++ b/src/main/java/com/tuinity/tuinity/util/map/PooledLinkedHashSets.java
 @@ -0,0 +1,287 @@
-+package ca.spottedleaf.tuinity.util.map;
++package com.tuinity.tuinity.util.map;
 +
 +import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -1631,36 +1661,6 @@ index 0000000000000000000000000000000000000000..171f35daad3f09d7394f30b5b77700bf
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/co/aikar/timings/WorldTimingsHandler.java b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-index e25544f116fe38cb340c6b2dc99045f6fd132d1c..61a0efe59b1cc23bdd0d14f948b9451b8991f8ae 100644
---- a/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-+++ b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-@@ -43,6 +43,12 @@ public class WorldTimingsHandler {
-     public final Timing broadcastChunkUpdates;
-     public final Timing countNaturalMobs;
- 
-+    // Tuinity start
-+    public final Timing playerViewDistanceMapUpdate;
-+    public final Timing playerViewDistanceMapAdd;
-+    public final Timing playerViewDistanceMapRemove;
-+    // Tuinity end
-+
-     public final Timing syncChunkLoadTimer;
-     public final Timing syncChunkLoadDataTimer;
-     public final Timing syncChunkLoadStructuresTimer;
-@@ -78,6 +84,12 @@ public class WorldTimingsHandler {
-     public WorldTimingsHandler(World server) {
-         String name = server.worldData.getName() +" - ";
- 
-+        // Tuinity start
-+        playerViewDistanceMapUpdate = Timings.ofSafe("Player View Distance Map - Update");
-+        playerViewDistanceMapAdd = Timings.ofSafe("Player View Distance Map - Add");
-+        playerViewDistanceMapRemove = Timings.ofSafe("Player View Distance Map - Remove");
-+        // Tuinity end
-+
-         mobSpawn = Timings.ofSafe(name + "mobSpawn");
-         doChunkUnload = Timings.ofSafe(name + "doChunkUnload");
-         scheduledBlocks = Timings.ofSafe(name + "Scheduled Blocks");
 diff --git a/src/main/java/net/minecraft/server/BlockPosition.java b/src/main/java/net/minecraft/server/BlockPosition.java
 index 142476395429a1d3bcbdc98fa0821a447319ef52..de4975154cf49ac304f364373da05399b024de57 100644
 --- a/src/main/java/net/minecraft/server/BlockPosition.java
@@ -1685,7 +1685,7 @@ index 142476395429a1d3bcbdc98fa0821a447319ef52..de4975154cf49ac304f364373da05399
              this.x = i; // Paper change to x
          }
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..0a5f312555fd7664c52a3bea5b1fe84b52701937 100644
+index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..45bb90653e8172b9ee2368a49c796ccb07211c1b 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -49,7 +49,7 @@ public class Chunk implements IChunkAccess {
@@ -1702,7 +1702,7 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..0a5f312555fd7664c52a3bea5b1fe84b
          this.entitySlices = (List[]) (new List[16]); // Spigot
          this.world = world;
 -        this.loc = chunkcoordintpair;
-+        this.loc = chunkcoordintpair; this.coordinateKey = ca.spottedleaf.tuinity.util.Util.getCoordinateKey(this.loc); // Tuinity - Cache coordinate key
++        this.loc = chunkcoordintpair; this.coordinateKey = com.tuinity.tuinity.util.Util.getCoordinateKey(this.loc); // Tuinity - Cache coordinate key
          this.i = chunkconverter;
          HeightMap.Type[] aheightmap_type = HeightMap.Type.values();
          int j = aheightmap_type.length;
@@ -1835,7 +1835,7 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..0a5f312555fd7664c52a3bea5b1fe84b
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..a9fe70d0b1fd8787e3da8908273f2dd412ddb090 100644
+index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..20cf52e117fff307bf04d914755138d6c4cde72e 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -26,7 +26,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -1859,7 +1859,7 @@ index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..a9fe70d0b1fd8787e3da8908273f2dd4
 +    private final long[] lastLoadedChunkKeys = new long[4 * 4];
 +
 +    {
-+        java.util.Arrays.fill(this.lastLoadedChunkKeys, ca.spottedleaf.tuinity.util.Util.INVALID_CHUNK_KEY);
++        java.util.Arrays.fill(this.lastLoadedChunkKeys, com.tuinity.tuinity.util.Util.INVALID_CHUNK_KEY);
 +    }
 +
 +    private static int getCacheKey(int x, int z) {
@@ -1904,7 +1904,7 @@ index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..a9fe70d0b1fd8787e3da8908273f2dd4
 +
 +    public Chunk getChunkAtIfLoadedMainThread(int x, int z) {
 +        int cacheKey = getCacheKey(x, z);
-+        long chunkKey = ca.spottedleaf.tuinity.util.Util.getCoordinateKey(x, z);
++        long chunkKey = com.tuinity.tuinity.util.Util.getCoordinateKey(x, z);
 +
 +        long cachedKey = this.lastLoadedChunkKeys[cacheKey];
 +        if (cachedKey == chunkKey) {
@@ -1920,7 +1920,7 @@ index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..a9fe70d0b1fd8787e3da8908273f2dd4
 +    }
 +
 +    public Chunk getChunkAtIfLoadedMainThreadNoCache(int x, int z) {
-+        return this.loadedChunkMap.get(ca.spottedleaf.tuinity.util.Util.getCoordinateKey(x, z));
++        return this.loadedChunkMap.get(com.tuinity.tuinity.util.Util.getCoordinateKey(x, z));
 +    }
 +
 +    public Chunk getChunkAtMainThread(int x, int z) {
@@ -1943,7 +1943,7 @@ index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..a9fe70d0b1fd8787e3da8908273f2dd4
 -
 -        // Note: Bypass cache since we need to check ticket level, and to make this MT-Safe
 +        // Tuinity start - Optimize getIfLoaded type calls
-+        long k = ca.spottedleaf.tuinity.util.Util.getCoordinateKey(x, z);
++        long k = com.tuinity.tuinity.util.Util.getCoordinateKey(x, z);
  
 -        PlayerChunk playerChunk = this.getChunk(k);
 -        if (playerChunk == null) {
@@ -2049,7 +2049,7 @@ index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..a9fe70d0b1fd8787e3da8908273f2dd4
                                          int minDiff = Integer.MAX_VALUE;
 -                                        for (EntityPlayer entityplayer : this.playerChunkMap.playerMobDistanceMap.getPlayersInRange(chunk.getPos())) {
 +                                        // Tuinity start - use view distance map
-+                                        ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = this.playerChunkMap.playerViewDistanceMap.getObjectsInRange(chunk.getPos());
++                                        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = this.playerChunkMap.playerViewDistanceMap.getObjectsInRange(chunk.getPos());
 +                                        if (players != null) {
 +                                            Object[] backingSet = players.getBackingSet();
 +                                            for (int index = 0, len = backingSet.length; index < len; ++index) {
@@ -2069,7 +2069,7 @@ index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..a9fe70d0b1fd8787e3da8908273f2dd4
                                      }
  
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index d09afc889083a3856618f45ecaa0c2b5d30035cd..3393f9a4bdef196279a255880d7b6c4785406482 100644
+index d09afc889083a3856618f45ecaa0c2b5d30035cd..2a9415aa1fce07a6c2a79e4534712fec35c71624 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
 @@ -100,6 +100,10 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
@@ -2077,7 +2077,7 @@ index d09afc889083a3856618f45ecaa0c2b5d30035cd..3393f9a4bdef196279a255880d7b6c47
      // CraftBukkit end
  
 +    // Tuinity start
-+    public final ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> cachedSingleHashSet;
++    public final com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> cachedSingleHashSet;
 +    // Tuinity end
 +
      public EntityPlayer(MinecraftServer minecraftserver, WorldServer worldserver, GameProfile gameprofile, PlayerInteractManager playerinteractmanager) {
@@ -2088,7 +2088,7 @@ index d09afc889083a3856618f45ecaa0c2b5d30035cd..3393f9a4bdef196279a255880d7b6c47
          this.maxHealthCache = this.getMaxHealth();
          this.cachedSingleMobDistanceMap = new com.destroystokyo.paper.util.PooledHashSets.PooledObjectLinkedOpenHashSet<>(this); // Paper
 +        // Tuinity start
-+        this.cachedSingleHashSet = new ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<>(this);
++        this.cachedSingleHashSet = new com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<>(this);
 +        // Tuinity end
      }
  
@@ -2202,7 +2202,7 @@ index d26365eb120a9e7671daed02ee57981bbf8e2401..cd3b4d5a2d051dae0f44e1e1c3e101e6
          }
  
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..8e25c84da5e58a5bf321336b196651d597f23d9e 100644
+index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..d57975ad8b211b587289a18a9b47263e8c36a68f 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -79,7 +79,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -2219,7 +2219,7 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..8e25c84da5e58a5bf321336b196651d5
      // CraftBukkit end
  
 +    // Tuinity start
-+    public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerViewDistanceMap;
++    public final com.tuinity.tuinity.util.map.PlayerAreaMap playerViewDistanceMap;
 +
 +    void addPlayerToDistanceMaps(EntityPlayer player) {
 +        try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapAdd.startTiming()) {
@@ -2240,8 +2240,8 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..8e25c84da5e58a5bf321336b196651d5
 +    }
 +
 +    private void updateMaps(EntityPlayer player) {
-+        int chunkX = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locX());
-+        int chunkZ = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locZ());
++        int chunkX = com.tuinity.tuinity.util.Util.getChunkCoordinate(player.locX());
++        int chunkZ = com.tuinity.tuinity.util.Util.getChunkCoordinate(player.locZ());
 +
 +        this.playerViewDistanceMap.update(player, chunkX, chunkZ, this.viewDistance);
 +    }
@@ -2256,7 +2256,7 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..8e25c84da5e58a5bf321336b196651d5
          this.setViewDistance(i);
 -        this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper
 +        //this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper // Tuinity - use the distance map
-+        this.playerViewDistanceMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(); // Tuinity
++        this.playerViewDistanceMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(); // Tuinity
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
@@ -2266,7 +2266,7 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..8e25c84da5e58a5bf321336b196651d5
  
 -        for (EntityPlayer player : this.playerMobDistanceMap.getPlayersInRange(chunkX, chunkZ)) {
 +        // Tuinity start - use view distance map
-+        ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = this.playerViewDistanceMap.getObjectsInRange(chunkX, chunkZ);
++        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = this.playerViewDistanceMap.getObjectsInRange(chunkX, chunkZ);
 +        if (players != null) {
 +            Object[] backingSet = players.getBackingSet();
 +        for (int i = 0, len = backingSet.length; i < len; ++i) {

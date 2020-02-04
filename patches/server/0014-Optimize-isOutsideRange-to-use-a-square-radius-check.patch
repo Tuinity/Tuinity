@@ -7,7 +7,7 @@ This option is configurable under 'optimize-chunkrange-check', and is
 enabled by default
 
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 394ea9a2a593f799aadee72dde63d54bfbc57886..7316edc2aed0f7bf19007618d69d0dcf7242e341 100644
+index acfb2ce70e441cd54f33cc5b3ba609fd9e9e4404..d62a9d08dbde2e6e1e245f5fd4240dffb9da02a0 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -32,7 +32,7 @@ public abstract class ChunkMapDistance {
@@ -69,7 +69,7 @@ index 394ea9a2a593f799aadee72dde63d54bfbc57886..7316edc2aed0f7bf19007618d69d0dcf
  
      public String c() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 78faa771e514ac0d720c80e2b3037abad533b2d1..428531f34ff66bd047124ebffd0be611b6d71341 100644
+index 6f0e4c33b0d32105c055c9a26145187acb02796c..9caf94d5e7d7135de258d13af5791153e6c600ca 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -632,6 +632,36 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -99,8 +99,8 @@ index 78faa771e514ac0d720c80e2b3037abad533b2d1..428531f34ff66bd047124ebffd0be611
 +                }
 +
 +                int range = Math.min(event.getSpawnRadius(), 32); // limit to max view distance
-+                int chunkX = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locX());
-+                int chunkZ = ca.spottedleaf.tuinity.util.Util.getChunkCoordinate(player.locZ());
++                int chunkX = com.tuinity.tuinity.util.Util.getChunkCoordinate(player.locX());
++                int chunkZ = com.tuinity.tuinity.util.Util.getChunkCoordinate(player.locZ());
 +
 +                playerChunkMap.playerMobSpawnMap.update(player, chunkX, chunkZ, range);
 +                player.lastEntitySpawnRadiusSquared = (double)((range << 4) * (range << 4)); // used in isOutsideRange
@@ -133,7 +133,7 @@ index 78faa771e514ac0d720c80e2b3037abad533b2d1..428531f34ff66bd047124ebffd0be611
                              // Paper end
                              this.world.getMethodProfiler().enter("spawner");
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index ce378f3cddeef02489050f401b34187a4fabe908..47061b831c6b2e089deea0fb25121ae8baf341bf 100644
+index 976b470ffb279d4f391cea92ab26e18b74ca4a43..72cbcb5afc5670964bc94e9847796fe24656d7a9 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
 @@ -108,6 +108,8 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
@@ -146,7 +146,7 @@ index ce378f3cddeef02489050f401b34187a4fabe908..47061b831c6b2e089deea0fb25121ae8
  
      public EntityPlayer(MinecraftServer minecraftserver, WorldServer worldserver, GameProfile gameprofile, PlayerInteractManager playerinteractmanager) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index b0198f3416adfefd373529173904a5ce0009c97c..23a13f24cefeffb7e978a726286d4ca234fd5e01 100644
+index dfee583e986e1926dcab147675ff8361ee4b6892..ae825787842f395cd7dc8df6ec41a980856c6bd1 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -120,6 +120,16 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -160,8 +160,8 @@ index b0198f3416adfefd373529173904a5ce0009c97c..23a13f24cefeffb7e978a726286d4ca2
 +    // obviously this means a spawn range > 8 cannot be implemented
 +
 +    // these maps are named after spigot's uses
-+    public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerMobSpawnMap; // this map is absent from updateMaps since it's controlled at the start of a tick
-+    public final ca.spottedleaf.tuinity.util.map.PlayerAreaMap playerChunkTickRangeMap;
++    public final com.tuinity.tuinity.util.map.PlayerAreaMap playerMobSpawnMap; // this map is absent from updateMaps since it's controlled at the start of a tick
++    public final com.tuinity.tuinity.util.map.PlayerAreaMap playerChunkTickRangeMap;
 +
      void addPlayerToDistanceMaps(EntityPlayer player) {
          try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapAdd.startTiming()) {
@@ -196,8 +196,8 @@ index b0198f3416adfefd373529173904a5ce0009c97c..23a13f24cefeffb7e978a726286d4ca2
                      java.util.Arrays.fill(tempPacket, null);
                  });
 +
-+        this.playerChunkTickRangeMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets);
-+        this.playerMobSpawnMap = new ca.spottedleaf.tuinity.util.map.PlayerAreaMap(sets);
++        this.playerChunkTickRangeMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets);
++        this.playerMobSpawnMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets);
          // Tuinity end - distance maps
      }
  
@@ -219,7 +219,7 @@ index b0198f3416adfefd373529173904a5ce0009c97c..23a13f24cefeffb7e978a726286d4ca2
 -        chunkRange = (chunkRange > 8) ? 8 : chunkRange;
 +    // Tuinity start
 +    final boolean isOutsideOfRange(ChunkCoordIntPair chunkcoordintpair, boolean reducedRange) {
-+        ca.spottedleaf.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange = (reducedRange ? this.playerMobSpawnMap : this.playerChunkTickRangeMap).getObjectsInRange(chunkcoordintpair);
++        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange = (reducedRange ? this.playerMobSpawnMap : this.playerChunkTickRangeMap).getObjectsInRange(chunkcoordintpair);
  
 -        final int finalChunkRange = chunkRange; // Paper for lambda below
 -        //double blockRange = (reducedRange) ? Math.pow(chunkRange << 4, 2) : 16384.0D; // Paper - use from event
