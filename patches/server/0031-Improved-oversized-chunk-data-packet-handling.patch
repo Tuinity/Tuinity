@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 3 Feb 2020 20:37:44 -0800
+Subject: [PATCH] Improved oversized chunk data packet handling
+
+Now target all TE data, except for TE's that do not have
+update packets.
+
+diff --git a/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java b/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java
+index ef7ade797b1f3edd58bf30fa0743e39de010be42..185ed1db3bd0759eb460458828dc848d4c52c539 100644
+--- a/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java
++++ b/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java
+@@ -29,7 +29,7 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+ 
+     // Paper start
+     private final java.util.List<Packet> extraPackets = new java.util.ArrayList<>();
+-    private static final int SKIP_EXCESSIVE_SIGNS_LIMIT = Integer.getInteger("Paper.excessiveSignsLimit", 500);
++    private static final int TE_LIMIT = Integer.getInteger("tuinity.excessive-te-limit", 250); // Tuinity - handle oversized chunk data packets more robustly
+ 
+     @Override
+     public java.util.List<Packet> getExtraPackets() {
+@@ -73,7 +73,7 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+         this.c = this.writeChunk(new PacketDataSerializer(this.j()), chunk, i, chunkPacketInfo); // Paper - Anti-Xray - Add chunk packet info
+         this.g = Lists.newArrayList();
+         iterator = chunk.getTileEntities().entrySet().iterator();
+-        int totalSigns = 0; // Paper
++        int totalTileEntities = 0; // Paper // Tuinity
+ 
+         while (iterator.hasNext()) {
+             entry = (Entry) iterator.next();
+@@ -83,12 +83,15 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+ 
+             if (this.f() || (i & 1 << j) != 0) {
+                 // Paper start - send signs separately
+-                if (tileentity instanceof TileEntitySign) {
+-                    if (SKIP_EXCESSIVE_SIGNS_LIMIT < 0 || ++totalSigns < SKIP_EXCESSIVE_SIGNS_LIMIT) {
+-                        this.extraPackets.add(tileentity.getUpdatePacket());
++                // Tuinity start - improve oversized chunk data packet handling
++                if (++totalTileEntities > TE_LIMIT) {
++                    PacketPlayOutTileEntityData updatePacket = tileentity.getUpdatePacket();
++                    if (updatePacket != null) {
++                        this.extraPackets.add(updatePacket);
++                        continue;
+                     }
+-                    continue;
+                 }
++                // Tuinity end
+                 // Paper end
+                 NBTTagCompound nbttagcompound = tileentity.b();
+                 if (tileentity instanceof TileEntitySkull) { TileEntitySkull.sanitizeTileEntityUUID(nbttagcompound); } // Paper
