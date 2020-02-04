@@ -7,7 +7,7 @@ Apparently sendPacket took 50% of the timings for entity tracker
 update, so offload that to the packet flusher thread.
 
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 211a6d7206788cbac80f2117d106f39ac3ef6dd5..18fd6ea5daa0a2a62448d5887fb376d6b8eeb32b 100644
+index 211a6d7206788cbac80f2117d106f39ac3ef6dd5..90de4871455bda2ea85b75e3cbbfee3b41d87432 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -66,6 +66,43 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -59,7 +59,7 @@ index 211a6d7206788cbac80f2117d106f39ac3ef6dd5..18fd6ea5daa0a2a62448d5887fb376d6
  
      public void sendPacket(Packet<?> packet, @Nullable GenericFutureListener<? extends Future<? super Void>> genericfuturelistener) {
 -        if (this.isConnected() && this.sendPacketQueue() && !(packet instanceof PacketPlayOutMapChunk && !((PacketPlayOutMapChunk) packet).isReady())) { // Paper - Async-Anti-Xray - Add chunk packets which are not ready or all packets if the packet queue contains chunk packets which are not ready to the packet queue and send the packets later in the right order
-+        if (!(this.packetListener instanceof PlayerConnection) && this.isConnected() && this.sendPacketQueue() && !(packet instanceof PacketPlayOutMapChunk && !((PacketPlayOutMapChunk) packet).isReady())) { // Paper - Async-Anti-Xray - Add chunk packets which are not ready or all packets if the packet queue contains chunk packets which are not ready to the packet queue and send the packets later in the right order // Tuinity - this is packet flusher's job now
++        if ((!(this.packetListener instanceof PlayerConnection) || this.channel.eventLoop().inEventLoop()) && this.isConnected() && this.sendPacketQueue() && !(packet instanceof PacketPlayOutMapChunk && !((PacketPlayOutMapChunk) packet).isReady())) { // Paper - Async-Anti-Xray - Add chunk packets which are not ready or all packets if the packet queue contains chunk packets which are not ready to the packet queue and send the packets later in the right order // Tuinity - this is packet flusher's job now
              //this.o(); // Paper - Async-Anti-Xray - Move to if statement (this.sendPacketQueue())
              this.b(packet, genericfuturelistener);
          } else {
