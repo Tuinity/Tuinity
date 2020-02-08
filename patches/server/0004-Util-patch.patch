@@ -1683,7 +1683,7 @@ index 142476395429a1d3bcbdc98fa0821a447319ef52..de4975154cf49ac304f364373da05399
              this.x = i; // Paper change to x
          }
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..45bb90653e8172b9ee2368a49c796ccb07211c1b 100644
+index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..a936abe106ba4b849b8137cd28d41c7beb5baff5 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -49,7 +49,7 @@ public class Chunk implements IChunkAccess {
@@ -1704,7 +1704,7 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..45bb90653e8172b9ee2368a49c796ccb
          this.i = chunkconverter;
          HeightMap.Type[] aheightmap_type = HeightMap.Type.values();
          int j = aheightmap_type.length;
-@@ -143,6 +143,64 @@ public class Chunk implements IChunkAccess {
+@@ -143,6 +143,66 @@ public class Chunk implements IChunkAccess {
      public boolean needsDecoration;
      // CraftBukkit end
  
@@ -1726,23 +1726,25 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..45bb90653e8172b9ee2368a49c796ccb
 +        }
 +    }
 +
-+    public static final int NEIGHBOUR_CACHE_RADIUS = 2;
++    public static final int NEIGHBOUR_CACHE_RADIUS = 3;
 +    // note that it also includes this chunk, just in case we want to check from a getIfCached result...
 +    boolean loadedTicketLevel;
 +
-+    private int neighbourChunksLoadedBitset;
++    private long neighbourChunksLoadedBitset;
 +    private final Chunk[] loadedNeighbourChunks = new Chunk[(NEIGHBOUR_CACHE_RADIUS * 2 + 1) * (NEIGHBOUR_CACHE_RADIUS * 2 + 1)];
 +
 +    private static int getNeighbourIndex(final int relativeX, final int relativeZ) {
-+        return (relativeX + NEIGHBOUR_CACHE_RADIUS) * (NEIGHBOUR_CACHE_RADIUS * 2 + 1) + (relativeZ + NEIGHBOUR_CACHE_RADIUS);
++        // index = (relativeX + NEIGHBOUR_CACHE_RADIUS) + (relativeZ + NEIGHBOUR_CACHE_RADIUS) * (NEIGHBOUR_CACHE_RADIUS * 2 + 1)
++        // optimised variant of the above by moving some of the ops to compile time
++        return relativeX + (relativeZ * (NEIGHBOUR_CACHE_RADIUS * 2 + 1)) + (NEIGHBOUR_CACHE_RADIUS + NEIGHBOUR_CACHE_RADIUS * ((NEIGHBOUR_CACHE_RADIUS * 2 + 1)));
 +    }
 +
-+    public final Chunk getRelativeNeighoburIfLoaded(final int relativeX, final int relativeZ) {
++    public final Chunk getRelativeNeighbourIfLoaded(final int relativeX, final int relativeZ) {
 +        return this.loadedNeighbourChunks[getNeighbourIndex(relativeX, relativeZ)];
 +    }
 +
 +    public final boolean isNeighbourLoaded(final int relativeX, final int relativeZ) {
-+        return (this.neighbourChunksLoadedBitset & (1 << getNeighbourIndex(relativeX, relativeZ))) != 0;
++        return (this.neighbourChunksLoadedBitset & (1L << getNeighbourIndex(relativeX, relativeZ))) != 0;
 +    }
 +
 +    public final void setNeighbourLoaded(final int relativeX, final int relativeZ, final Chunk chunk) {
@@ -1751,13 +1753,13 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..45bb90653e8172b9ee2368a49c796ccb
 +        }
 +        final int index = getNeighbourIndex(relativeX, relativeZ);
 +        this.loadedNeighbourChunks[index] = chunk;
-+        this.neighbourChunksLoadedBitset |= (1 << index);
++        this.neighbourChunksLoadedBitset |= (1L << index);
 +    }
 +
 +    public final void setNeighbourUnloaded(final int relativeX, final int relativeZ) {
 +        final int index = getNeighbourIndex(relativeX, relativeZ);
 +        this.loadedNeighbourChunks[index] = null;
-+        this.neighbourChunksLoadedBitset &= ~(1 << index);
++        this.neighbourChunksLoadedBitset &= ~(1L << index);
 +    }
 +
 +    public final void resetNeighbours() {
@@ -1769,7 +1771,7 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..45bb90653e8172b9ee2368a49c796ccb
      public Chunk(World world, ProtoChunk protochunk) {
          this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.getInhabitedTime(), protochunk.getSections(), (Consumer) null);
          Iterator iterator = protochunk.y().iterator();
-@@ -486,6 +544,12 @@ public class Chunk implements IChunkAccess {
+@@ -486,6 +546,12 @@ public class Chunk implements IChunkAccess {
          return ((HeightMap) this.heightMap.get(heightmap_type)).a(i & 15, j & 15) - 1;
      }
  
@@ -1782,7 +1784,7 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..45bb90653e8172b9ee2368a49c796ccb
      @Nullable
      private TileEntity j(BlockPosition blockposition) {
          IBlockData iblockdata = this.getType(blockposition);
-@@ -626,7 +690,26 @@ public class Chunk implements IChunkAccess {
+@@ -626,7 +692,26 @@ public class Chunk implements IChunkAccess {
      }
  
      // CraftBukkit start
@@ -1809,7 +1811,7 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..45bb90653e8172b9ee2368a49c796ccb
          org.bukkit.Server server = this.world.getServer();
          if (server != null) {
              /*
-@@ -668,6 +751,22 @@ public class Chunk implements IChunkAccess {
+@@ -668,6 +753,22 @@ public class Chunk implements IChunkAccess {
          server.getPluginManager().callEvent(unloadEvent);
          // note: saving can be prevented, but not forced if no saving is actually required
          this.mustNotSave = !unloadEvent.isSaveChunk();
