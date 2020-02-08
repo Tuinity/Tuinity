@@ -7,26 +7,26 @@ This patch is the vanilla server changes
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/ChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/ChunkRegionManager.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..1a5ffcf6feb62af9847393d1d3d78ce45738405f
+index 0000000000000000000000000000000000000000..ff17a100baaf4837a6375875a109ca19218c51a5
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/ChunkRegionManager.java
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,165 @@
 +package com.tuinity.tuinity.chunk;
 +
 +import com.tuinity.tuinity.util.TickSynchronizationPoint;
 +import com.tuinity.tuinity.util.TickThread;
-+import ca.spottedleaf.concurrentutil.ConcurrentUtil;
-+import ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue;
++import com.tuinity.tuinity.util.Util;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-+import net.minecraft.server.Chunk;
++import it.unimi.dsi.fastutil.longs.LongIterator;
++import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
++import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 +import net.minecraft.server.World;
 +
-+import java.lang.invoke.VarHandle;
-+import java.util.function.Consumer;
++public final class ChunkRegionManager {
 +
-+public class ChunkRegionManager {
++    private static final int REGION_MERGE_RADIUS = 1;
 +
-+    public final Long2ObjectOpenHashMap<ChunkRegion> regions = new Long2ObjectOpenHashMap<>(2048);
++    public final Long2ObjectOpenHashMap<ChunkRegionHolder> regions = new Long2ObjectOpenHashMap<>(8192, 0.25f);
 +    public final World world;
 +    public final TickSynchronizationPoint synchronizationPoint;
 +
@@ -38,46 +38,141 @@ index 0000000000000000000000000000000000000000..1a5ffcf6feb62af9847393d1d3d78ce4
 +        this.threads = threads;
 +    }
 +
-+    public static long getChunkKey(final int x, final int z) {
-+        return ((long)z << 32) | (x & 0xFFFFFFFFL);
++    public void addToRegion(final long coordinate) {
++        this.addToRegion(Util.getCoordinateX(coordinate), Util.getCoordinateZ(coordinate), coordinate);
 +    }
 +
-+    public static int getChunkX(final long key) {
-+        return (int)key;
++    public void addToRegion(final int chunkX, final int chunkZ) {
++        this.addToRegion(chunkX, chunkZ, Util.getCoordinateKey(chunkX, chunkZ));
 +    }
 +
-+    public static int getChunkZ(final long key) {
-+        return (int)(key >>> 32);
-+    }
++    // note: for MT, when we want to merge regions we actually need to tell the owning thread (if any) to merge it
++    // themselves
++    public void addToRegion(final int chunkX, final int chunkZ, final long coordinate) {
++        // find the ideal region to merge into
 +
-+    public void addChunk(final Chunk chunk) {
-+        final long key = getChunkKey(chunk.getPos().x, chunk.getPos().z);
-+        synchronized (this.regions) {
++        ChunkRegionHolder regionHolder = null;
++        ChunkRegion region = null;
++        int regionHolderChunks = 0;
 +
++        for (int dx = -REGION_MERGE_RADIUS; dx <= REGION_MERGE_RADIUS; ++dx) {
++            for (int dz = -REGION_MERGE_RADIUS; dz <= REGION_MERGE_RADIUS; ++dz) {
++                final int checkX = dx + chunkX;
++                final int checkZ = dz + chunkZ;
++                final long k = Util.getCoordinateKey(checkX, checkZ);
++
++                ChunkRegionHolder currentRegion = this.regions.get(k);
++
++                if (currentRegion != null) {
++                    final int currentSize = currentRegion.region.coordinates.size();
++                    if (currentSize > regionHolderChunks) {
++                        regionHolderChunks = currentSize;
++                        regionHolder = currentRegion;
++                        region = currentRegion.region;
++                    }
++                }
++            }
++        }
++
++        if (regionHolder == null) {
++            regionHolder = new ChunkRegionHolder(region = new ChunkRegion());
++        }
++
++        // now merge regions in radius
++
++        region.addChunk(chunkX, chunkZ, coordinate);
++
++        for (int dx = -REGION_MERGE_RADIUS; dx <= REGION_MERGE_RADIUS; ++dx) {
++            for (int dz = -REGION_MERGE_RADIUS; dz <= REGION_MERGE_RADIUS; ++dz) {
++                final int checkX = dx + chunkX;
++                final int checkZ = dz + chunkZ;
++                final long k = Util.getCoordinateKey(checkX, checkZ);
++
++                ChunkRegionHolder currentRegion = this.regions.putIfAbsent(k, regionHolder);
++
++                if (currentRegion != null && currentRegion.region != region) {
++                    currentRegion.region.mergeInto(region);
++                }
++            }
 +        }
 +    }
 +
-+    public static class ChunkRegion {
++    static final class ChunkRegionHolder {
 +
-+        public final ChunkRegionManager regionManager;
++        public ChunkRegion region;
 +
-+        /**
-+         * Tasks that need to be executed after releasing the region.
-+         */
-+        private final MultiThreadedQueue<Consumer<ChunkRegion>> tasks = new MultiThreadedQueue<>();
++        public ChunkRegionHolder(final ChunkRegion region) {
++            this.region = region;
++            this.region.addRegionHolder(this);
++        }
++    }
 +
-+        static final int STATUS_OK         = 0; // mergeWith = null
-+        static final int STATUS_TRYMERGE   = 1; // mergeWith = target region to merge with
-+        static final int STATUS_MERGED     = 2; // mergeWith = region merged with
++    static final class ChunkRegion {
 +
-+        volatile int status;
++        private final LongOpenHashSet coordinates = new LongOpenHashSet();
++        private boolean dead;
 +
-+        ChunkRegion mergeWith;
++        private int lowerX;
++        private int lowerZ;
 +
-+        static final VarHandle STATUS_HANDLE = ConcurrentUtil.getVarHandle(ChunkRegion.class, "status", int.class);
++        private int upperX;
++        private int upperZ;
 +
-+        public ChunkRegion(final ChunkRegionManager regionManager) {
-+            this.regionManager = regionManager;
++        private final ObjectOpenHashSet<ChunkRegionHolder> regionHolders = new ObjectOpenHashSet<>();
++
++        void addRegionHolder(final ChunkRegionHolder regionHolder) {
++            this.regionHolders.add(regionHolder);
++        }
++
++        public void mergeInto(final ChunkRegion region) {
++            if (region.dead) {
++                throw new IllegalStateException("Attempting to merge into a dead region");
++            } else if (this.dead) {
++                throw new IllegalStateException("Attempting to merge from a dead region");
++            }
++
++            for (LongIterator iterator = this.coordinates.iterator(); iterator.hasNext();) {
++                region.addChunk(iterator.nextLong());
++            }
++
++            // forward our old region holders
++            for (final ChunkRegionHolder regionHolder : this.regionHolders) {
++                regionHolder.region = region;
++            }
++
++            this.dead = true;
++        }
++
++        void addChunk(final long coordinate) {
++            this.addChunk(Util.getCoordinateX(coordinate), Util.getCoordinateZ(coordinate), coordinate);
++        }
++
++        void addChunk(final int chunkX, final int chunkZ) {
++            this.addChunk(chunkX, chunkZ, Util.getCoordinateKey(chunkX, chunkZ));
++        }
++
++        boolean addChunk(final int chunkX, final int chunkZ, final long coordinate) {
++            if (!this.coordinates.add(coordinate)) {
++                return false;
++            }
++
++            if (this.coordinates.size() == 1) {
++                this.lowerX = this.upperX = chunkX;
++                this.lowerZ = this.upperZ = chunkZ;
++            } else {
++                if (chunkX < this.lowerX) {
++                    this.lowerX = chunkX;
++                } else if (chunkX > this.upperX) {
++                    this.upperX = chunkX;
++                }
++                if (chunkZ < this.lowerZ) {
++                    this.lowerZ = chunkZ;
++                } else if (chunkZ > this.upperZ) {
++                    this.upperZ = chunkZ;
++                }
++            }
++
++            return true;
 +        }
 +    }
 +}
@@ -131,10 +226,10 @@ index 0000000000000000000000000000000000000000..37adae90072b3817c98620905029baac
 \ No newline at end of file
 diff --git a/src/main/java/com/tuinity/tuinity/util/TickThread.java b/src/main/java/com/tuinity/tuinity/util/TickThread.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..9c95f0a16b21ff9bd3b070edc73fc164870187ad
+index 0000000000000000000000000000000000000000..033548a58d27f64d3954206d267783c0437d4019
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/TickThread.java
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,15 @@
 +package com.tuinity.tuinity.util;
 +
 +public final class TickThread extends Thread {
@@ -144,6 +239,10 @@ index 0000000000000000000000000000000000000000..9c95f0a16b21ff9bd3b070edc73fc164
 +    public TickThread(final Runnable run, final String name, final int id) {
 +        super(run, name);
 +        this.id = id;
++    }
++
++    public static TickThread getCurrentTickThread() {
++        return (TickThread)Thread.currentThread();
 +    }
 +}
 \ No newline at end of file

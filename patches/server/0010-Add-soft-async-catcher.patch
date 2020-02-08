@@ -6,10 +6,10 @@ Subject: [PATCH] Add soft async catcher
 Must be enabled via -Dtuinity.strict-thread-checks=true
 
 diff --git a/src/main/java/com/tuinity/tuinity/util/TickThread.java b/src/main/java/com/tuinity/tuinity/util/TickThread.java
-index 9c95f0a16b21ff9bd3b070edc73fc164870187ad..8cbac284b6125cb2917f7b93d738ab1e5dc6e342 100644
+index 033548a58d27f64d3954206d267783c0437d4019..d5688a734e742567c9f9a44c43538f3c4b7c2f3d 100644
 --- a/src/main/java/com/tuinity/tuinity/util/TickThread.java
 +++ b/src/main/java/com/tuinity/tuinity/util/TickThread.java
-@@ -1,11 +1,36 @@
+@@ -1,7 +1,32 @@
  package com.tuinity.tuinity.util;
  
 +import net.minecraft.server.MinecraftServer;
@@ -25,13 +25,6 @@ index 9c95f0a16b21ff9bd3b070edc73fc164870187ad..8cbac284b6125cb2917f7b93d738ab1e
 +        }
 +    }
 +
-     public final int id; /* We don't override getId as the spec requires that it be unique (with respect to all other threads) */
- 
-     public TickThread(final Runnable run, final String name, final int id) {
-         super(run, name);
-         this.id = id;
-     }
-+
 +    public static void softEnsureTickThread(final String reason) {
 +        if (!STRICT_THREAD_CHECKS) {
 +            return;
@@ -45,8 +38,10 @@ index 9c95f0a16b21ff9bd3b070edc73fc164870187ad..8cbac284b6125cb2917f7b93d738ab1e
 +            throw new IllegalStateException(reason);
 +        }
 +    }
- }
-\ No newline at end of file
++
+     public final int id; /* We don't override getId as the spec requires that it be unique (with respect to all other threads) */
+ 
+     public TickThread(final Runnable run, final String name, final int id) {
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
 index 45bb90653e8172b9ee2368a49c796ccb07211c1b..d83fcefec727d7169f75b6736264929c838dfdaf 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
