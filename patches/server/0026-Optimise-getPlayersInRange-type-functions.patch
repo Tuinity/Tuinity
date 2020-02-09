@@ -18,24 +18,25 @@ index 3fdb52007a2cf53b3319e4decf84d99876e830d0..1a3234bb4760674674392d29c5690776
          return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
      }
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index b0733584c2e300ee36da8f021ebc96434491aabd..dbb672d4f4c51d2ca78561aefa0f370e5ff77507 100644
+index b0733584c2e300ee36da8f021ebc96434491aabd..0d5f71db823e9695c3ba2ad8a9bd16b2075668f1 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -245,6 +245,13 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
-         }
+@@ -246,6 +246,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
  
+ 
++    // Tuinity end
++    // Tuinity start
 +    public final double getDistanceXZSquared(double x, double z) {
 +        double diffX = x - this.locX();
 +        double diffZ = z - this.locZ();
 +
 +        return (diffX * diffX) + (diffZ * diffZ);
 +    }
-+
- 
      // Tuinity end
  
-@@ -1410,6 +1417,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+     public Entity(EntityTypes<?> entitytypes, World world) {
+@@ -1410,6 +1418,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return MathHelper.c(f * f + f1 * f1 + f2 * f2);
      }
  
@@ -145,44 +146,54 @@ index e35ec2db078cc888333cfdd44e1cd3fda71246da..e7dfe22acd2b48c64383e2672f5f4117
          if (entityliving == entityliving1) {
              return false;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 4b1e22b8df794a2cf5e7e5977adf531a802b30a6..0871d0f00dce26a5d83d12c3acc69fca901ddc59 100644
+index cb89dcbd154029e673f04f4eeff402f1836fd2a0..fd12b36fa8b27dd1b31b1185011da384036223a1 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -135,6 +135,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-     public final int entityTrackerTrackRange;
+@@ -172,6 +172,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      public final int entityTrackerUntrackRange;
+     // Tuinity end - use distance map to optimise entity tracker
  
++    // Tuinity start - optimise getPlayersInRange type functions
 +    public final com.tuinity.tuinity.util.map.PlayerAreaMap playerGeneralAreaMap;
 +    public static final int PLAYER_GENERAL_AREA_MAP_DISTANCE = (32 + 3) + 1;
 +    public static final int PLAYER_GENERAL_AREA_MAP_DISTANCE_SQUARED_BLOCKS = (16 * PLAYER_GENERAL_AREA_MAP_DISTANCE) * (16 * PLAYER_GENERAL_AREA_MAP_DISTANCE);
++    // Tuinity end - optimise getPlayersInRange type functions
 +
      void addPlayerToDistanceMaps(EntityPlayer player) {
-         try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapAdd.startTiming()) {
-             this.updateMaps(player);
-@@ -154,6 +158,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                 this.playerEntityTrackerTrackMap.remove(player);
-                 this.playerEntityTrackerUntrackMap.remove(player);
-             }
-+            this.playerGeneralAreaMap.remove(player);
+         this.updateMaps(player);
+         // Tuinity start - per player view distance
+@@ -198,6 +204,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             this.playerEntityTrackerUntrackMap.remove(player);
          }
+         // Tuinity end - use distance map to optimise entity tracker
++
++        // Tuinity start - optimise getPlayersInRange type functions
++        this.playerGeneralAreaMap.remove(player);
++        // Tuinity end - optimise getPlayersInRange type functions
      }
  
-@@ -207,6 +212,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-             this.playerEntityTrackerTrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerTrackRange, effectiveViewDistance));
+     void updateDistanceMaps(EntityPlayer player) {
+@@ -231,6 +241,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              this.playerEntityTrackerUntrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerUntrackRange, effectiveViewDistance));
          }
+         // Tuinity end - use distance map to optimise entity tracker
++
++        // Tuinity start - optimise getPlayersInRange type functions
 +        this.playerGeneralAreaMap.update(player, chunkX, chunkZ, PLAYER_GENERAL_AREA_MAP_DISTANCE);
++        // Tuinity end - optimise getPlayersInRange type functions
      }
  
      final it.unimi.dsi.fastutil.objects.ObjectRBTreeSet<PlayerChunk> autoSaveQueue = new it.unimi.dsi.fastutil.objects.ObjectRBTreeSet<>((playerchunk1, playerchunk2) -> {
-@@ -347,6 +353,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                         });
+@@ -378,6 +392,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      });
          }
+         // Tuinity end - use distance map to optimise entity tracker
++        // Tuinity start - optimise getPlayersInRange type functions
 +        this.playerGeneralAreaMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets);
-         // Tuinity end - distance maps
++        // Tuinity end - optimise getPlayersInRange type functions
      }
  
+     public void updatePlayerMobTypeMap(Entity entity) {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
 index f4e625feeb64400d9d4ba836aea3554edca8b194..347a36ad2537b05c6710476fc78e5585e9f67194 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java

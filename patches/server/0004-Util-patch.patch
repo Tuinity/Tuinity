@@ -4,36 +4,6 @@ Date: Sat, 18 May 2019 12:25:19 -0700
 Subject: [PATCH] Util patch
 
 
-diff --git a/src/main/java/co/aikar/timings/WorldTimingsHandler.java b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-index e25544f116fe38cb340c6b2dc99045f6fd132d1c..61a0efe59b1cc23bdd0d14f948b9451b8991f8ae 100644
---- a/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-+++ b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-@@ -43,6 +43,12 @@ public class WorldTimingsHandler {
-     public final Timing broadcastChunkUpdates;
-     public final Timing countNaturalMobs;
- 
-+    // Tuinity start
-+    public final Timing playerViewDistanceMapUpdate;
-+    public final Timing playerViewDistanceMapAdd;
-+    public final Timing playerViewDistanceMapRemove;
-+    // Tuinity end
-+
-     public final Timing syncChunkLoadTimer;
-     public final Timing syncChunkLoadDataTimer;
-     public final Timing syncChunkLoadStructuresTimer;
-@@ -78,6 +84,12 @@ public class WorldTimingsHandler {
-     public WorldTimingsHandler(World server) {
-         String name = server.worldData.getName() +" - ";
- 
-+        // Tuinity start
-+        playerViewDistanceMapUpdate = Timings.ofSafe("Player View Distance Map - Update");
-+        playerViewDistanceMapAdd = Timings.ofSafe("Player View Distance Map - Add");
-+        playerViewDistanceMapRemove = Timings.ofSafe("Player View Distance Map - Remove");
-+        // Tuinity end
-+
-         mobSpawn = Timings.ofSafe(name + "mobSpawn");
-         doChunkUnload = Timings.ofSafe(name + "doChunkUnload");
-         scheduledBlocks = Timings.ofSafe(name + "Scheduled Blocks");
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java b/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..d528d08ea5c17059e3f252acd3192f3c1e13f309
@@ -2202,7 +2172,7 @@ index d26365eb120a9e7671daed02ee57981bbf8e2401..cd3b4d5a2d051dae0f44e1e1c3e101e6
          }
  
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..d57975ad8b211b587289a18a9b47263e8c36a68f 100644
+index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..fba91fdf40966e4ca641f6b7c9df5d5f46b033d2 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -79,7 +79,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -2214,29 +2184,24 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..d57975ad8b211b587289a18a9b47263e
  
      // CraftBukkit start - recursion-safe executor for Chunk loadCallback() and unloadCallback()
      public final CallbackExecutor callbackExecutor = new CallbackExecutor();
-@@ -106,6 +106,35 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -106,6 +106,30 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      };
      // CraftBukkit end
  
-+    // Tuinity start
++    // Tuinity start - distance maps
++    final com.tuinity.tuinity.util.map.PooledLinkedHashSets<EntityPlayer> pooledEntityPlayerSets = new com.tuinity.tuinity.util.map.PooledLinkedHashSets<>();
 +    public final com.tuinity.tuinity.util.map.PlayerAreaMap playerViewDistanceMap;
 +
 +    void addPlayerToDistanceMaps(EntityPlayer player) {
-+        try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapAdd.startTiming()) {
-+            this.updateMaps(player);
-+        }
++        this.updateMaps(player);
 +    }
 +
 +    void removePlayerFromDistanceMaps(EntityPlayer player) {
-+        try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapRemove.startTiming()) {
-+            this.playerViewDistanceMap.remove(player);
-+        }
++        this.playerViewDistanceMap.remove(player);
 +    }
 +
 +    void updateDistanceMaps(EntityPlayer player) {
-+        try (co.aikar.timings.Timing ignored = this.world.timings.playerViewDistanceMapUpdate.startTiming()) {
-+            this.updateMaps(player);
-+        }
++        this.updateMaps(player);
 +    }
 +
 +    private void updateMaps(EntityPlayer player) {
@@ -2250,17 +2215,20 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..d57975ad8b211b587289a18a9b47263e
      public PlayerChunkMap(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, IAsyncTaskHandler<Runnable> iasynctaskhandler, ILightAccess ilightaccess, ChunkGenerator<?> chunkgenerator, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier, int i) {
          super(new File(worldserver.getWorldProvider().getDimensionManager().a(file), "region"), datafixer);
          this.visibleChunks = this.updatingChunks.clone();
-@@ -137,7 +166,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -137,7 +161,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.l = supplier;
          this.m = new VillagePlace(new File(this.w, "poi"), datafixer, this.world); // Paper
          this.setViewDistance(i);
 -        this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper
-+        //this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper // Tuinity - use the distance map
-+        this.playerViewDistanceMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(); // Tuinity
++        // Tuinity start - distance maps
++        //this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper
++        com.tuinity.tuinity.util.map.PooledLinkedHashSets<EntityPlayer> sets = this.pooledEntityPlayerSets;
++        this.playerViewDistanceMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets);
++        // Tuinity end - distance maps
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -148,9 +178,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -148,9 +176,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          int chunkZ = (int)Math.floor(entity.locZ()) >> 4;
          int index = entity.getEntityType().getEnumCreatureType().ordinal();
  
@@ -2285,14 +2253,15 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..d57975ad8b211b587289a18a9b47263e
      }
  
      public int getMobCountNear(EntityPlayer entityPlayer, EnumCreatureType enumCreatureType) {
-@@ -1275,6 +1319,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-     }
+@@ -1320,6 +1362,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             }
+         }
  
-     public void movePlayer(EntityPlayer entityplayer) {
 +        this.updateDistanceMaps(entityplayer); // Tuinity - distance maps
-         ObjectIterator objectiterator = this.trackedEntities.values().iterator();
- 
-         while (objectiterator.hasNext()) {
++
+         int i1 = sectionposition.a();
+         int j1 = sectionposition.c();
+         int k1;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
 index 8a2bb79ad9a6425676e30547199cc8f644bffb5f..5ca6c853df799ddb193683366e65d76c4abe4050 100644
 --- a/src/main/java/net/minecraft/server/World.java
