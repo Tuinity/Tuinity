@@ -1305,7 +1305,7 @@ index 0000000000000000000000000000000000000000..dfb7a417eaf44013824aef8d1b27b6c0
 \ No newline at end of file
 diff --git a/src/main/java/com/tuinity/tuinity/util/map/PlayerAreaMap.java b/src/main/java/com/tuinity/tuinity/util/map/PlayerAreaMap.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..b5a23664f68567d37e7ee5d26c4b289a4ea9c71f
+index 0000000000000000000000000000000000000000..a29fdcbbcb073402bea2769b97f88707d009d533
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/map/PlayerAreaMap.java
 @@ -0,0 +1,25 @@
@@ -1331,7 +1331,7 @@ index 0000000000000000000000000000000000000000..b5a23664f68567d37e7ee5d26c4b289a
 +
 +    @Override
 +    protected PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> getEmptySetFor(final EntityPlayer player) {
-+        return player.cachedSingleHashSet;
++        return player.cachedSingleHashSetTuinity;
 +    }
 +}
 \ No newline at end of file
@@ -1629,70 +1629,19 @@ index 0000000000000000000000000000000000000000..cf888454c18cf659f378e3fc494d109a
 +    }
 +}
 \ No newline at end of file
-diff --git a/src/main/java/net/minecraft/server/BlockPosition.java b/src/main/java/net/minecraft/server/BlockPosition.java
-index 142476395429a1d3bcbdc98fa0821a447319ef52..de4975154cf49ac304f364373da05399b024de57 100644
---- a/src/main/java/net/minecraft/server/BlockPosition.java
-+++ b/src/main/java/net/minecraft/server/BlockPosition.java
-@@ -474,6 +474,18 @@ public class BlockPosition extends BaseBlockPosition implements MinecraftSeriali
-             return this.d(this.x + i, this.y + j, this.z + k);
-         }
- 
-+        // Tuinity start
-+        public final void setX(int x) {
-+            this.x = x;
-+        }
-+        public final void setY(int y) {
-+            this.y = y;
-+        }
-+        public final void setZ(int z) {
-+            this.z = z;
-+        }
-+        // Tuinity end
-+
-         public void o(int i) {
-             this.x = i; // Paper change to x
-         }
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..a936abe106ba4b849b8137cd28d41c7beb5baff5 100644
+index 37b12daff86129d52938cf395eb199f721413f7a..ab5e4b9016708593b94d2205f330584bb1457ede 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -49,7 +49,7 @@ public class Chunk implements IChunkAccess {
-     private Supplier<PlayerChunk.State> u;
-     @Nullable
-     private Consumer<Chunk> v;
--    private final ChunkCoordIntPair loc;
-+    private final ChunkCoordIntPair loc; public final long coordinateKey; // Tuinity - Cache coordinate key
-     private volatile boolean x;
- 
-     public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeStorage biomestorage) {
-@@ -100,7 +100,7 @@ public class Chunk implements IChunkAccess {
-         this.n = new ShortList[16];
-         this.entitySlices = (List[]) (new List[16]); // Spigot
-         this.world = world;
--        this.loc = chunkcoordintpair;
-+        this.loc = chunkcoordintpair; this.coordinateKey = com.tuinity.tuinity.util.Util.getCoordinateKey(this.loc); // Tuinity - Cache coordinate key
-         this.i = chunkconverter;
-         HeightMap.Type[] aheightmap_type = HeightMap.Type.values();
-         int j = aheightmap_type.length;
-@@ -143,6 +143,66 @@ public class Chunk implements IChunkAccess {
-     public boolean needsDecoration;
-     // CraftBukkit end
+@@ -148,6 +148,56 @@ public class Chunk implements IChunkAccess {
+     public PlayerChunk playerChunk;
+     // Paper end
  
 +    // Tuinity start
-+    public void forEachEntity(final Consumer<Entity> consumer) {
-+        final List<Entity>[] slices = this.entitySlices;
-+        for (int i = 0, slicesLen = slices.length; i < slicesLen; ++i) {
-+            final org.bukkit.craftbukkit.util.UnsafeList<Entity> slice = (org.bukkit.craftbukkit.util.UnsafeList)slices[i];
-+
-+            if (slice == null) {
-+                continue;
-+            }
-+
-+            final Object[] data = slice.getRawDataArray();
-+
-+            for (int j = 0, sliceLen = slice.size(); j < sliceLen; ++j) {
-+                consumer.accept((Entity)data[j]);
-+            }
++    public final void forEachEntity(final Consumer<Entity> consumer) {
++        Entity[] entities = this.entities.getRawData();
++        for (int i = 0, len = this.entities.size(); i < len; ++i) {
++            consumer.accept(entities[i]);
 +        }
 +    }
 +
@@ -1741,33 +1690,30 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..a936abe106ba4b849b8137cd28d41c7b
      public Chunk(World world, ProtoChunk protochunk) {
          this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.getInhabitedTime(), protochunk.getSections(), (Consumer) null);
          Iterator iterator = protochunk.y().iterator();
-@@ -486,6 +546,12 @@ public class Chunk implements IChunkAccess {
+@@ -494,6 +544,12 @@ public class Chunk implements IChunkAccess {
          return ((HeightMap) this.heightMap.get(heightmap_type)).a(i & 15, j & 15) - 1;
      }
  
 +    // Tuinity start
 +    public final int getHighestBlockYAt(HeightMap.Type type, int x, int z) {
-+        return this.heightMap.get(type).a(x & 15, z & 15); // TODO obfhelper
++        return this.heightMap.get(type).get(x & 15, z & 15); // TODO obfhelper
 +    }
 +    // Tuinity end
 +
      @Nullable
      private TileEntity j(BlockPosition blockposition) {
          IBlockData iblockdata = this.getType(blockposition);
-@@ -626,7 +692,26 @@ public class Chunk implements IChunkAccess {
-     }
+@@ -635,6 +691,22 @@ public class Chunk implements IChunkAccess {
  
      // CraftBukkit start
-+    public PlayerChunk playerChunk; // Tuinity - cache PlayerChunk per Chunk
      public void loadCallback() {
 +        // Tuinity start - neighbour cache
-+        this.playerChunk = ((WorldServer)this.world).getChunkProvider().playerChunkMap.updatingChunks.get(this.coordinateKey);
 +        int chunkX = this.loc.x;
 +        int chunkZ = this.loc.z;
 +        ChunkProviderServer chunkProvider = ((WorldServer)this.world).getChunkProvider();
 +        for (int dx = NEIGHBOUR_CACHE_RADIUS; dx <= NEIGHBOUR_CACHE_RADIUS; ++dx) {
 +            for (int dz = NEIGHBOUR_CACHE_RADIUS; dz <= NEIGHBOUR_CACHE_RADIUS; ++dz) {
-+                Chunk neighbour = chunkProvider.getChunkAtIfLoadedMainThread(chunkX + dx, chunkZ + dz);
++                Chunk neighbour = chunkProvider.getChunkAtIfLoadedMainThreadNoCache(chunkX + dx, chunkZ + dz);
 +                if (neighbour != null) {
 +                    neighbour.setNeighbourLoaded(-dx, -dz, this);
 +                    // should be in cached already
@@ -1776,229 +1722,37 @@ index f2a04cb6a041cc610851ed0cae0d5a4de301d3ff..a936abe106ba4b849b8137cd28d41c7b
 +            }
 +        }
 +        this.loadedTicketLevel = true;
-+        chunkProvider.addLoadedChunk(this);
 +        // Tuinity end - neighbour cache
          org.bukkit.Server server = this.world.getServer();
+         ((WorldServer)this.world).getChunkProvider().addLoadedChunk(this); // Paper
          if (server != null) {
-             /*
-@@ -668,6 +753,22 @@ public class Chunk implements IChunkAccess {
-         server.getPluginManager().callEvent(unloadEvent);
+@@ -678,6 +750,21 @@ public class Chunk implements IChunkAccess {
          // note: saving can be prevented, but not forced if no saving is actually required
          this.mustNotSave = !unloadEvent.isSaveChunk();
+         ((WorldServer)this.world).getChunkProvider().removeLoadedChunk(this); // Paper
 +        // Tuinity start - neighbour cache
 +        int chunkX = this.loc.x;
 +        int chunkZ = this.loc.z;
 +        ChunkProviderServer chunkProvider = ((WorldServer)this.world).getChunkProvider();
 +        for (int dx = NEIGHBOUR_CACHE_RADIUS; dx <= NEIGHBOUR_CACHE_RADIUS; ++dx) {
 +            for (int dz = NEIGHBOUR_CACHE_RADIUS; dz <= NEIGHBOUR_CACHE_RADIUS; ++dz) {
-+                Chunk neighbour = chunkProvider.getChunkAtIfLoadedMainThread(chunkX + dx, chunkZ + dz);
++                Chunk neighbour = chunkProvider.getChunkAtIfLoadedMainThreadNoCache(chunkX + dx, chunkZ + dz);
 +                if (neighbour != null) {
 +                    neighbour.setNeighbourUnloaded(-dx, -dz);
 +                }
 +            }
 +        }
 +        this.loadedTicketLevel = false;
-+        chunkProvider.removeLoadedChunk(this);
 +        this.resetNeighbours();
 +        // Tuinity end - neighbour cache
      }
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..20cf52e117fff307bf04d914755138d6c4cde72e 100644
+index 0de82202e139236d116725c1c53641ff9f2eab6f..25fd415e36de1fa8be1091a9162664264b3e37d0 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -26,7 +26,7 @@ public class ChunkProviderServer extends IChunkProvider {
-     private final ChunkMapDistance chunkMapDistance;
-     public final ChunkGenerator<?> chunkGenerator;
-     private final WorldServer world;
--    private final Thread serverThread;
-+    final Thread serverThread; // Tuinity - private -> package
-     private final LightEngineThreaded lightEngine;
-     public final ChunkProviderServer.a serverThreadQueue; // Paper private -> public
-     public final PlayerChunkMap playerChunkMap;
-@@ -38,6 +38,87 @@ public class ChunkProviderServer extends IChunkProvider {
-     private final ChunkStatus[] cacheStatus = new ChunkStatus[4];
-     private final IChunkAccess[] cacheChunk = new IChunkAccess[4];
- 
-+    // Tuinity start - loaded chunk cache for fast getIfLoaded calls
-+    final ca.spottedleaf.concurrentutil.lock.WeakSeqLock loadedChunkMapSeqLock = new ca.spottedleaf.concurrentutil.lock.WeakSeqLock();
-+    final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<Chunk> loadedChunkMap = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>(8192, 0.5f);
-+
-+    private final Chunk[] lastLoadedChunks = new Chunk[4 * 4];
-+    private final long[] lastLoadedChunkKeys = new long[4 * 4];
-+
-+    {
-+        java.util.Arrays.fill(this.lastLoadedChunkKeys, com.tuinity.tuinity.util.Util.INVALID_CHUNK_KEY);
-+    }
-+
-+    private static int getCacheKey(int x, int z) {
-+        return x & 3 | ((z & 3) << 2);
-+    }
-+
-+    void addLoadedChunk(Chunk chunk) {
-+        this.loadedChunkMapSeqLock.acquireWrite();
-+        try {
-+            this.loadedChunkMap.put(chunk.coordinateKey, chunk);
-+        } finally {
-+            this.loadedChunkMapSeqLock.releaseWrite();
-+        }
-+
-+        // rewrite cache if we have to
-+        // we do this since we also cache null chunks
-+        int cacheKey = getCacheKey(chunk.getPos().x, chunk.getPos().z);
-+
-+        long cachedKey = this.lastLoadedChunkKeys[cacheKey];
-+        if (cachedKey == chunk.coordinateKey) {
-+            this.lastLoadedChunks[cacheKey] = chunk;
-+        }
-+    }
-+
-+    void removeLoadedChunk(Chunk chunk) {
-+        this.loadedChunkMapSeqLock.acquireWrite();
-+        try {
-+            this.loadedChunkMap.remove(chunk.coordinateKey);
-+        } finally {
-+            this.loadedChunkMapSeqLock.releaseWrite();
-+        }
-+
-+        // rewrite cache if we have to
-+        // we do this since we also cache null chunks
-+        int cacheKey = getCacheKey(chunk.getPos().x, chunk.getPos().z);
-+
-+        long cachedKey = this.lastLoadedChunkKeys[cacheKey];
-+        if (cachedKey == chunk.coordinateKey) {
-+            this.lastLoadedChunks[cacheKey] = null;
-+        }
-+    }
-+
-+    public Chunk getChunkAtIfLoadedMainThread(int x, int z) {
-+        int cacheKey = getCacheKey(x, z);
-+        long chunkKey = com.tuinity.tuinity.util.Util.getCoordinateKey(x, z);
-+
-+        long cachedKey = this.lastLoadedChunkKeys[cacheKey];
-+        if (cachedKey == chunkKey) {
-+            return this.lastLoadedChunks[cacheKey];
-+        }
-+
-+        Chunk ret = this.loadedChunkMap.get(chunkKey);
-+
-+        this.lastLoadedChunkKeys[cacheKey] = chunkKey;
-+        this.lastLoadedChunks[cacheKey] = ret;
-+
-+        return ret;
-+    }
-+
-+    public Chunk getChunkAtIfLoadedMainThreadNoCache(int x, int z) {
-+        return this.loadedChunkMap.get(com.tuinity.tuinity.util.Util.getCoordinateKey(x, z));
-+    }
-+
-+    public Chunk getChunkAtMainThread(int x, int z) {
-+        Chunk ret = this.getChunkAtIfLoadedMainThread(x, z);
-+        if (ret != null) {
-+            return ret;
-+        }
-+        return (Chunk)this.getChunkAt(x, z, ChunkStatus.FULL, true);
-+    }
-+    // Tuinity end - loaded chunk cache for fast getIfLoaded calls
-+
-     public ChunkProviderServer(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator<?> chunkgenerator, int i, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
-         this.world = worldserver;
-         this.serverThreadQueue = new ChunkProviderServer.a(worldserver);
-@@ -98,16 +179,30 @@ public class ChunkProviderServer extends IChunkProvider {
- 
-     @Nullable
-     public Chunk getChunkAtIfLoadedImmediately(int x, int z) {
--        long k = ChunkCoordIntPair.pair(x, z);
--
--        // Note: Bypass cache since we need to check ticket level, and to make this MT-Safe
-+        // Tuinity start - Optimize getIfLoaded type calls
-+        long k = com.tuinity.tuinity.util.Util.getCoordinateKey(x, z);
- 
--        PlayerChunk playerChunk = this.getChunk(k);
--        if (playerChunk == null) {
--            return null;
-+        if (Thread.currentThread() == this.serverThread) {
-+            return this.getChunkAtIfLoadedMainThread(x, z);
-         }
- 
--        return playerChunk.getFullChunk();
-+        Chunk ret = null;
-+        int readlock;
-+        do {
-+            readlock = this.loadedChunkMapSeqLock.acquireRead();
-+            try {
-+                ret = this.loadedChunkMap.get(k);
-+            } catch (Throwable thr) {
-+                if (thr instanceof ThreadDeath) {
-+                    throw (ThreadDeath)thr;
-+                }
-+                // re-try, this means a CME occurred...
-+                continue;
-+            }
-+        } while (!this.loadedChunkMapSeqLock.tryReleaseRead(readlock));
-+
-+        return ret;
-+        // Tuinity end - Optimize getIfLoaded type calls
-     }
- 
-     @Nullable
-@@ -265,6 +360,13 @@ public class ChunkProviderServer extends IChunkProvider {
-             gameprofilerfiller.c("getChunk");
-             long k = ChunkCoordIntPair.pair(i, j);
- 
-+            // Tuinity start - optimize this for loaded chunks
-+            Chunk loadedRet = this.getChunkAtIfLoadedMainThread(x, z);
-+            if (loadedRet != null) {
-+                return loadedRet;
-+            }
-+            // Tuinity end - optimize this for loaded chunks
-+
-             IChunkAccess ichunkaccess;
- 
-             for (int l = 0; l < 4; ++l) {
-@@ -310,39 +412,7 @@ public class ChunkProviderServer extends IChunkProvider {
-         if (Thread.currentThread() != this.serverThread) {
-             return null;
-         } else {
--            this.world.getMethodProfiler().c("getChunkNow");
--            long k = ChunkCoordIntPair.pair(i, j);
--
--            for (int l = 0; l < 4; ++l) {
--                if (k == this.cachePos[l] && this.cacheStatus[l] == ChunkStatus.FULL) {
--                    IChunkAccess ichunkaccess = this.cacheChunk[l];
--
--                    return ichunkaccess instanceof Chunk ? (Chunk) ichunkaccess : null;
--                }
--            }
--
--            PlayerChunk playerchunk = this.getChunk(k);
--
--            if (playerchunk == null) {
--                return null;
--            } else {
--                Either<IChunkAccess, PlayerChunk.Failure> either = (Either) playerchunk.b(ChunkStatus.FULL).getNow(null); // Craftbukkit - decompile error
--
--                if (either == null) {
--                    return null;
--                } else {
--                    IChunkAccess ichunkaccess1 = (IChunkAccess) either.left().orElse(null); // Craftbukkit - decompile error
--
--                    if (ichunkaccess1 != null) {
--                        this.a(k, ichunkaccess1, ChunkStatus.FULL);
--                        if (ichunkaccess1 instanceof Chunk) {
--                            return (Chunk) ichunkaccess1;
--                        }
--                    }
--
--                    return null;
--                }
--            }
-+            return this.getChunkAtIfLoadedMainThread(i, j); // Tuinity - optimize for loaded chunks
-         }
-     }
- 
-@@ -562,11 +632,10 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -630,11 +630,10 @@ public class ChunkProviderServer extends IChunkProvider {
              EnumCreatureType[] aenumcreaturetype = EnumCreatureType.values();
              // Paper start - per player mob spawning
              int[] worldMobCount;
@@ -2013,7 +1767,7 @@ index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..20cf52e117fff307bf04d914755138d6
                  // re-set mob counts
                  for (EntityPlayer player : this.world.players) {
                      Arrays.fill(player.mobCounts, 0);
-@@ -646,9 +715,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -714,9 +713,23 @@ public class ChunkProviderServer extends IChunkProvider {
  
                                      if (this.world.paperConfig.perPlayerMobSpawns) {
                                          int minDiff = Integer.MAX_VALUE;
@@ -2039,140 +1793,44 @@ index d1e541ad6d09781dd8cf36dbdb6689d9792d4edf..20cf52e117fff307bf04d914755138d6
                                      }
  
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index d09afc889083a3856618f45ecaa0c2b5d30035cd..2a9415aa1fce07a6c2a79e4534712fec35c71624 100644
+index 15230a834cd91734cd5d2a94e237a485987dc1a7..5a8a3d203c4b0fc689bb539fab202963cf59b219 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
-@@ -100,6 +100,10 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
-     public Integer clientViewDistance;
-     // CraftBukkit end
+@@ -102,6 +102,10 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+ 
+     public final com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> cachedSingleHashSet; // Paper
  
 +    // Tuinity start
-+    public final com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> cachedSingleHashSet;
++    public final com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> cachedSingleHashSetTuinity;
 +    // Tuinity end
 +
      public EntityPlayer(MinecraftServer minecraftserver, WorldServer worldserver, GameProfile gameprofile, PlayerInteractManager playerinteractmanager) {
          super((World) worldserver, gameprofile);
          playerinteractmanager.player = this;
-@@ -116,6 +120,9 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+@@ -120,6 +124,9 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
          this.canPickUpLoot = true;
          this.maxHealthCache = this.getMaxHealth();
          this.cachedSingleMobDistanceMap = new com.destroystokyo.paper.util.PooledHashSets.PooledObjectLinkedOpenHashSet<>(this); // Paper
 +        // Tuinity start
-+        this.cachedSingleHashSet = new com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<>(this);
++        this.cachedSingleHashSetTuinity = new com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<>(this);
 +        // Tuinity end
      }
  
      // Yes, this doesn't match Vanilla, but it's the best we can do for now.
-diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index d26365eb120a9e7671daed02ee57981bbf8e2401..cd3b4d5a2d051dae0f44e1e1c3e101e6f3328421 100644
---- a/src/main/java/net/minecraft/server/PlayerChunk.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -20,8 +20,8 @@ public class PlayerChunk {
-     private static final PlayerChunk.State[] CHUNK_STATES = PlayerChunk.State.values();
-     private final AtomicReferenceArray<CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>>> statusFutures;
-     private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> fullChunkFuture;
--    private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> tickingFuture;
--    private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> entityTickingFuture;
-+    private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> tickingFuture; volatile boolean isTickingReady; // Tuinity - cache chunk ticking stage
-+    private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> entityTickingFuture; volatile boolean isEntityTickingReady; // Tuinity - cache chunk ticking stage
-     private CompletableFuture<IChunkAccess> chunkSave;
-     public int oldTicketLevel;
-     private int ticketLevel;
-@@ -38,6 +38,10 @@ public class PlayerChunk {
-     public final PlayerChunk.d players;
-     private boolean hasBeenLoaded;
- 
-+    // Tuinity start
-+    private final PlayerChunkMap chunkMap;
-+    // Tuinity end
-+
-     public PlayerChunk(ChunkCoordIntPair chunkcoordintpair, int i, LightEngine lightengine, PlayerChunk.c playerchunk_c, PlayerChunk.d playerchunk_d) {
-         this.statusFutures = new AtomicReferenceArray(PlayerChunk.CHUNK_STATUSES.size());
-         this.fullChunkFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
-@@ -53,6 +57,7 @@ public class PlayerChunk {
-         this.ticketLevel = this.oldTicketLevel;
-         this.n = this.oldTicketLevel;
-         this.a(i);
-+        this.chunkMap = (PlayerChunkMap)playerchunk_d; // Tuinity
+diff --git a/src/main/java/net/minecraft/server/HeightMap.java b/src/main/java/net/minecraft/server/HeightMap.java
+index 8a272ae1b800e31aab6431b647e5b349430b2634..aa73396100adbf741ed52f457284a78c73d658c3 100644
+--- a/src/main/java/net/minecraft/server/HeightMap.java
++++ b/src/main/java/net/minecraft/server/HeightMap.java
+@@ -119,6 +119,7 @@ public class HeightMap {
+         }
      }
  
-     // CraftBukkit start
-@@ -96,6 +101,31 @@ public class PlayerChunk {
-         return null;
++    public final int get(int x, int z) { return this.a(x, z); } // Tuinity - OBFHELPER
+     public int a(int i, int j) {
+         return this.a(c(i, j));
      }
-     // Paper end
-+    // Tuinity start
-+    @Nullable
-+    public Chunk getEntityTickingChunk() {
-+        CompletableFuture<Either<Chunk, PlayerChunk.Failure>> completablefuture = this.entityTickingFuture;
-+        Either<Chunk, PlayerChunk.Failure> either = completablefuture.getNow(null);
-+
-+        return either == null ? null : either.left().orElse(null);
-+    }
-+
-+    @Nullable
-+    public Chunk getTickingChunk() {
-+        CompletableFuture<Either<Chunk, PlayerChunk.Failure>> completablefuture = this.tickingFuture;
-+        Either<Chunk, PlayerChunk.Failure> either = completablefuture.getNow(null);
-+
-+        return either == null ? null : either.left().orElse(null);
-+    }
-+
-+    public final boolean isEntityTickingReady() {
-+        return this.isEntityTickingReady;
-+    }
-+
-+    public final boolean isTickingReady() {
-+        return this.isTickingReady;
-+    }
-+    // Tuinity end
- 
-     public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getStatusFutureUnchecked(ChunkStatus chunkstatus) {
-         CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(chunkstatus.c());
-@@ -390,12 +420,19 @@ public class PlayerChunk {
-         boolean flag5 = playerchunk_state1.isAtLeast(PlayerChunk.State.TICKING);
- 
-         if (!flag4 && flag5) {
--            this.tickingFuture = playerchunkmap.a(this);
-+            // Tuinity start - cache chunk ticking stage
-+            this.tickingFuture = playerchunkmap.a(this); this.tickingFuture.thenAccept((either) -> {
-+                if (either.left().isPresent()) {
-+                    PlayerChunk.this.isTickingReady = true;
-+                }
-+            });
-+            // Tuinity end - cache chunk ticking stage
-             this.a(this.tickingFuture);
-         }
- 
-         if (flag4 && !flag5) {
-             this.tickingFuture.complete(PlayerChunk.UNLOADED_CHUNK);
-+            this.isTickingReady = false; // Tuinity - cache whether the chunk is at ticking stage
-             this.tickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
-         }
- 
-@@ -407,12 +444,19 @@ public class PlayerChunk {
-                 throw (IllegalStateException) SystemUtils.c(new IllegalStateException());
-             }
- 
--            this.entityTickingFuture = playerchunkmap.b(this.location);
-+            // Tuinity start - cache chunk ticking stage
-+            this.entityTickingFuture = playerchunkmap.b(this.location); this.entityTickingFuture.thenAccept((either) -> {
-+                if (either.left().isPresent()) {
-+                    PlayerChunk.this.isEntityTickingReady = true;
-+                }
-+            });
-+            // Tuinity end - cache chunk ticking stage
-             this.a(this.entityTickingFuture);
-         }
- 
-         if (flag6 && !flag7) {
-             this.entityTickingFuture.complete(PlayerChunk.UNLOADED_CHUNK);
-+            this.isEntityTickingReady = false; // Tuinity - cache chunk ticking stage
-             this.entityTickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
-         }
- 
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..fba91fdf40966e4ca641f6b7c9df5d5f46b033d2 100644
+index 05ffeebcfaa0583b69cd8655e947957abebea418..5d3edc64fe7ceb26a28e9067d481272cdb2bb9c9 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -79,7 +79,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -2184,38 +1842,37 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..fba91fdf40966e4ca641f6b7c9df5d5f
  
      // CraftBukkit start - recursion-safe executor for Chunk loadCallback() and unloadCallback()
      public final CallbackExecutor callbackExecutor = new CallbackExecutor();
-@@ -106,6 +106,30 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-     };
-     // CraftBukkit end
+@@ -134,6 +134,29 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
+ 
+     // Paper end
 +    // Tuinity start - distance maps
 +    final com.tuinity.tuinity.util.map.PooledLinkedHashSets<EntityPlayer> pooledEntityPlayerSets = new com.tuinity.tuinity.util.map.PooledLinkedHashSets<>();
 +    public final com.tuinity.tuinity.util.map.PlayerAreaMap playerViewDistanceMap;
 +
-+    void addPlayerToDistanceMaps(EntityPlayer player) {
-+        this.updateMaps(player);
++    void addPlayerToDistanceMapsTuinity(EntityPlayer player) {
++        this.updateMapsTuinity(player);
 +    }
 +
-+    void removePlayerFromDistanceMaps(EntityPlayer player) {
++    void removePlayerFromDistanceMapsTuinity(EntityPlayer player) {
 +        this.playerViewDistanceMap.remove(player);
 +    }
 +
-+    void updateDistanceMaps(EntityPlayer player) {
-+        this.updateMaps(player);
++    void updateDistanceMapsTuinity(EntityPlayer player) {
++        this.updateMapsTuinity(player);
 +    }
 +
-+    private void updateMaps(EntityPlayer player) {
++    private void updateMapsTuinity(EntityPlayer player) {
 +        int chunkX = com.tuinity.tuinity.util.Util.getChunkCoordinate(player.locX());
 +        int chunkZ = com.tuinity.tuinity.util.Util.getChunkCoordinate(player.locZ());
 +
 +        this.playerViewDistanceMap.update(player, chunkX, chunkZ, this.viewDistance);
 +    }
 +    // Tuinity end
-+
+ 
      public PlayerChunkMap(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, IAsyncTaskHandler<Runnable> iasynctaskhandler, ILightAccess ilightaccess, ChunkGenerator<?> chunkgenerator, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier, int i) {
          super(new File(worldserver.getWorldProvider().getDimensionManager().a(file), "region"), datafixer);
-         this.visibleChunks = this.updatingChunks.clone();
-@@ -137,7 +161,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -166,7 +189,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.l = supplier;
          this.m = new VillagePlace(new File(this.w, "poi"), datafixer, this.world); // Paper
          this.setViewDistance(i);
@@ -2228,7 +1885,7 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..fba91fdf40966e4ca641f6b7c9df5d5f
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -148,9 +176,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -177,9 +204,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          int chunkZ = (int)Math.floor(entity.locZ()) >> 4;
          int index = entity.getEntityType().getEnumCreatureType().ordinal();
  
@@ -2253,38 +1910,20 @@ index 1df6a1f192ca0e435240e84b1728482c6c8ddc0f..fba91fdf40966e4ca641f6b7c9df5d5f
      }
  
      public int getMobCountNear(EntityPlayer entityPlayer, EnumCreatureType enumCreatureType) {
-@@ -1320,6 +1362,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-             }
+@@ -1425,7 +1466,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          }
  
-+        this.updateDistanceMaps(entityplayer); // Tuinity - distance maps
-+
-         int i1 = sectionposition.a();
-         int j1 = sectionposition.c();
-         int k1;
-diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 8a2bb79ad9a6425676e30547199cc8f644bffb5f..5ca6c853df799ddb193683366e65d76c4abe4050 100644
---- a/src/main/java/net/minecraft/server/World.java
-+++ b/src/main/java/net/minecraft/server/World.java
-@@ -271,7 +271,16 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
- 
-     @Override
-     public Chunk getChunkAt(int i, int j) {
--        return (Chunk) this.getChunkAt(i, j, ChunkStatus.FULL);
-+        // Tuinity start - optimize this method for loaded chunks
-+        ChunkProviderServer chunkProvider = (ChunkProviderServer)this.chunkProvider;
-+        if (chunkProvider.serverThread == Thread.currentThread()) {
-+            Chunk loaded = chunkProvider.getChunkAtIfLoadedMainThread(i, j);
-+            if (loaded != null) {
-+                return loaded;
-+            }
-+        }
-+        return (Chunk)chunkProvider.getChunkAt(i, j, ChunkStatus.FULL, true);
-+        // Tuinity end - optimize this method for loaded chunks
+         this.updateMaps(entityplayer); // Paper - distance maps
+-
++        this.updateDistanceMapsTuinity(entityplayer); // Tuinity - distance maps
      }
  
-     // Paper start - if loaded
-@@ -1196,9 +1205,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+     @Override
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 9135113884c1a70394d63f52985ea4761ddaf46b..999dd05a01aebaeaed63a2c23bb1ecb1f80d683e 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -1173,9 +1173,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
          int l = MathHelper.floor((axisalignedbb.maxZ + 2.0D) / 16.0D);
  
@@ -2297,7 +1936,7 @@ index 8a2bb79ad9a6425676e30547199cc8f644bffb5f..5ca6c853df799ddb193683366e65d76c
  
                  if (chunk != null) {
                      chunk.a(entity, axisalignedbb, list, predicate);
-@@ -1217,9 +1228,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1194,9 +1196,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          int l = MathHelper.f((axisalignedbb.maxZ + 2.0D) / 16.0D);
          List<T> list = Lists.newArrayList();
  
@@ -2310,7 +1949,7 @@ index 8a2bb79ad9a6425676e30547199cc8f644bffb5f..5ca6c853df799ddb193683366e65d76c
  
                  if (chunk != null) {
                      chunk.a(entitytypes, axisalignedbb, list, predicate);
-@@ -1239,10 +1252,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1216,10 +1220,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          int l = MathHelper.f((axisalignedbb.maxZ + 2.0D) / 16.0D);
          List<T> list = Lists.newArrayList();
          IChunkProvider ichunkprovider = this.getChunkProvider();
@@ -2324,35 +1963,22 @@ index 8a2bb79ad9a6425676e30547199cc8f644bffb5f..5ca6c853df799ddb193683366e65d76c
                  if (chunk != null) {
                      chunk.a(oclass, axisalignedbb, list, predicate);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 0b3f6b8ba368e3bcc1c9ce6795b188a7a0d581c4..66aed39ae517daec68b5b58c137fa489ffb6e163 100644
+index 0fed3371304e4e7c50ba230c57ed98fe36c1e4a0..97e437908b075675d6bc067c3bbcead633c6b570 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -1152,6 +1152,7 @@ public class WorldServer extends World {
-         }
+@@ -1153,6 +1153,7 @@ public class WorldServer extends World {
  
          this.registerEntity(entityplayer);
-+        this.getChunkProvider().playerChunkMap.addPlayerToDistanceMaps(entityplayer); // Tuinity - distance maps
+         this.getChunkProvider().playerChunkMap.addPlayerToDistanceMaps(entityplayer); // Paper - distance maps
++        this.getChunkProvider().playerChunkMap.addPlayerToDistanceMapsTuinity(entityplayer); // Tuinity - distance maps
      }
  
      // CraftBukkit start
-@@ -1333,6 +1334,7 @@ public class WorldServer extends World {
-             EntityPlayer entityplayer = (EntityPlayer) entity;
+@@ -1335,6 +1336,7 @@ public class WorldServer extends World {
  
              this.players.remove(entityplayer);
-+            this.getChunkProvider().playerChunkMap.removePlayerFromDistanceMaps(entityplayer); // Tuinity - distance maps
+             this.getChunkProvider().playerChunkMap.removePlayerFromDistanceMaps(entityplayer); // Paper - distance maps
++            this.getChunkProvider().playerChunkMap.removePlayerFromDistanceMapsTuinity(entityplayer); // Tuinity - distance maps
          }
  
          this.getScoreboard().a(entity);
-diff --git a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
-index 1aec70a1f1a9d8fd2cd06bde4033e19e769ab331..41a58a0af5aa86f59c382aacbb14dfe563e16558 100644
---- a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
-+++ b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
-@@ -17,7 +17,7 @@ import java.util.RandomAccess;
- public class UnsafeList<E> extends AbstractList<E> implements List<E>, RandomAccess, Cloneable, Serializable {
-     private static final long serialVersionUID = 8683452581112892191L;
- 
--    private transient Object[] data;
-+    private transient Object[] data; public final Object[] getRawDataArray() { return this.data; } // Tuinity - expose for raw get
-     private int size;
-     private int initialCapacity;
- 

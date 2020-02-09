@@ -7,73 +7,29 @@ Subject: [PATCH] Optimize entity list iteration requiring entities be in
 We retain a list of loaded entities specifically for this usage
 
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 9bf7d8b457eea455760040091be3c89b115b037a..1184524fb863608ba575f2e28657e8091a113db8 100644
+index 86231229e1ec1737c6eb9f7d765286439f910e0d..f39ad161390dc0520a03eb0980188a2575d56c80 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -144,20 +144,11 @@ public class Chunk implements IChunkAccess {
-     // CraftBukkit end
- 
-     // Tuinity start
-+    public final com.tuinity.tuinity.util.EntityList entityList = new com.tuinity.tuinity.util.EntityList();
-     public void forEachEntity(final Consumer<Entity> consumer) {
--        final List<Entity>[] slices = this.entitySlices;
--        for (int i = 0, slicesLen = slices.length; i < slicesLen; ++i) {
--            final org.bukkit.craftbukkit.util.UnsafeList<Entity> slice = (org.bukkit.craftbukkit.util.UnsafeList)slices[i];
--
--            if (slice == null) {
--                continue;
--            }
--
--            final Object[] data = slice.getRawDataArray();
--
--            for (int j = 0, sliceLen = slice.size(); j < sliceLen; ++j) {
--                consumer.accept((Entity)data[j]);
--            }
-+        final Entity[] entities = this.entityList.getRawData();
-+        for (int i = 0, size = this.entityList.size(); i < size; ++i) {
-+            consumer.accept(entities[i]);
-         }
-     }
- 
-@@ -495,6 +486,12 @@ public class Chunk implements IChunkAccess {
-         entity.chunkY = k;
-         entity.chunkZ = this.loc.z;
-         this.entitySlices[k].add(entity);
-+        // Tuinity start - per chunk entity list
-+        this.entityList.add(entity);
-+        if (this.loadedTicketLevel) {
-+            ((WorldServer)this.world).loadedEntities.add(entity);
-+        }
-+        // Tuinity end - per chunk entity list
-         // Paper start
-         if (entity instanceof EntityItem) {
-             itemCounts[k]++;
-@@ -533,6 +530,7 @@ public class Chunk implements IChunkAccess {
-         if (!this.entitySlices[i].remove(entity)) {
-             return;
-         }
-+        this.entityList.remove(entity); // Tuinity - per chunk entity list
-         if (entity instanceof EntityItem) {
-             itemCounts[i]--;
-         } else if (entity instanceof IInventory) {
-@@ -713,6 +711,7 @@ public class Chunk implements IChunkAccess {
+@@ -709,6 +709,8 @@ public class Chunk implements IChunkAccess {
          }
          this.loadedTicketLevel = true;
-         chunkProvider.addLoadedChunk(this);
-+        ((WorldServer)this.world).onChunkLoad(this);
          // Tuinity end - neighbour cache
++
++        ((WorldServer)this.world).onChunkLoad(this); // Tuinity - optimise entity list iteration
          org.bukkit.Server server = this.world.getServer();
+         ((WorldServer)this.world).getChunkProvider().addLoadedChunk(this); // Paper
          if (server != null) {
-@@ -769,6 +768,7 @@ public class Chunk implements IChunkAccess {
-         }
+@@ -767,6 +769,8 @@ public class Chunk implements IChunkAccess {
          this.loadedTicketLevel = false;
-         chunkProvider.removeLoadedChunk(this);
-+        ((WorldServer)this.world).onChunkUnload(this);
          this.resetNeighbours();
          // Tuinity end - neighbour cache
++
++        ((WorldServer)this.world).onChunkUnload(this); // Tuinity - optimise entity list iteration
      }
+     // CraftBukkit end
+ 
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 77afce41709a092692d7f1d8cca150192c8216e1..6c370b1ddd5805edeedd4d4097c8e68fa5ea507c 100644
+index b82d1a72e68062b998889739110520f0261f24f1..8433572d1298e06928c343662a407c6040c3f8da 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -172,6 +172,26 @@ public class WorldServer extends World {
@@ -84,7 +40,7 @@ index 77afce41709a092692d7f1d8cca150192c8216e1..6c370b1ddd5805edeedd4d4097c8e68f
 +    // Tuinity start
 +    public final com.tuinity.tuinity.util.EntityList loadedEntities = new com.tuinity.tuinity.util.EntityList();
 +    void onChunkLoad(final Chunk chunk) {
-+        final com.tuinity.tuinity.util.EntityList list = chunk.entityList;
++        final com.destroystokyo.paper.util.maplist.EntityList list = chunk.entities;
 +        final Entity[] entities = list.getRawData();
 +        for (int i = 0, size = list.size(); i < size; ++i) {
 +            this.loadedEntities.add(entities[i]);
@@ -92,7 +48,7 @@ index 77afce41709a092692d7f1d8cca150192c8216e1..6c370b1ddd5805edeedd4d4097c8e68f
 +    }
 +
 +    void onChunkUnload(final Chunk chunk) {
-+        final com.tuinity.tuinity.util.EntityList list = chunk.entityList;
++        final com.destroystokyo.paper.util.maplist.EntityList list = chunk.entities;
 +        final Entity[] entities = list.getRawData();
 +        for (int i = 0, size = list.size(); i < size; ++i) {
 +            this.loadedEntities.remove(entities[i]);
@@ -129,7 +85,7 @@ index 77afce41709a092692d7f1d8cca150192c8216e1..6c370b1ddd5805edeedd4d4097c8e68f
                      this.unregisterEntity(entity1);
                  }
  
-@@ -1430,6 +1449,7 @@ public class WorldServer extends World {
+@@ -1432,6 +1451,7 @@ public class WorldServer extends World {
          if (entity instanceof EntityInsentient) {
              this.navigators.remove(((EntityInsentient) entity).getNavigation());
          }
@@ -137,7 +93,7 @@ index 77afce41709a092692d7f1d8cca150192c8216e1..6c370b1ddd5805edeedd4d4097c8e68f
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
          entity.valid = false; // CraftBukkit
      }
-@@ -1486,6 +1506,11 @@ public class WorldServer extends World {
+@@ -1488,6 +1508,11 @@ public class WorldServer extends World {
              }
              // Paper end
              entity.shouldBeRemoved = false; // Paper - shouldn't be removed after being re-added
@@ -150,10 +106,10 @@ index 77afce41709a092692d7f1d8cca150192c8216e1..6c370b1ddd5805edeedd4d4097c8e68f
          }
  
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 89674cb0dcee8bdb96b3d4945153a063f153732a..92e46cee22c63c9dd9c220c27d50a7994b33472b 100644
+index 28a6e1cdab163394463c8b4b1fb297b864c0e756..2ac47855dbef392d6867356a4bd0395fca843fd8 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-@@ -1080,16 +1080,16 @@ public class CraftWorld implements World {
+@@ -1091,16 +1091,16 @@ public class CraftWorld implements World {
  
      @Override
      public List<Entity> getEntities() {
@@ -173,7 +129,7 @@ index 89674cb0dcee8bdb96b3d4945153a063f153732a..92e46cee22c63c9dd9c220c27d50a799
                      list.add(bukkitEntity);
                  }
              }
-@@ -1100,16 +1100,16 @@ public class CraftWorld implements World {
+@@ -1111,16 +1111,16 @@ public class CraftWorld implements World {
  
      @Override
      public List<LivingEntity> getLivingEntities() {
@@ -193,7 +149,7 @@ index 89674cb0dcee8bdb96b3d4945153a063f153732a..92e46cee22c63c9dd9c220c27d50a799
                      list.add((LivingEntity) bukkitEntity);
                  }
              }
-@@ -1130,7 +1130,7 @@ public class CraftWorld implements World {
+@@ -1141,7 +1141,7 @@ public class CraftWorld implements World {
      public <T extends Entity> Collection<T> getEntitiesByClass(Class<T> clazz) {
          Collection<T> list = new ArrayList<T>();
  
@@ -202,7 +158,7 @@ index 89674cb0dcee8bdb96b3d4945153a063f153732a..92e46cee22c63c9dd9c220c27d50a799
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
-@@ -1141,7 +1141,7 @@ public class CraftWorld implements World {
+@@ -1152,7 +1152,7 @@ public class CraftWorld implements World {
  
                  Class<?> bukkitClass = bukkitEntity.getClass();
  
@@ -211,7 +167,7 @@ index 89674cb0dcee8bdb96b3d4945153a063f153732a..92e46cee22c63c9dd9c220c27d50a799
                      list.add((T) bukkitEntity);
                  }
              }
-@@ -1154,7 +1154,7 @@ public class CraftWorld implements World {
+@@ -1165,7 +1165,7 @@ public class CraftWorld implements World {
      public Collection<Entity> getEntitiesByClasses(Class<?>... classes) {
          Collection<Entity> list = new ArrayList<Entity>();
  
@@ -220,7 +176,7 @@ index 89674cb0dcee8bdb96b3d4945153a063f153732a..92e46cee22c63c9dd9c220c27d50a799
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
-@@ -1167,7 +1167,7 @@ public class CraftWorld implements World {
+@@ -1178,7 +1178,7 @@ public class CraftWorld implements World {
  
                  for (Class<?> clazz : classes) {
                      if (clazz.isAssignableFrom(bukkitClass)) {

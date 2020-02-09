@@ -821,22 +821,23 @@ index 0000000000000000000000000000000000000000..c726ef3c2b00c4bb2214ba6daea08e34
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 6573fe5e6c5657275e1bc7eb3111c0665fcfde7d..f741df106b293cbde208b9ce4d85bfefb654bd50 100644
+index 745339808e6581f442cb8d0a65875463eb76d4e8..509f61cae0959b0b766fe26573498b24ca2070b7 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -117,6 +117,11 @@ public class ChunkProviderServer extends IChunkProvider {
-         }
-         return (Chunk)this.getChunkAt(x, z, ChunkStatus.FULL, true);
+@@ -119,6 +119,12 @@ public class ChunkProviderServer extends IChunkProvider {
      }
-+
+     // Paper
+ 
++    // Tuinity start - rewrite ticklistserver
 +    public final boolean isTickingReadyMainThread(BlockPosition pos) {
 +        PlayerChunk chunk = this.playerChunkMap.chunkMap.getUpdating(com.tuinity.tuinity.util.Util.getCoordinateKey(pos));
 +        return chunk != null && chunk.isTickingReady();
 +    }
-     // Tuinity end - loaded chunk cache for fast getIfLoaded calls
++    // Tuinity end - rewrite ticklistserver
  
      public ChunkProviderServer(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator<?> chunkgenerator, int i, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
-@@ -531,8 +536,8 @@ public class ChunkProviderServer extends IChunkProvider {
+         this.world = worldserver;
+@@ -529,8 +535,8 @@ public class ChunkProviderServer extends IChunkProvider {
          // Tuinity end - optimize is ticking ready type functions
      }
  
@@ -919,17 +920,18 @@ index 33cfeabdee03195a294f303f28044a313cb1c4ed..11a4bb882e73df0ead6d9c5f67ea2f1a
      public String toString() {
          return this.e + ": " + this.a + ", " + this.b + ", " + this.c + ", " + this.f;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index ed28c10ad335ca28d24344026dab2186daec297b..b21b92f7b996aef075e891a7770de0d0de249c47 100644
+index 5cad0e4acc0f94d00bfd2ad62054ab3dd5728de2..f1d03cea07c51c6670c2ae932cfb98542247a51b 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -483,6 +483,7 @@ public class PlayerChunk {
-             this.tickingFuture = playerchunkmap.a(this); this.tickingFuture.thenAccept((either) -> {
-                 if (either.left().isPresent()) {
+@@ -511,7 +511,7 @@ public class PlayerChunk {
+                     Chunk tickingChunk = either.left().get();
                      PlayerChunk.this.isTickingReady = true;
-+                    PlayerChunk.this.chunkMap.world.onChunkSetTicking(PlayerChunk.this.location.x, PlayerChunk.this.location.z); // Tuinity
+ 
+-
++                    PlayerChunk.this.chunkMap.world.onChunkSetTicking(PlayerChunk.this.location.x, PlayerChunk.this.location.z); // Tuinity - rewrite ticklistserver
+ 
+ 
                  }
-             });
-             // Tuinity end - cache chunk ticking stage
 diff --git a/src/main/java/net/minecraft/server/StructureBoundingBox.java b/src/main/java/net/minecraft/server/StructureBoundingBox.java
 index dbb565e74d211ef35d5d40b3d024e2f07cef9031..63d2c9a352db3b1c87a3b0b5aa0e48e747d47ee4 100644
 --- a/src/main/java/net/minecraft/server/StructureBoundingBox.java
@@ -962,7 +964,7 @@ index dbb565e74d211ef35d5d40b3d024e2f07cef9031..63d2c9a352db3b1c87a3b0b5aa0e48e7
          return this.d >= structureboundingbox.a && this.a <= structureboundingbox.d && this.f >= structureboundingbox.c && this.c <= structureboundingbox.f && this.e >= structureboundingbox.b && this.b <= structureboundingbox.e;
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 6c370b1ddd5805edeedd4d4097c8e68fa5ea507c..a9c7fc9f80fbdb937b812ea702b73769fa0b4309 100644
+index 8433572d1298e06928c343662a407c6040c3f8da..7141acd6fea261315f7acda378be2d96cbbb1fec 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -190,6 +190,11 @@ public class WorldServer extends World {

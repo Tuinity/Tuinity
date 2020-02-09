@@ -38,7 +38,7 @@ index c30ec1c8b3bc26ed44f3d5aa67df694ec2d17355..afa4deaef7a32d6ef58dcb8792069cba
  }
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index f8461960e0ce2c16deb11a2f3fbe013f046fa5a4..b0733584c2e300ee36da8f021ebc96434491aabd 100644
+index acb7848d85af00b97cb299f3d8f1fb603bb9ff95..066964d3ce5b3f9fef9432183c163c86a8f4cd5e 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -208,6 +208,46 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -124,10 +124,10 @@ index 40d6e8bf7c34d91bbc44d23efc498daa4f61b7e2..d65d8329a5a6fc4d2141c487b5ceaf47
          PlayerConnection playerconnection = entityplayer.playerConnection;
  
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f367df03f7 100644
+index 09bffe95c74de05c4139a319930ac7f79ce11905..d830601a7179542edac59fffe1d098dc4fd903fb 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -141,6 +141,14 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -140,6 +140,14 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          // Tuinity start - optimise PlayerChunkMap#isOutsideRange
          this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, ChunkMapDistance.MOB_SPAWN_RANGE);
          // Tuinity end - optimise PlayerChunkMap#isOutsideRange
@@ -142,7 +142,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
      }
      // Tuinity end - per player view distance
  
-@@ -157,6 +165,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -156,6 +164,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      // Tuinity end - optimise PlayerChunkMap#isOutsideRange
  
@@ -155,8 +155,8 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
 +
      void addPlayerToDistanceMaps(EntityPlayer player) {
          this.updateMaps(player);
-         // Tuinity start - per player view distance
-@@ -176,6 +191,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+@@ -205,6 +220,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.playerMobSpawnMap.remove(player);
          this.playerChunkTickRangeMap.remove(player);
          // Tuinity end - optimise PlayerChunkMap#isOutsideRange
@@ -169,8 +169,8 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
 +        // Tuinity end - use distance map to optimise entity tracker
      }
  
-     void updateDistanceMaps(EntityPlayer player) {
-@@ -202,6 +224,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     void updateDistanceMapsTuinity(EntityPlayer player) {
+@@ -231,6 +253,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          // Tuinity start - optimise PlayerChunkMap#isOutsideRange
          this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, ChunkMapDistance.MOB_SPAWN_RANGE);
          // Tuinity end - optimise PlayerChunkMap#isOutsideRange
@@ -184,7 +184,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
      }
      // Tuinity end
  
-@@ -273,6 +302,72 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -302,6 +331,72 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.playerChunkTickRangeMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets);
          this.playerMobSpawnMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets);
          // Tuinity end
@@ -257,7 +257,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -1463,6 +1558,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1523,6 +1618,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public void movePlayer(EntityPlayer entityplayer) {
@@ -265,7 +265,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
          while (objectiterator.hasNext()) {
-@@ -1474,6 +1570,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1534,6 +1630,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                  playerchunkmap_entitytracker.updatePlayer(entityplayer);
              }
          }
@@ -273,7 +273,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
  
          int i = MathHelper.floor(entityplayer.locX()) >> 4;
          int j = MathHelper.floor(entityplayer.locZ()) >> 4;
-@@ -1580,11 +1677,31 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1638,11 +1735,31 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
                      entity.tracker = playerchunkmap_entitytracker; // Paper - Fast access to tracker
                      this.trackedEntities.put(entity.getId(), playerchunkmap_entitytracker);
@@ -305,7 +305,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
                          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
                          while (objectiterator.hasNext()) {
-@@ -1594,6 +1711,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1652,6 +1769,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                                  playerchunkmap_entitytracker1.updatePlayer(entityplayer);
                              }
                          }
@@ -313,7 +313,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
                      }
  
                  }
-@@ -1624,7 +1742,76 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1682,7 +1800,76 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          entity.tracker = null; // Paper - We're no longer tracked
      }
  
@@ -390,7 +390,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
          List<EntityPlayer> list = Lists.newArrayList();
          List<EntityPlayer> list1 = this.world.getPlayers();
  
-@@ -1692,6 +1879,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1750,6 +1937,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          PacketDebug.a(this.world, chunk.getPos());
          List<Entity> list = Lists.newArrayList();
          List<Entity> list1 = Lists.newArrayList();
@@ -398,7 +398,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
          while (objectiterator.hasNext()) {
-@@ -1709,6 +1897,32 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1767,6 +1955,32 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                  }
              }
          }
@@ -431,7 +431,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
  
          Iterator iterator;
          Entity entity1;
-@@ -1869,6 +2083,44 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1927,6 +2141,44 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              return i;
          }
  
@@ -477,7 +477,7 @@ index b49450ad91679e2b3f5375929ac07c763f213e76..e4b3cb55758a4aa71e6507ae72d652f3
              Iterator iterator = list.iterator();
  
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index f9593805e91158566b1df5388b00f8ec09c4a7a3..77afce41709a092692d7f1d8cca150192c8216e1 100644
+index d66ff0f2ac2c2de161fe3eb3f6bed394ab113297..b82d1a72e68062b998889739110520f0261f24f1 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -82,6 +82,8 @@ public class WorldServer extends World {

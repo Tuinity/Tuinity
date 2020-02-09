@@ -13,7 +13,7 @@ plugins or edge cases in code do not spam sync loads since chunks
 without tickets get unloaded immediately.
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index a715ed07367fe02bb1a26f6fa55c7f2bcc2e0729..64addf390b04c846ccf94de1b025b9ba7cd1fb72 100644
+index afa4deaef7a32d6ef58dcb8792069cba0c6ed977..a0851eee90eef700c1ab04f4eaf62a9477f3f196 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -1,6 +1,7 @@
@@ -53,7 +53,7 @@ index 24ba03ae580858fde7c32c915bb447b97ea229a6..d3c616e72ddddb87e019864b0b90228c
          this.a(ChunkCoordIntPair.a, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index d62a9d08dbde2e6e1e245f5fd4240dffb9da02a0..42f066fc7d7da80433da39982ee9f40f657f31ad 100644
+index 18526ffc8ab698701700b8c84b693a53b5e4fd82..0c0c3fb0ac44f46960c0495ccc366aea5341c5ed 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
@@ -189,11 +189,11 @@ index 7a8397815a5b7f79f3e3a0348aeedf63fe879f8f..0d5b1a0b7b922587afac523b4de80598
          long j = this.a.b();
  
 diff --git a/src/main/java/net/minecraft/server/TicketType.java b/src/main/java/net/minecraft/server/TicketType.java
-index 481d9548088d233869570277e8860b532240259c..d4065d6d27fd6d10e48eca1af61faedca37b3fdf 100644
+index 4b87ca2ecb6d738908fba111f52e54be463cc809..141664b5545a11c7d382c4e6ea155693d700ce50 100644
 --- a/src/main/java/net/minecraft/server/TicketType.java
 +++ b/src/main/java/net/minecraft/server/TicketType.java
 @@ -23,6 +23,7 @@ public class TicketType<T> {
-     public static final TicketType<org.bukkit.plugin.Plugin> PLUGIN_TICKET = a("plugin_ticket", (plugin1, plugin2) -> plugin1.getClass().getName().compareTo(plugin2.getClass().getName())); // Craftbukkit
+     public static final TicketType<org.bukkit.plugin.Plugin> PLUGIN_TICKET = a("plugin_ticket", (plugin1, plugin2) -> plugin1.getClass().getName().compareTo(plugin2.getClass().getName())); // CraftBukkit
      public static final TicketType<Integer> ANTIXRAY = a("antixray", Integer::compareTo); // Paper - Anti-Xray
      public static final TicketType<Long> ASYNC_LOAD = a("async_load", Long::compareTo); // Paper
 +    public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo); // Tuinity - delay chunk unloads by 30 seconds
@@ -201,10 +201,10 @@ index 481d9548088d233869570277e8860b532240259c..d4065d6d27fd6d10e48eca1af61faedc
      public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
          return new TicketType<>(s, comparator, 0L);
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 892cbb1aa2ba2af70f1d33eed3fe427e22b15099..89674cb0dcee8bdb96b3d4945153a063f153732a 100644
+index d8719b9d96671f068109b96ea281894dc3585e7f..28a6e1cdab163394463c8b4b1fb297b864c0e756 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-@@ -463,6 +463,7 @@ public class CraftWorld implements World {
+@@ -458,6 +458,7 @@ public class CraftWorld implements World {
          net.minecraft.server.IChunkAccess chunk = world.getChunkProvider().getChunkAt(x, z, ChunkStatus.FULL, false);
          if (chunk != null) {
              world.getChunkProvider().removeTicket(TicketType.PLUGIN, chunk.getPos(), 1, Unit.INSTANCE);
