@@ -42,10 +42,10 @@ index 4349d22cc8390628e3adee9896dd33cc2cca4d99..d529b795c5434328a81c015558708b49
          nbttagcompound1.setString("Status", ichunkaccess.getChunkStatus().d());
          ChunkConverter chunkconverter = ichunkaccess.p();
 diff --git a/src/main/java/net/minecraft/server/RegionFile.java b/src/main/java/net/minecraft/server/RegionFile.java
-index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4eb964c33 100644
+index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf121149328740960caebdb 100644
 --- a/src/main/java/net/minecraft/server/RegionFile.java
 +++ b/src/main/java/net/minecraft/server/RegionFile.java
-@@ -28,14 +28,254 @@ public class RegionFile implements AutoCloseable {
+@@ -28,14 +28,342 @@ public class RegionFile implements AutoCloseable {
      private static final Logger LOGGER = LogManager.getLogger();
      private static final ByteBuffer b = ByteBuffer.allocateDirect(1);
      private final FileChannel dataFile;
@@ -86,19 +86,26 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +            }
 +
 +            ByteBuffer chunkData = ByteBuffer.allocate(totalLength);
-+            if (totalLength != this.dataFile.read(chunkData, totalLength)) {
++            if (totalLength != this.dataFile.read(chunkData, offset)) {
 +                return null;
 +            }
 +
-+            byte compressionType = chunkData.get(0);
++            chunkData.flip();
++
++            byte compressionType = chunkData.get();
 +            if (compressionType < 0) { // compressionType & 128 != 0
 +                // oversized chunk
 +                return OVERSIZED_COMPOUND;
 +            }
 +
-+            InputStream input = this.getRegionFileCompression().wrap(new BufferedInputStream(new ByteArrayInputStream(chunkData.array(), 0, totalLength)));
++            RegionFileCompression compression = RegionFileCompression.getByType(compressionType);
++            if (compression == null) {
++                return null;
++            }
 +
-+            return NBTCompressedStreamTools.readNBT(new DataInputStream(input));
++            InputStream input = compression.wrap(new ByteArrayInputStream(chunkData.array(), chunkData.position(), totalLength - chunkData.position()));
++
++            return NBTCompressedStreamTools.readNBT(new DataInputStream(new BufferedInputStream(input)));
 +        } catch (Exception ex) {
 +            return null;
 +        }
@@ -125,23 +132,25 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +
 +            File backup = new File(this.file.getParent(), this.file.getName() + "." + new java.util.Random().nextLong() + ".backup");
 +            try {
-+                MinecraftServer.LOGGER.warn("Backing up to" + backup.getAbsolutePath());
++                this.dataFile.force(true);
++                MinecraftServer.LOGGER.warn("Backing up to " + backup.getAbsolutePath());
 +                java.nio.file.Files.copy(this.file.toPath(), backup.toPath());
-+                MinecraftServer.LOGGER.warn("Backed up the regionfile");
++                MinecraftServer.LOGGER.warn("Backed up the regionfile " + backup.getAbsolutePath());
 +            } catch (IOException ex) {
 +                MinecraftServer.LOGGER.error("Failed to backup to " + backup.getAbsolutePath(), ex);
 +            }
 +
-+            NBTTagCompound[] compounds = new NBTTagCompound[32 * 32];
++            NBTTagCompound[] compounds = new NBTTagCompound[32 * 32]; // only in the regionfile (i.e exclude mojang/aikar oversized data)
 +            int[] rawLengths = new int[32 * 32]; // length of chunk data including 4 byte length field, bytes
 +            int[] sectorOffsets = new int[32 * 32]; // in sectors
++            boolean[] hasAikarOversized = new boolean[32 * 32];
 +
 +            long fileLength = this.dataFile.size();
 +            long totalSectors = roundToSectors(fileLength);
 +
 +            // search the regionfile from start to finish for the most up-to-date chunk data
 +
-+            for (long i = 2, maxSector = Math.max((long)(Integer.MAX_VALUE >>> 8), totalSectors); i < maxSector; ++i) { // first two sectors are header, skip
++            for (long i = 2, maxSector = Math.min((long)(Integer.MAX_VALUE >>> 8), totalSectors); i < maxSector; ++i) { // first two sectors are header, skip
 +                NBTTagCompound compound = this.attemptRead(i, fileLength);
 +                if (compound == null || compound == OVERSIZED_COMPOUND) {
 +                    continue;
@@ -156,12 +165,28 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +                    continue; // don't overwrite newer data.
 +                }
 +
++                // aikar oversized?
++                File aikarOversizedFile = this.getOversizedFile(chunkPos.x, chunkPos.z);
++                boolean isAikarOversized = false;
++                if (aikarOversizedFile.exists()) {
++                    try {
++                        NBTTagCompound aikarOversizedCompound = this.getOversizedData(chunkPos.x, chunkPos.z);
++                        if (ChunkRegionLoader.getLastWorldSaveTime(compound) == ChunkRegionLoader.getLastWorldSaveTime(aikarOversizedCompound)) {
++                            // best we got for an id. hope it's good enough
++                            isAikarOversized = true;
++                        }
++                    } catch (Exception ex) {
++                        MinecraftServer.LOGGER.fatal("Failed to read aikar oversized data for absolute chunk (" + chunkPos.x + "," + chunkPos.z + ") in regionfile " + this.file.getAbsolutePath() + ", oversized data for this chunk will be lost", ex);
++                        // fall through, if we can't read aikar oversized we can't risk corrupting chunk data
++                    }
++                }
++
++                hasAikarOversized[location] = isAikarOversized;
 +                compounds[location] = compound;
 +                rawLengths[location] = this.getLength(i) + 4;
 +                sectorOffsets[location] = (int)i;
 +            }
 +
-+            // find any mojang oversized data, this will override any local data we find in the regionfile
 +            // forge style oversized data is already handled by the local search, and aikar data we just hope
 +            // we get it right as aikar data has no identifiers we could use to try and find its corresponding
 +            // local data compound
@@ -169,6 +194,8 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +            java.nio.file.Path containingFolder = this.getContainingDataFolder();
 +            File[] regionFiles = containingFolder.toFile().listFiles();
 +            boolean[] oversized = new boolean[32 * 32];
++            RegionFileCompression[] oversizedCompressionTypes = new RegionFileCompression[32 * 32];
++            boolean[] hasOversizedFile = new boolean[32 * 32];
 +
 +            if (regionFiles != null) {
 +                ChunkCoordIntPair ourLowerLeftPosition = RegionFileCache.getRegionFileCoordinates(this.file);
@@ -181,6 +208,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +                    int upperXBound = lowerXBound + 32 - 1; // inclusive
 +                    int upperZBound = lowerZBound + 32 - 1; // inclusive
 +
++                    // read mojang oversized data
 +                    for (File regionFile : regionFiles) {
 +                        ChunkCoordIntPair oversizedCoords = getOversizedChunkPair(regionFile);
 +                        if (oversizedCoords == null) {
@@ -191,7 +219,44 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +                            continue; // not in our regionfile
 +                        }
 +
-+                        oversized[(oversizedCoords.x & 31) | ((oversizedCoords.z & 31) << 5)] = true;
++                        // ensure oversized data is valid & is newer than data in the regionfile
++
++                        int location = (oversizedCoords.x & 31) | ((oversizedCoords.z & 31) << 5);
++                        hasOversizedFile[location] = true;
++
++                        byte[] chunkData;
++                        try {
++                            chunkData = Files.readAllBytes(regionFile.toPath());
++                        } catch (Exception ex) {
++                            MinecraftServer.LOGGER.fatal("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath(), ex);
++                            continue;
++                        }
++
++                        NBTTagCompound compound = null;
++
++                        // We do not know the compression type, as it's stored in the regionfile. So we need to try all of them
++                        RegionFileCompression compression = null;
++                        for (RegionFileCompression compressionType : RegionFileCompression.getCompressionTypes().values()) {
++                            try {
++                                DataInputStream in = new DataInputStream(new BufferedInputStream(compressionType.wrap(new ByteArrayInputStream(chunkData)))); // typical java
++                                compound = NBTCompressedStreamTools.readNBT(in);
++                                compression = compressionType;
++                                break; // reaches here iff readNBT does not throw
++                            } catch (Exception ex) {
++                                ex.printStackTrace();
++                                continue;
++                            }
++                        }
++
++                        if (compound == null) {
++                            MinecraftServer.LOGGER.fatal("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath() + ", it's corrupt. Its data will be lost");
++                            continue;
++                        }
++
++                        if (compounds[location] != null && ChunkRegionLoader.getLastWorldSaveTime(compound) > ChunkRegionLoader.getLastWorldSaveTime(compounds[location])) {
++                            oversized[location] = true;
++                            oversizedCompressionTypes[location] = compression;
++                        }
 +                    }
 +                }
 +            }
@@ -200,6 +265,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +
 +            int[] calculatedOffsets = new int[32 * 32];
 +            RegionFileBitSet newSectorAllocations = new RegionFileBitSet();
++            newSectorAllocations.allocate(0, 2); // make space for header
 +
 +            // allocate sectors for normal chunks
 +
@@ -218,7 +284,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +                    if (newSectorAllocations.tryAllocate(sectorOffset, sectorLength)) {
 +                        calculatedOffsets[location] = sectorOffset << 8 | (sectorLength > 255 ? 255 : sectorLength); // support forge style oversized
 +                    } else {
-+                        MinecraftServer.LOGGER.error("Failed to allocate space for local chunk (overlapping data??) at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + " will be lost");
++                        MinecraftServer.LOGGER.error("Failed to allocate space for local chunk (overlapping data??) at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + ", chunk will be lost");
 +                    }
 +                }
 +            }
@@ -237,7 +303,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +                    int sectorLength = 1;
 +
 +                    try {
-+                        this.dataFile.write(this.getOversizedChunkHolderData(), sectorOffset * 4096);
++                        this.dataFile.write(this.getOversizedChunkHolderData(oversizedCompressionTypes[location]), sectorOffset * 4096);
 +                        // only allocate in the new offsets if the write succeeds
 +                        calculatedOffsets[location] = sectorOffset << 8 | (sectorLength > 255 ? 255 : sectorLength); // support forge style oversized
 +                    } catch (IOException ex) {
@@ -247,7 +313,29 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +                }
 +            }
 +
-+            // replace time
++            // rewrite aikar oversized data
++
++            this.oversizedCount = 0;
++            for (int chunkX = 0; chunkX < 32; ++chunkX) {
++                for (int chunkZ = 0; chunkZ < 32; ++chunkZ) {
++                    int location = chunkX | (chunkZ << 5);
++                    int isAikarOversized = hasAikarOversized[location] ? 1 : 0;
++
++                    this.oversizedCount += isAikarOversized;
++                    this.oversized[location] = (byte)isAikarOversized;
++                }
++            }
++
++            if (this.oversizedCount > 0) {
++                try {
++                    this.writeOversizedMeta();
++                } catch (Exception ex) {
++                    MinecraftServer.LOGGER.fatal("Failed to write aikar oversized chunk meta, all aikar style oversized chunks will be lost for regionfile " + this.file.getAbsolutePath(), ex);
++                    this.getOversizedMetaFile().delete();
++                }
++            } else {
++                this.getOversizedMetaFile().delete();
++            }
 +
 +            this.freeSectors.copyFrom(newSectorAllocations);
 +
@@ -273,7 +361,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
 +                        MinecraftServer.LOGGER.info("Found missing data for local chunk (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath());
 +                    } else if (newOffset == 0) {
 +                        MinecraftServer.LOGGER.info("Data for local chunk (" + chunkX + "," + chunkZ + ") could not be recovered in regionfile " + this.file.getAbsolutePath() + ", it will be regenerated");
-+                        // we're NOT removing aikar/mojang oversized data because we did not back that up.
++                        // todo more descriptive
 +                    } else {
 +                        MinecraftServer.LOGGER.info("Local chunk (" + chunkX + "," + chunkZ + ") changed to point to newer data or correct chunk in regionfile " + this.file.getAbsolutePath());
 +                    }
@@ -304,7 +392,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
      public final java.util.concurrent.locks.ReentrantLock fileLock = new java.util.concurrent.locks.ReentrantLock(true); // Paper
  
      // Paper start - Cache chunk status
-@@ -63,10 +303,21 @@ public class RegionFile implements AutoCloseable {
+@@ -63,10 +391,21 @@ public class RegionFile implements AutoCloseable {
      // Paper end
  
      public RegionFile(File file, File file1) throws IOException {
@@ -327,7 +415,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
          this.file = java_nio_file_path.toFile(); // Paper
          this.f = ByteBuffer.allocateDirect(8192);
          initOversizedState();
-@@ -90,6 +341,8 @@ public class RegionFile implements AutoCloseable {
+@@ -90,6 +429,8 @@ public class RegionFile implements AutoCloseable {
                      RegionFile.LOGGER.warn("Region file {} has truncated header: {}", java_nio_file_path, i);
                  }
  
@@ -336,12 +424,12 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
                  for (int j = 0; j < 1024; ++j) {
                      int k = this.g.get(j);
  
-@@ -105,20 +358,53 @@ public class RegionFile implements AutoCloseable {
+@@ -105,20 +446,53 @@ public class RegionFile implements AutoCloseable {
                          }
                          // Spigot end
  
 -                        this.freeSectors.a(l, i1);
-+                        needsHeaderRecalc |= true ^ this.freeSectors.tryAllocate(l, l + i1); // Tuinity - recalculate header on header corruption
++                        needsHeaderRecalc |= !this.freeSectors.tryAllocate(l, i1); // Tuinity - recalculate header on header corruption
                      }
                  }
 +
@@ -392,7 +480,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
      @Nullable public synchronized DataInputStream getReadStream(ChunkCoordIntPair chunkCoordIntPair) throws IOException { return a(chunkCoordIntPair);} // Paper - OBFHELPER
      @Nullable
      public synchronized DataInputStream a(ChunkCoordIntPair chunkcoordintpair) throws IOException {
-@@ -142,6 +428,12 @@ public class RegionFile implements AutoCloseable {
+@@ -142,6 +516,12 @@ public class RegionFile implements AutoCloseable {
              this.dataFile.read(bytebuffer, (long) (j * 4096));
              ((java.nio.Buffer) bytebuffer).flip();
              if (bytebuffer.remaining() < 5) {
@@ -405,7 +493,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
                  RegionFile.LOGGER.error("Chunk {} header is truncated: expected {} but read {}", chunkcoordintpair, l, bytebuffer.remaining());
                  return null;
              } else {
-@@ -150,6 +442,12 @@ public class RegionFile implements AutoCloseable {
+@@ -150,6 +530,12 @@ public class RegionFile implements AutoCloseable {
  
                  if (i1 == 0) {
                      RegionFile.LOGGER.warn("Chunk {} is allocated, but stream is missing", chunkcoordintpair);
@@ -418,7 +506,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
                      return null;
                  } else {
                      int j1 = i1 - 1;
-@@ -162,9 +460,21 @@ public class RegionFile implements AutoCloseable {
+@@ -162,9 +548,21 @@ public class RegionFile implements AutoCloseable {
                          return this.a(chunkcoordintpair, b(b0));
                      } else if (j1 > bytebuffer.remaining()) {
                          RegionFile.LOGGER.error("Chunk {} stream is truncated: expected {} but read {}", chunkcoordintpair, j1, bytebuffer.remaining());
@@ -440,15 +528,24 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
                          return null;
                      } else {
                          return this.a(chunkcoordintpair, b0, a(bytebuffer, j1));
-@@ -322,6 +632,7 @@ public class RegionFile implements AutoCloseable {
- 
+@@ -323,10 +721,15 @@ public class RegionFile implements AutoCloseable {
      }
  
-+    private final ByteBuffer getOversizedChunkHolderData() { return this.a(); } // Tuinity - OBFHELPER
      private ByteBuffer a() {
++        // Tuinity start - add compressionType param
++        return this.getOversizedChunkHolderData(this.getRegionFileCompression());
++    }
++    private ByteBuffer getOversizedChunkHolderData(RegionFileCompression compressionType) {
++        // Tuinity end
          ByteBuffer bytebuffer = ByteBuffer.allocate(5);
  
-@@ -363,6 +674,7 @@ public class RegionFile implements AutoCloseable {
+         bytebuffer.putInt(1);
+-        bytebuffer.put((byte) (this.e.a() | 128));
++        bytebuffer.put((byte) (compressionType.a() | 128)); // Tuinity - replace with compressionType
+         ((java.nio.Buffer) bytebuffer).flip();
+         return bytebuffer;
+     }
+@@ -363,6 +766,7 @@ public class RegionFile implements AutoCloseable {
          };
      }
  
@@ -457,7 +554,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..132cbe4b95f4d0aa88a4cddd9a626da4
          ((java.nio.Buffer) this.f).position(0);
          this.dataFile.write(this.f, 0L);
 diff --git a/src/main/java/net/minecraft/server/RegionFileBitSet.java b/src/main/java/net/minecraft/server/RegionFileBitSet.java
-index 1ebdf73cc927405bc536dc74a5118d2a086db0e5..81908d4ecd6f01bfa31d1e688843a971a849d936 100644
+index 1ebdf73cc927405bc536dc74a5118d2a086db0e5..cfa3ecb031b59ec677f016ecdea92d16436fb511 100644
 --- a/src/main/java/net/minecraft/server/RegionFileBitSet.java
 +++ b/src/main/java/net/minecraft/server/RegionFileBitSet.java
 @@ -4,18 +4,42 @@ import java.util.BitSet;
@@ -489,13 +586,13 @@ index 1ebdf73cc927405bc536dc74a5118d2a086db0e5..81908d4ecd6f01bfa31d1e688843a971
 +        }
 +    }
 +
-+    public final boolean tryAllocate(int from, int to) { // from is inclusive, to is exclusive
++    public final boolean tryAllocate(int from, int length) {
 +        BitSet bitset = this.getBitset();
 +        int firstSet = bitset.nextSetBit(from);
-+        if (firstSet > 0 && firstSet < to) {
++        if (firstSet > 0 && firstSet < (from + length)) {
 +            return false;
 +        }
-+        bitset.set(from, to);
++        bitset.set(from, from + length);
 +        return true;
 +    }
 +    // Tuinity end
@@ -583,9 +680,29 @@ index 0f201000f6638f54d575db2c7ae61a86555a3be2..c88ad8de0ad51d5b7a4969a92486a76e
              }
  
 diff --git a/src/main/java/net/minecraft/server/RegionFileCompression.java b/src/main/java/net/minecraft/server/RegionFileCompression.java
-index 3382d678e68e559b8d3cb9dced4fce24206cd38f..79c89f5c11b9bd645a2de0993ba0c05b62628ebb 100644
+index 3382d678e68e559b8d3cb9dced4fce24206cd38f..29137f495942d810e61fadc33178999ad57fdcc0 100644
 --- a/src/main/java/net/minecraft/server/RegionFileCompression.java
 +++ b/src/main/java/net/minecraft/server/RegionFileCompression.java
+@@ -13,7 +13,7 @@ import javax.annotation.Nullable;
+ 
+ public class RegionFileCompression {
+ 
+-    private static final Int2ObjectMap<RegionFileCompression> d = new Int2ObjectOpenHashMap();
++    private static final Int2ObjectMap<RegionFileCompression> d = new Int2ObjectOpenHashMap(); static final Int2ObjectMap<RegionFileCompression> getCompressionTypes() { return RegionFileCompression.d; } // Tuinity - OBFHELPER
+     public static final RegionFileCompression a = a(new RegionFileCompression(1, GZIPInputStream::new, GZIPOutputStream::new));
+     public static final RegionFileCompression b = a(new RegionFileCompression(2, InflaterInputStream::new, DeflaterOutputStream::new));
+     public static final RegionFileCompression c = a(new RegionFileCompression(3, (inputstream) -> {
+@@ -36,8 +36,8 @@ public class RegionFileCompression {
+         return regionfilecompression;
+     }
+ 
+-    @Nullable
+-    public static RegionFileCompression a(int i) {
++    @Nullable public static RegionFileCompression getByType(int type) { return RegionFileCompression.a(type); } // Tuinity - OBFHELPER
++    @Nullable public static RegionFileCompression a(int i) { // Tuinity - OBFHELPER
+         return (RegionFileCompression) RegionFileCompression.d.get(i);
+     }
+ 
 @@ -53,6 +53,7 @@ public class RegionFileCompression {
          return (OutputStream) this.g.wrap(outputstream);
      }
