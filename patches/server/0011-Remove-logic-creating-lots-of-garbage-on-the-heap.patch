@@ -364,18 +364,6 @@ index 0000000000000000000000000000000000000000..815974682ae0c6b0f1cf567b6fdc9001
 +        POOL[used = currentUsed - 1] = position;
 +    }
 +}
-diff --git a/src/main/java/net/minecraft/server/BlockPosition.java b/src/main/java/net/minecraft/server/BlockPosition.java
-index e76528f199654f839a4715650833ffd8dcfeaad8..e1b4001f6423366df869131073fe4d67bd2fcda2 100644
---- a/src/main/java/net/minecraft/server/BlockPosition.java
-+++ b/src/main/java/net/minecraft/server/BlockPosition.java
-@@ -450,6 +450,7 @@ public class BlockPosition extends BaseBlockPosition implements MinecraftSeriali
-             return this.d(MathHelper.floor(d0), MathHelper.floor(d1), MathHelper.floor(d2));
-         }
- 
-+        public final BlockPosition.MutableBlockPosition setValues(final BaseBlockPosition baseblockposition) { return this.g(baseblockposition); } // Tuinity - OBFHELPER
-         public BlockPosition.MutableBlockPosition g(BaseBlockPosition baseblockposition) {
-             return this.d(baseblockposition.getX(), baseblockposition.getY(), baseblockposition.getZ());
-         }
 diff --git a/src/main/java/net/minecraft/server/ChunkMap.java b/src/main/java/net/minecraft/server/ChunkMap.java
 index 55f9f4e6e7fddb2fcdbc1877d1bdfe8d3c9eff6f..24ba03ae580858fde7c32c915bb447b97ea229a6 100644
 --- a/src/main/java/net/minecraft/server/ChunkMap.java
@@ -1693,33 +1681,8 @@ index 08c83c62dfe875600162a46a0ca4b835b0bfe199..d5da9f582558356c128c9543aac5dac2
  
      public static VoxelShape a() {
          return VoxelShapes.c;
-diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 2ac376f78a511c5d25c9670337f4decc778f59b3..8cae23d705c47a8e65b2043bbf9c9aa91993d73e 100644
---- a/src/main/java/net/minecraft/server/World.java
-+++ b/src/main/java/net/minecraft/server/World.java
-@@ -1561,10 +1561,19 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
-     public abstract TagRegistry t();
- 
-     public BlockPosition a(int i, int j, int k, int l) {
-+        // Tuinity start - this function has a very high allocation rate
-+        BlockPosition.MutableBlockPosition ret = new BlockPosition.MutableBlockPosition();
-+        this.getRandomBlockPosition(i, j, k, l, ret);
-+        return ret.immutableCopy();
-+    }
-+
-+    public BlockPosition.MutableBlockPosition getRandomBlockPosition(int i, int j, int k, int l, BlockPosition.MutableBlockPosition out) {
-+        // Tuinity end
-         this.i = this.i * 3 + 1013904223;
-         int i1 = this.i >> 2;
- 
--        return new BlockPosition(i + (i1 & 15), j + (i1 >> 16 & l), k + (i1 >> 8 & 15));
-+        out.setValues(i + (i1 & 15), j + (i1 >> 16 & l), k + (i1 >> 8 & 15)); // Tuinity - change to setValues call
-+        return out; // Tuinity
-     }
- 
-     public boolean isSavingDisabled() {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 97e437908b075675d6bc067c3bbcead633c6b570..d66ff0f2ac2c2de161fe3eb3f6bed394ab113297 100644
+index aed7182cb4bf289591e48f068c3ca079ee62d684..8430a2a6b4a76a72fcb1df4717c077409e1ccdc6 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -55,7 +55,7 @@ public class WorldServer extends World {
@@ -1740,46 +1703,6 @@ index 97e437908b075675d6bc067c3bbcead633c6b570..d66ff0f2ac2c2de161fe3eb3f6bed394
  
              org.spigotmc.ActivationRange.activateEntities(this); // Spigot
              timings.entityTick.startTiming(); // Spigot
-@@ -532,6 +532,8 @@ public class WorldServer extends World {
-         });
-     }
- 
-+    private final BlockPosition.MutableBlockPosition chunkTickMutablePosition = new BlockPosition.MutableBlockPosition(); // Tuinity - use mutable to reduce allocation rate
-+
-     public void a(Chunk chunk, int i) {
-         ChunkCoordIntPair chunkcoordintpair = chunk.getPos();
-         boolean flag = this.isRaining();
-@@ -540,10 +542,10 @@ public class WorldServer extends World {
-         GameProfilerFiller gameprofilerfiller = this.getMethodProfiler();
- 
-         gameprofilerfiller.enter("thunder");
--        BlockPosition blockposition;
-+        final BlockPosition.MutableBlockPosition blockposition = this.chunkTickMutablePosition; // Tuinity - use mutable to reduce allocation rate, final to force compile fail on change
- 
-         if (!this.paperConfig.disableThunder && flag && this.U() && this.random.nextInt(100000) == 0) { // Paper - Disable thunder
--            blockposition = this.a(this.a(j, 0, k, 15));
-+            blockposition.setValues(this.a(this.getRandomBlockPosition(j, 0, k, 15, blockposition))); // Tuinity - use mutable to reduce allocation rate
-             if (this.isRainingAt(blockposition)) {
-                 DifficultyDamageScaler difficultydamagescaler = this.getDamageScaler(blockposition);
-                 boolean flag1 = this.getGameRules().getBoolean(GameRules.DO_MOB_SPAWNING) && this.random.nextDouble() < (double) difficultydamagescaler.b() * paperConfig.skeleHorseSpawnChance; // Paper
-@@ -563,7 +565,7 @@ public class WorldServer extends World {
- 
-         gameprofilerfiller.exitEnter("iceandsnow");
-         if (!this.paperConfig.disableIceAndSnow && this.random.nextInt(16) == 0) { // Paper - Disable ice and snow
--            blockposition = this.getHighestBlockYAt(HeightMap.Type.MOTION_BLOCKING, this.a(j, 0, k, 15));
-+            blockposition.setValues(this.getHighestBlockYAt(HeightMap.Type.MOTION_BLOCKING, this.getRandomBlockPosition(j, 0, k, 15, blockposition))); // Tuinity - use mutable to reduce allocation rate
-             BlockPosition blockposition1 = blockposition.down();
-             BiomeBase biomebase = this.getBiome(blockposition);
- 
-@@ -593,7 +595,7 @@ public class WorldServer extends World {
-                     int j1 = chunksection.getYPosition();
- 
-                     for (int k1 = 0; k1 < i; ++k1) {
--                        BlockPosition blockposition2 = this.a(j, j1, k, 15);
-+                        BlockPosition blockposition2 = this.getRandomBlockPosition(j, j1, k, 15, blockposition); // Tuinity - use mutable to reduce allocation rate
- 
-                         gameprofilerfiller.enter("randomTick");
-                         IBlockData iblockdata = chunksection.getType(blockposition2.getX() - j, blockposition2.getY() - j1, blockposition2.getZ() - k);
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 index a14b8cb98853a490abb85ccb4887b662fe8d6b09..d8719b9d96671f068109b96ea281894dc3585e7f 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
