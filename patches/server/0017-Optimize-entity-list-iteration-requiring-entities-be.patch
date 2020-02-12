@@ -7,10 +7,10 @@ Subject: [PATCH] Optimize entity list iteration requiring entities be in
 We retain a list of loaded entities specifically for this usage
 
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 86231229e1ec1737c6eb9f7d765286439f910e0d..f39ad161390dc0520a03eb0980188a2575d56c80 100644
+index a7d8c6c034dd3d3bc59e3ce92d89bbfadf6ddc56..b7cc7969877f44ff48c88c50d9357a54d421eba7 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -709,6 +709,8 @@ public class Chunk implements IChunkAccess {
+@@ -723,6 +723,8 @@ public class Chunk implements IChunkAccess {
          }
          this.loadedTicketLevel = true;
          // Tuinity end - neighbour cache
@@ -19,7 +19,7 @@ index 86231229e1ec1737c6eb9f7d765286439f910e0d..f39ad161390dc0520a03eb0980188a25
          org.bukkit.Server server = this.world.getServer();
          ((WorldServer)this.world).getChunkProvider().addLoadedChunk(this); // Paper
          if (server != null) {
-@@ -767,6 +769,8 @@ public class Chunk implements IChunkAccess {
+@@ -781,6 +783,8 @@ public class Chunk implements IChunkAccess {
          this.loadedTicketLevel = false;
          this.resetNeighbours();
          // Tuinity end - neighbour cache
@@ -29,7 +29,7 @@ index 86231229e1ec1737c6eb9f7d765286439f910e0d..f39ad161390dc0520a03eb0980188a25
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index b82d1a72e68062b998889739110520f0261f24f1..8433572d1298e06928c343662a407c6040c3f8da 100644
+index 218e176bf2f02722e5784a49319a86fa00df5688..ca7c2c892d63aa5ae1660a3328898e8e515abc48 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -172,6 +172,26 @@ public class WorldServer extends World {
@@ -85,7 +85,7 @@ index b82d1a72e68062b998889739110520f0261f24f1..8433572d1298e06928c343662a407c60
                      this.unregisterEntity(entity1);
                  }
  
-@@ -1432,6 +1451,7 @@ public class WorldServer extends World {
+@@ -1455,6 +1474,7 @@ public class WorldServer extends World {
          if (entity instanceof EntityInsentient) {
              this.navigators.remove(((EntityInsentient) entity).getNavigation());
          }
@@ -93,7 +93,7 @@ index b82d1a72e68062b998889739110520f0261f24f1..8433572d1298e06928c343662a407c60
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
          entity.valid = false; // CraftBukkit
      }
-@@ -1488,6 +1508,11 @@ public class WorldServer extends World {
+@@ -1511,6 +1531,11 @@ public class WorldServer extends World {
              }
              // Paper end
              entity.shouldBeRemoved = false; // Paper - shouldn't be removed after being re-added
