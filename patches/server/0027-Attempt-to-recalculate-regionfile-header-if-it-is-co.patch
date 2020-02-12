@@ -42,7 +42,7 @@ index 4349d22cc8390628e3adee9896dd33cc2cca4d99..d529b795c5434328a81c015558708b49
          nbttagcompound1.setString("Status", ichunkaccess.getChunkStatus().d());
          ChunkConverter chunkconverter = ichunkaccess.p();
 diff --git a/src/main/java/net/minecraft/server/RegionFile.java b/src/main/java/net/minecraft/server/RegionFile.java
-index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf121149328740960caebdb 100644
+index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433b99c7b49 100644
 --- a/src/main/java/net/minecraft/server/RegionFile.java
 +++ b/src/main/java/net/minecraft/server/RegionFile.java
 @@ -28,14 +28,342 @@ public class RegionFile implements AutoCloseable {
@@ -71,22 +71,20 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +
 +    private static final NBTTagCompound OVERSIZED_COMPOUND = new NBTTagCompound();
 +
-+    private NBTTagCompound attemptRead(long sector, long fileLength) throws IOException {
++    private NBTTagCompound attemptRead(long sector, int chunkDataLength, long fileLength) throws IOException {
 +        try {
-+            int totalLength = this.getLength(sector);
-+
-+            if (totalLength < 0) {
++            if (chunkDataLength < 0) {
 +                return null;
 +            }
 +
 +            long offset = sector * 4096L + 4L; // offset for chunk data
 +
-+            if ((offset + totalLength) > fileLength) {
++            if ((offset + chunkDataLength) > fileLength) {
 +                return null;
 +            }
 +
-+            ByteBuffer chunkData = ByteBuffer.allocate(totalLength);
-+            if (totalLength != this.dataFile.read(chunkData, offset)) {
++            ByteBuffer chunkData = ByteBuffer.allocate(chunkDataLength);
++            if (chunkDataLength != this.dataFile.read(chunkData, offset)) {
 +                return null;
 +            }
 +
@@ -103,7 +101,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +                return null;
 +            }
 +
-+            InputStream input = compression.wrap(new ByteArrayInputStream(chunkData.array(), chunkData.position(), totalLength - chunkData.position()));
++            InputStream input = compression.wrap(new ByteArrayInputStream(chunkData.array(), chunkData.position(), chunkDataLength - chunkData.position()));
 +
 +            return NBTCompressedStreamTools.readNBT(new DataInputStream(new BufferedInputStream(input)));
 +        } catch (Exception ex) {
@@ -151,7 +149,8 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +            // search the regionfile from start to finish for the most up-to-date chunk data
 +
 +            for (long i = 2, maxSector = Math.min((long)(Integer.MAX_VALUE >>> 8), totalSectors); i < maxSector; ++i) { // first two sectors are header, skip
-+                NBTTagCompound compound = this.attemptRead(i, fileLength);
++                int chunkDataLength = this.getLength(i);
++                NBTTagCompound compound = this.attemptRead(i, chunkDataLength, fileLength);
 +                if (compound == null || compound == OVERSIZED_COMPOUND) {
 +                    continue;
 +                }
@@ -176,15 +175,19 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +                            isAikarOversized = true;
 +                        }
 +                    } catch (Exception ex) {
-+                        MinecraftServer.LOGGER.fatal("Failed to read aikar oversized data for absolute chunk (" + chunkPos.x + "," + chunkPos.z + ") in regionfile " + this.file.getAbsolutePath() + ", oversized data for this chunk will be lost", ex);
++                        MinecraftServer.LOGGER.error("Failed to read aikar oversized data for absolute chunk (" + chunkPos.x + "," + chunkPos.z + ") in regionfile " + this.file.getAbsolutePath() + ", oversized data for this chunk will be lost", ex);
 +                        // fall through, if we can't read aikar oversized we can't risk corrupting chunk data
 +                    }
 +                }
 +
 +                hasAikarOversized[location] = isAikarOversized;
 +                compounds[location] = compound;
-+                rawLengths[location] = this.getLength(i) + 4;
++                rawLengths[location] = chunkDataLength + 4;
 +                sectorOffsets[location] = (int)i;
++
++                int chunkSectorLength = (int)roundToSectors(rawLengths[location]);
++                i += chunkSectorLength;
++                --i; // gets incremented next iteration
 +            }
 +
 +            // forge style oversized data is already handled by the local search, and aikar data we just hope
@@ -195,13 +198,12 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +            File[] regionFiles = containingFolder.toFile().listFiles();
 +            boolean[] oversized = new boolean[32 * 32];
 +            RegionFileCompression[] oversizedCompressionTypes = new RegionFileCompression[32 * 32];
-+            boolean[] hasOversizedFile = new boolean[32 * 32];
 +
 +            if (regionFiles != null) {
 +                ChunkCoordIntPair ourLowerLeftPosition = RegionFileCache.getRegionFileCoordinates(this.file);
 +
 +                if (ourLowerLeftPosition == null) {
-+                    MinecraftServer.LOGGER.error("Unable to get chunk location of regionfile " + this.file.getAbsolutePath() + ", cannot recover oversized chunks");
++                    MinecraftServer.LOGGER.fatal("Unable to get chunk location of regionfile " + this.file.getAbsolutePath() + ", cannot recover oversized chunks");
 +                } else {
 +                    int lowerXBound = ourLowerLeftPosition.x; // inclusive
 +                    int lowerZBound = ourLowerLeftPosition.z; // inclusive
@@ -222,13 +224,12 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +                        // ensure oversized data is valid & is newer than data in the regionfile
 +
 +                        int location = (oversizedCoords.x & 31) | ((oversizedCoords.z & 31) << 5);
-+                        hasOversizedFile[location] = true;
 +
 +                        byte[] chunkData;
 +                        try {
 +                            chunkData = Files.readAllBytes(regionFile.toPath());
 +                        } catch (Exception ex) {
-+                            MinecraftServer.LOGGER.fatal("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath(), ex);
++                            MinecraftServer.LOGGER.error("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath(), ex);
 +                            continue;
 +                        }
 +
@@ -243,13 +244,12 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +                                compression = compressionType;
 +                                break; // reaches here iff readNBT does not throw
 +                            } catch (Exception ex) {
-+                                ex.printStackTrace();
 +                                continue;
 +                            }
 +                        }
 +
 +                        if (compound == null) {
-+                            MinecraftServer.LOGGER.fatal("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath() + ", it's corrupt. Its data will be lost");
++                            MinecraftServer.LOGGER.error("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath() + ", it's corrupt. Its data will be lost");
 +                            continue;
 +                        }
 +
@@ -284,7 +284,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +                    if (newSectorAllocations.tryAllocate(sectorOffset, sectorLength)) {
 +                        calculatedOffsets[location] = sectorOffset << 8 | (sectorLength > 255 ? 255 : sectorLength); // support forge style oversized
 +                    } else {
-+                        MinecraftServer.LOGGER.error("Failed to allocate space for local chunk (overlapping data??) at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + ", chunk will be lost");
++                        MinecraftServer.LOGGER.error("Failed to allocate space for local chunk (overlapping data??) at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + ", chunk will be regenerated");
 +                    }
 +                }
 +            }
@@ -308,7 +308,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +                        calculatedOffsets[location] = sectorOffset << 8 | (sectorLength > 255 ? 255 : sectorLength); // support forge style oversized
 +                    } catch (IOException ex) {
 +                        newSectorAllocations.free(sectorOffset, sectorLength);
-+                        MinecraftServer.LOGGER.error("Failed to write new oversized chunk data holder, local chunk at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + " will be lost");
++                        MinecraftServer.LOGGER.error("Failed to write new oversized chunk data holder, local chunk at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + " will be regenerated");
 +                    }
 +                }
 +            }
@@ -330,7 +330,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +                try {
 +                    this.writeOversizedMeta();
 +                } catch (Exception ex) {
-+                    MinecraftServer.LOGGER.fatal("Failed to write aikar oversized chunk meta, all aikar style oversized chunks will be lost for regionfile " + this.file.getAbsolutePath(), ex);
++                    MinecraftServer.LOGGER.error("Failed to write aikar oversized chunk meta, all aikar style oversized chunk data will be lost for regionfile " + this.file.getAbsolutePath(), ex);
 +                    this.getOversizedMetaFile().delete();
 +                }
 +            } else {
@@ -360,8 +360,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +                        // found lost data
 +                        MinecraftServer.LOGGER.info("Found missing data for local chunk (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath());
 +                    } else if (newOffset == 0) {
-+                        MinecraftServer.LOGGER.info("Data for local chunk (" + chunkX + "," + chunkZ + ") could not be recovered in regionfile " + this.file.getAbsolutePath() + ", it will be regenerated");
-+                        // todo more descriptive
++                        MinecraftServer.LOGGER.warn("Data for local chunk (" + chunkX + "," + chunkZ + ") could not be recovered in regionfile " + this.file.getAbsolutePath() + ", it will be regenerated");
 +                    } else {
 +                        MinecraftServer.LOGGER.info("Local chunk (" + chunkX + "," + chunkZ + ") changed to point to newer data or correct chunk in regionfile " + this.file.getAbsolutePath());
 +                    }
@@ -380,8 +379,9 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a44a70063c3769860cf1211493287409
 +            try {
 +                this.flushHeader();
 +                this.dataFile.force(true); // try to ensure it goes through...
++                MinecraftServer.LOGGER.info("Successfully wrote new header to disk for regionfile " + this.file.getAbsolutePath());
 +            } catch (IOException ex) {
-+                MinecraftServer.LOGGER.error("Failed to write new header to disk for regionfile " + this.file.getAbsolutePath(), ex);
++                MinecraftServer.LOGGER.fatal("Failed to write new header to disk for regionfile " + this.file.getAbsolutePath(), ex);
 +            }
 +        }
 +    }
