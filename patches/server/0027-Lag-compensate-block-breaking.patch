@@ -1,0 +1,102 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Fri, 14 Feb 2020 22:16:34 -0800
+Subject: [PATCH] Lag compensate block breaking
+
+Use time instead of ticks if ticks fall behind
+
+diff --git a/src/main/java/net/minecraft/server/PlayerInteractManager.java b/src/main/java/net/minecraft/server/PlayerInteractManager.java
+index ce4340a47629d94b65bb3c424ec35afd8081bfed..3ef209434f041c81d645d73c52197757a0fdf7e4 100644
+--- a/src/main/java/net/minecraft/server/PlayerInteractManager.java
++++ b/src/main/java/net/minecraft/server/PlayerInteractManager.java
+@@ -20,14 +20,29 @@ public class PlayerInteractManager {
+     public EntityPlayer player;
+     private EnumGamemode gamemode;
+     private boolean e;
+-    private int lastDigTick;
++    private int lastDigTick; private long lastDigTime; // Tuinity - lag compensate block breaking
+     private BlockPosition g;
+     private int currentTick;
+-    private boolean i;
++    private boolean i; private final boolean hasDestroyedTooFast() { return this.i; } // Tuinity - OBFHELPER
+     private BlockPosition j;
+-    private int k;
++    private int k; private final int getHasDestroyedTooFastStartTick() { return this.k; } // Tuinity - OBFHELPER
++    private long hasDestroyedTooFastStartTime; // Tuinity - lag compensate block breaking
+     private int l;
+ 
++    // Tuinity start - lag compensate block breaking
++    private int getTimeDiggingLagCompensate() {
++        int lagCompensated = (int)((System.nanoTime() - this.lastDigTime) / (50L * 1000L * 1000L));
++        int tickDiff = this.currentTick - this.lastDigTick;
++        return lagCompensated > (tickDiff + 1) ? lagCompensated : tickDiff; // add one to ensure we don't lag compensate unless we need to
++    }
++
++    private int getTimeDiggingTooFastLagCompensate() {
++        int lagCompensated = (int)((System.nanoTime() - this.hasDestroyedTooFastStartTime) / (50L * 1000L * 1000L));
++        int tickDiff = this.currentTick - this.getHasDestroyedTooFastStartTick();
++        return lagCompensated > (tickDiff + 1) ? lagCompensated : tickDiff; // add one to ensure we don't lag compensate unless we need to
++    }
++    // Tuinity end
++
+     public PlayerInteractManager(WorldServer worldserver) {
+         this.gamemode = EnumGamemode.NOT_SET;
+         this.g = BlockPosition.ZERO;
+@@ -73,7 +88,7 @@ public class PlayerInteractManager {
+             if (iblockdata.isAir()) {
+                 this.i = false;
+             } else {
+-                float f = this.a(iblockdata, this.j, this.k);
++                float f = this.updateBlockBreakAnimation(iblockdata, this.j, this.getTimeDiggingTooFastLagCompensate()); // Tuinity - lag compensate destroying blocks
+ 
+                 if (f >= 1.0F) {
+                     this.i = false;
+@@ -87,7 +102,7 @@ public class PlayerInteractManager {
+                 this.l = -1;
+                 this.e = false;
+             } else {
+-                this.a(iblockdata, this.g, this.lastDigTick);
++                this.updateBlockBreakAnimation(iblockdata, this.g, this.getTimeDiggingLagCompensate()); // Tuinity - lag compensate destroying blocks
+             }
+         }
+ 
+@@ -95,6 +110,12 @@ public class PlayerInteractManager {
+ 
+     private float a(IBlockData iblockdata, BlockPosition blockposition, int i) {
+         int j = this.currentTick - i;
++        // Tuinity start - change i (startTime) to totalTime
++        return this.updateBlockBreakAnimation(iblockdata, blockposition, j);
++    }
++    private float updateBlockBreakAnimation(IBlockData iblockdata, BlockPosition blockposition, int totalTime) {
++        int j = totalTime;
++        // Tuinity end
+         float f = iblockdata.getDamage(this.player, this.player.world, blockposition) * (float) (j + 1);
+         int k = (int) (f * 10.0F);
+ 
+@@ -168,7 +189,7 @@ public class PlayerInteractManager {
+                 }
+ 
+                 // this.world.douseFire((EntityHuman) null, blockposition, enumdirection); // CraftBukkit - Moved down
+-                this.lastDigTick = this.currentTick;
++                this.lastDigTick = this.currentTick; this.lastDigTime = System.nanoTime(); // Tuinity - lag compensate block breaking
+                 float f = 1.0F;
+ 
+                 iblockdata = this.world.getType(blockposition);
+@@ -228,7 +249,7 @@ public class PlayerInteractManager {
+                 }
+             } else if (packetplayinblockdig_enumplayerdigtype == PacketPlayInBlockDig.EnumPlayerDigType.STOP_DESTROY_BLOCK) {
+                 if (blockposition.equals(this.g)) {
+-                    int k = this.currentTick - this.lastDigTick;
++                    int k = this.getTimeDiggingLagCompensate(); // Tuinity - lag compensate block breaking
+ 
+                     iblockdata = this.world.getType(blockposition);
+                     if (!iblockdata.isAir()) {
+@@ -245,7 +266,7 @@ public class PlayerInteractManager {
+                             this.e = false;
+                             this.i = true;
+                             this.j = blockposition;
+-                            this.k = this.lastDigTick;
++                            this.k = this.lastDigTick; this.hasDestroyedTooFastStartTime = this.lastDigTime; // Tuinity - lag compensate block breaking
+                         }
+                     }
+                 }
