@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Sat, 15 Feb 2020 01:14:32 -0800
+Subject: [PATCH] Improve sync load behaviour for CPS#getChunkAt
+
+- No longer force sync loads on the main thread for async calls
+- Prioritise chunks loaded for lighting
+
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index 509f61cae0959b0b766fe26573498b24ca2070b7..d335a40effb4052e3072a87de7308069138fb335 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -314,7 +314,16 @@ public class ChunkProviderServer extends IChunkProvider {
+     }
+ 
+     private void bringToStatusAsync(int x, int z, ChunkCoordIntPair chunkPos, ChunkStatus status, java.util.function.Consumer<IChunkAccess> onComplete) {
+-        CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> future = this.getChunkFutureMainThread(x, z, status, true);
++        // Tuinity start - add createFuture param
++        this.bringToStatusAsync(x, z, chunkPos, status, onComplete, true);
++    }
++    private void bringToStatusAsync(int x, int z, ChunkCoordIntPair chunkPos, ChunkStatus status, java.util.function.Consumer<IChunkAccess> onComplete, boolean createFuture) {
++        CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> future = this.getChunkFutureMainThread(x, z, status, createFuture);
++
++        if (future.isDone() && future.getNow(null).right().isPresent() && !createFuture) {
++            return;
++        }
++        // Tuinity end
+         Long identifier = Long.valueOf(this.asyncLoadSeqCounter++);
+         int ticketLevel = MCUtil.getTicketLevelFor(status);
+         this.addTicketAtLevel(TicketType.ASYNC_LOAD, chunkPos, ticketLevel, identifier);
+@@ -356,9 +365,18 @@ public class ChunkProviderServer extends IChunkProvider {
+     public IChunkAccess getChunkAt(int i, int j, ChunkStatus chunkstatus, boolean flag) {
+         final int x = i; final int z = j; // Paper - conflict on variable change
+         if (Thread.currentThread() != this.serverThread) {
+-            return (IChunkAccess) CompletableFuture.supplyAsync(() -> {
+-                return this.getChunkAt(i, j, chunkstatus, flag);
+-            }, this.serverThreadQueue).join();
++            // Tuinity start - improve async access - prevents plugins from sync loading chunks
++            Chunk chunk = this.getChunkAtIfLoadedImmediately(x, z);
++            if (chunk != null) {
++                return chunk;
++            }
++
++            CompletableFuture<IChunkAccess> future = new CompletableFuture<>();
++            this.serverThreadQueue.execute(() -> {
++                this.bringToStatusAsync(x, z, new ChunkCoordIntPair(x, z), chunkstatus, future::complete, flag);
++            });
++            return future.join();
++            // Tuinity end
+         } else {
+             // Paper start - optimise for loaded chunks
+             Chunk ifLoaded = this.getChunkAtIfLoadedMainThread(i, j);
+@@ -390,6 +408,19 @@ public class ChunkProviderServer extends IChunkProvider {
+                 this.world.asyncChunkTaskManager.raisePriority(x, z, com.destroystokyo.paper.io.PrioritizedTaskQueue.HIGHEST_PRIORITY);
+                 com.destroystokyo.paper.io.chunk.ChunkTaskManager.pushChunkWait(this.world, x, z);
+                 // Paper end
++                // Tuinity start - improve sync loading prioritisation
++                // lighting requires neighbours in a 1 radius to load
++                if (chunkstatus.isAtLeast(ChunkStatus.LIGHT)) {
++                    for (int dx = -1; dx <= 1; ++dx) {
++                        for (int dz = -1; dz <= 1; ++dz) {
++                            int chunkLightX = dx + x;
++                            int chunkLightZ = dz + z;
++                            this.bringToStatusAsync(chunkLightX, chunkLightZ, new ChunkCoordIntPair(chunkLightX, chunkLightZ), ChunkStatus.LIGHT.getPreviousStatus(), (c) -> {});
++                            this.world.asyncChunkTaskManager.raisePriority(chunkLightX, chunkLightZ, com.destroystokyo.paper.io.PrioritizedTaskQueue.HIGHEST_PRIORITY);
++                        }
++                    }
++                }
++                // Tuinity end
+                 com.destroystokyo.paper.io.SyncLoadFinder.logSyncLoad(this.world, x, z); // Paper - sync load info
+                 this.world.timings.chunkAwait.startTiming(); // Paper
+             this.serverThreadQueue.awaitTasks(completablefuture::isDone);
+diff --git a/src/main/java/net/minecraft/server/ChunkStatus.java b/src/main/java/net/minecraft/server/ChunkStatus.java
+index 25654520e7300fe5b1a4e5c445fcb142aa139bcf..fd7b10429d76cad32eeebf721dd9789a20b80f0a 100644
+--- a/src/main/java/net/minecraft/server/ChunkStatus.java
++++ b/src/main/java/net/minecraft/server/ChunkStatus.java
+@@ -217,6 +217,7 @@ public class ChunkStatus {
+         return this.z;
+     }
+ 
++    public final boolean isAtLeast(ChunkStatus status) { return this.b(status); } // Tuinity - OBFHELPER
+     public boolean b(ChunkStatus chunkstatus) {
+         return this.c() >= chunkstatus.c();
+     }
