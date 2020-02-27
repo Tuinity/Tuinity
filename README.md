@@ -1,8 +1,8 @@
 Tuinity
 ==
 
-Experimental fork of paper. I would personally not recommend using this in a
-production server (or at all). The fork is based off of aikar's EMC framework found here:
+Fork of paper, aimed at improving server performance at high playercounts.
+The fork is based off of aikar's EMC framework found here:
 https://github.com/starlis/empirecraft
 
 ## Contact
