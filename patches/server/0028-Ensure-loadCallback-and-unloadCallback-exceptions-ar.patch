@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Fri, 28 Feb 2020 19:38:19 -0800
+Subject: [PATCH] Ensure loadCallback() and unloadCallback() exceptions are
+ printed
+
+By default they are not because they are wrapped in thenAccept.
+
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index f1d03cea07c51c6670c2ae932cfb98542247a51b..112d168c70f6ef6b5e37a967fd43e06731e0a381 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -425,7 +425,10 @@ public class PlayerChunk {
+                     chunk.setNeedsSaving(true);
+                     chunk.unloadCallback();
+                 });
+-            }, playerchunkmap.callbackExecutor);
++            }, playerchunkmap.callbackExecutor).exceptionally((Throwable thr) -> {  // Tuinity - ensure this gets logged - fuck you completablefuture api
++                thr.printStackTrace();
++                return null;
++            }); // Tuinity - end
+ 
+             // Run callback right away if the future was already done
+             playerchunkmap.callbackExecutor.run();
+@@ -587,7 +590,10 @@ public class PlayerChunk {
+                     Chunk chunk = (Chunk) chunkAccess;
+                     chunk.loadCallback();
+                 });
+-            }, playerchunkmap.callbackExecutor);
++            }, playerchunkmap.callbackExecutor).exceptionally((Throwable thr) -> {  // Tuinity - ensure this gets logged - fuck you completablefuture api
++                thr.printStackTrace();
++                return null;
++            }); // Tuinity - end
+ 
+             // Run callback right away if the future was already done
+             playerchunkmap.callbackExecutor.run();
