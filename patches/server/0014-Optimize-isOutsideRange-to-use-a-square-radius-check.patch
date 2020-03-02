@@ -69,7 +69,7 @@ index b249c919edc2bf0bbfb7151db7456da813e35b4a..18526ffc8ab698701700b8c84b693a53
  
      public String c() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 5b0c526ef8304eb2c4c53387c928abf78640f6ab..2e947aa0bb2c510ed43e6a6886f63eb7044db7d8 100644
+index 5b0c526ef8304eb2c4c53387c928abf78640f6ab..74d75fc9a404527d303dd32adc131e3683fb2116 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -628,6 +628,36 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -116,8 +116,9 @@ index 5b0c526ef8304eb2c4c53387c928abf78640f6ab..2e947aa0bb2c510ed43e6a6886f63eb7
 -                    this.world.timings.chunkRangeCheckBig.startTiming();
 +                    //this.world.timings.chunkRangeCheckBig.startTiming(); // Tuinity
                      // note: this is just a copy of the expression in the if
-                     boolean bigRadiusOutsideRange = !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair);
+-                    boolean bigRadiusOutsideRange = !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair);
 -                    this.world.timings.chunkRangeCheckBig.stopTiming();
++                    boolean bigRadiusOutsideRange = !this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false); // Tuinity - optimise isOutsideOfRange
 +                    //this.world.timings.chunkRangeCheckBig.stopTiming(); // Tuinity
                      if (bigRadiusOutsideRange) {
                          // Paper end
@@ -126,8 +127,9 @@ index 5b0c526ef8304eb2c4c53387c928abf78640f6ab..2e947aa0bb2c510ed43e6a6886f63eb7
 -                        this.world.timings.chunkRangeCheckSmall.startTiming();
 +                        //this.world.timings.chunkRangeCheckSmall.startTiming(); // Tuinity
                          // note: this is just a copy of the expression in the if
-                         boolean smallRadiusOutsideRange = flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair, true);
+-                        boolean smallRadiusOutsideRange = flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair, true);
 -                        this.world.timings.chunkRangeCheckSmall.stopTiming();
++                        boolean smallRadiusOutsideRange = flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, true); // Tuinity - optimise isOutsideOfRange
 +                        //this.world.timings.chunkRangeCheckSmall.stopTiming(); // Tuinity
                          if (smallRadiusOutsideRange) { // Spigot
                              // Paper end
@@ -145,8 +147,39 @@ index e974babf5c5c3bf4113548412a17e5eb110c42de..6cffac9ed955c4c4d54a22e318cbf6dc
      public EntityPlayer(MinecraftServer minecraftserver, WorldServer worldserver, GameProfile gameprofile, PlayerInteractManager playerinteractmanager) {
          super((World) worldserver, gameprofile);
          playerinteractmanager.player = this;
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index 5cad0e4acc0f94d00bfd2ad62054ab3dd5728de2..c691b9a05197ad68b7c61d7f63d9a303ecc7f8f5 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -43,6 +43,18 @@ public class PlayerChunk {
+     long lastAutoSaveTime; // Paper - incremental autosave
+     long inactiveTimeStart; // Paper - incremental autosave
+ 
++    // Tuinity start - optimise isOutsideOfRange
++    // cached here to avoid a map lookup
++    com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInMobSpawnRange;
++    com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInChunkTickRange;
++
++    void updateRanges() {
++        long key = com.tuinity.tuinity.util.Util.getCoordinateKey(this.location);
++        this.playersInMobSpawnRange = this.chunkMap.playerMobSpawnMap.getObjectsInRange(key);
++        this.playersInChunkTickRange = this.chunkMap.playerChunkTickRangeMap.getObjectsInRange(key);
++    }
++    // Tuinity end
++
+     public PlayerChunk(ChunkCoordIntPair chunkcoordintpair, int i, LightEngine lightengine, PlayerChunk.c playerchunk_c, PlayerChunk.d playerchunk_d) {
+         this.statusFutures = new AtomicReferenceArray(PlayerChunk.CHUNK_STATUSES.size());
+         this.fullChunkFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
+@@ -59,6 +71,7 @@ public class PlayerChunk {
+         this.n = this.oldTicketLevel;
+         this.a(i);
+         this.chunkMap = (PlayerChunkMap)playerchunk_d; // Paper
++        this.updateRanges(); // Tuinity - optimise isOutsideOfRange
+     }
+ 
+     // Paper start
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index e7e57fc04198c60cfe2128fdc2fc6750b17116cb..09bffe95c74de05c4139a319930ac7f79ce11905 100644
+index e7e57fc04198c60cfe2128fdc2fc6750b17116cb..dd4d8f9615ed6cd0cbcc75218b4175a5b17e5b66 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -137,9 +137,25 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -198,19 +231,47 @@ index e7e57fc04198c60cfe2128fdc2fc6750b17116cb..09bffe95c74de05c4139a319930ac7f7
      }
      // Tuinity end
  
-@@ -272,6 +297,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -272,6 +297,39 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      java.util.Arrays.fill(tempPacket, null);
                  });
          // Tuinity end - per player view distance
 +        
 +        // Tuinity start - optimise PlayerChunkMap#isOutsideRange
-+        this.playerChunkTickRangeMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets);
-+        this.playerMobSpawnMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets);
++        this.playerChunkTickRangeMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets,
++                (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
++                 com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                    PlayerChunk playerChunk = PlayerChunkMap.this.getUpdatingChunk(com.tuinity.tuinity.util.Util.getCoordinateKey(rangeX, rangeZ));
++                    if (playerChunk != null) {
++                        playerChunk.playersInChunkTickRange = newState;
++                    }
++                },
++                (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
++                 com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                    PlayerChunk playerChunk = PlayerChunkMap.this.getUpdatingChunk(com.tuinity.tuinity.util.Util.getCoordinateKey(rangeX, rangeZ));
++                    if (playerChunk != null) {
++                        playerChunk.playersInChunkTickRange = newState;
++                    }
++                });
++        this.playerMobSpawnMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets,
++                (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
++                 com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                    PlayerChunk playerChunk = PlayerChunkMap.this.getUpdatingChunk(com.tuinity.tuinity.util.Util.getCoordinateKey(rangeX, rangeZ));
++                    if (playerChunk != null) {
++                        playerChunk.playersInMobSpawnRange = newState;
++                    }
++                },
++                (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
++                 com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                    PlayerChunk playerChunk = PlayerChunkMap.this.getUpdatingChunk(com.tuinity.tuinity.util.Util.getCoordinateKey(rangeX, rangeZ));
++                    if (playerChunk != null) {
++                        playerChunk.playersInMobSpawnRange = newState;
++                    }
++                });
 +        // Tuinity end
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -305,6 +335,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -305,6 +363,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          return entityPlayer.mobCounts[enumCreatureType.ordinal()];
      }
  
@@ -218,7 +279,15 @@ index e7e57fc04198c60cfe2128fdc2fc6750b17116cb..09bffe95c74de05c4139a319930ac7f7
      private static double a(ChunkCoordIntPair chunkcoordintpair, Entity entity) {
          double d0 = (double) (chunkcoordintpair.x * 16 + 8);
          double d1 = (double) (chunkcoordintpair.z * 16 + 8);
-@@ -1407,31 +1438,47 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -457,6 +516,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                 playerchunk = (PlayerChunk) this.pendingUnload.remove(i);
+                 if (playerchunk != null) {
+                     playerchunk.a(j);
++                    playerchunk.updateRanges(); // Tuinity - optimise isOutsideOfRange
+                 } else {
+                     playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.p, this);
+                 }
+@@ -1407,31 +1467,51 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          return isOutsideOfRange(chunkcoordintpair, false);
      }
  
@@ -228,7 +297,8 @@ index e7e57fc04198c60cfe2128fdc2fc6750b17116cb..09bffe95c74de05c4139a319930ac7f7
 -        chunkRange = (chunkRange > 8) ? 8 : chunkRange;
 +    // Tuinity start
 +    final boolean isOutsideOfRange(ChunkCoordIntPair chunkcoordintpair, boolean reducedRange) {
-+        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange = (reducedRange ? this.playerMobSpawnMap : this.playerChunkTickRangeMap).getObjectsInRange(chunkcoordintpair);
++        return this.isOutsideOfRange(this.getUpdatingChunk(chunkcoordintpair.pair()), chunkcoordintpair, reducedRange);
++    }
  
 -        final int finalChunkRange = chunkRange; // Paper for lambda below
 -        //double blockRange = (reducedRange) ? Math.pow(chunkRange << 4, 2) : 16384.0D; // Paper - use from event
@@ -245,13 +315,16 @@ index e7e57fc04198c60cfe2128fdc2fc6750b17116cb..09bffe95c74de05c4139a319930ac7f7
 -                blockRange = (double) ((event.getSpawnRadius() << 4) * (event.getSpawnRadius() << 4));
 -                if (event.isCancelled()) return false;
 -            }
-+        if (playersInRange == null) {
-+            return true;
-+        }
++    final boolean isOutsideOfRange(PlayerChunk playerchunk, ChunkCoordIntPair chunkcoordintpair, boolean reducedRange) {
++        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange = reducedRange ? playerchunk.playersInMobSpawnRange : playerchunk.playersInChunkTickRange;
  
 -            return (!entityplayer.isSpectator() && a(chunkcoordintpair, (Entity) entityplayer) < blockRange); // Spigot
 -            // Paper end
 -        });
++        if (playersInRange == null) {
++            return true;
++        }
++
 +        Object[] backingSet = playersInRange.getBackingSet();
 +
 +        if (reducedRange) {
