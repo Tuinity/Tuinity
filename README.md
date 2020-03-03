@@ -5,6 +5,8 @@ Fork of paper, aimed at improving server performance at high playercounts.
 The fork is based off of aikar's EMC framework found here:
 https://github.com/starlis/empirecraft
 
+Note that this project requires java 11+.
+
 ## Contact
 [IRC](http://irc.spi.gt/iris/?channels=tuinity) | [Discord](https://discord.gg/CgDPu27)
 
@@ -64,7 +66,14 @@ corresponding patch file.
 
 #### Building
 
-Use the command `./tuinity build` to build the api and server. Compiled jars
-will be placed under `Tuinity-API/target` and `Tuinity-Server/target`.
+Requirements:
+- You need `git` installed, with a configured user name and email. 
+   On windows you need to run from git bash.
+- You need `maven` installed
+- You need a `jdk` 11+ installed (and a `jre` 11 to run)
+- Anything else that `paper` requires to build
 
-To get paperclip jars, run `./tuinity jar`.
+Use the command `./tuinity patch` then `./tuinity build` to build the api and server. 
+Compiled jars will be placed under `Tuinity-API/target` and `Tuinity-Server/target`.
+
+To get a paperclip jar, run `./tuinity jar`.
