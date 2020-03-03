@@ -69,7 +69,7 @@ index b249c919edc2bf0bbfb7151db7456da813e35b4a..18526ffc8ab698701700b8c84b693a53
  
      public String c() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 5b0c526ef8304eb2c4c53387c928abf78640f6ab..74d75fc9a404527d303dd32adc131e3683fb2116 100644
+index 3a28464b65f7ff80d870f373199be3680f2e15bb..60fdff26896b548f9ee44e5ab43c4d06ef65f5f4 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -628,6 +628,36 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -109,36 +109,41 @@ index 5b0c526ef8304eb2c4c53387c928abf78640f6ab..74d75fc9a404527d303dd32adc131e36
              this.world.getMethodProfiler().enter("pollingChunks");
              int k = this.world.getGameRules().getInt(GameRules.RANDOM_TICK_SPEED);
              BlockPosition blockposition = this.world.getSpawn();
-@@ -670,18 +700,18 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -655,15 +685,7 @@ public class ChunkProviderServer extends IChunkProvider {
+ 
+             this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
+             this.world.getMethodProfiler().exit();
+-            //Paper start - call player naturally spawn event
+-            int chunkRange = world.spigotConfig.mobSpawnRange;
+-            chunkRange = (chunkRange > world.spigotConfig.viewDistance) ? (byte) world.spigotConfig.viewDistance : chunkRange;
+-            chunkRange = Math.min(chunkRange, 8);
+-            for (EntityPlayer entityPlayer : this.world.players) {
+-                entityPlayer.playerNaturallySpawnedEvent = new com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent(entityPlayer.getBukkitEntity(), (byte) chunkRange);
+-                entityPlayer.playerNaturallySpawnedEvent.callEvent();
+-            };
+-            // Paper end
++            // Tuinity - optimize isOutisdeRange - already done above
+             // Tuinity start - replace chunk map
+             this.isTickingChunks = true;
+             for (Chunk chunk : this.entityTickingChunks) {
+@@ -679,10 +701,10 @@ public class ChunkProviderServer extends IChunkProvider {
                      ChunkCoordIntPair chunkcoordintpair = playerchunk.i();
  
-                     // Paper start - timings
--                    this.world.timings.chunkRangeCheckBig.startTiming();
-+                    //this.world.timings.chunkRangeCheckBig.startTiming(); // Tuinity
-                     // note: this is just a copy of the expression in the if
--                    boolean bigRadiusOutsideRange = !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair);
--                    this.world.timings.chunkRangeCheckBig.stopTiming();
-+                    boolean bigRadiusOutsideRange = !this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false); // Tuinity - optimise isOutsideOfRange
-+                    //this.world.timings.chunkRangeCheckBig.stopTiming(); // Tuinity
-                     if (bigRadiusOutsideRange) {
+                     this.world.timings.chunkInhibitedRangeCheck.startTiming();
+-                    if (!this.playerChunkMap.isOutsideOfRange(chunkcoordintpair)) {
++                    if (!this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false)) { // Tuinity - optimise isOutsideOfRange
                          // Paper end
                          chunk.setInhabitedTime(chunk.getInhabitedTime() + j);
-                         // Paper start - timings
--                        this.world.timings.chunkRangeCheckSmall.startTiming();
-+                        //this.world.timings.chunkRangeCheckSmall.startTiming(); // Tuinity
-                         // note: this is just a copy of the expression in the if
--                        boolean smallRadiusOutsideRange = flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair, true);
--                        this.world.timings.chunkRangeCheckSmall.stopTiming();
-+                        boolean smallRadiusOutsideRange = flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, true); // Tuinity - optimise isOutsideOfRange
-+                        //this.world.timings.chunkRangeCheckSmall.stopTiming(); // Tuinity
-                         if (smallRadiusOutsideRange) { // Spigot
-                             // Paper end
+-                        if (flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(chunkcoordintpair, true)) { // Spigot
++                        if (flag1 && (this.allowMonsters || this.allowAnimals) && this.world.getWorldBorder().isInBounds(chunk.getPos()) && !this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, true)) { // Spigot // Tuinity - optimise isOutsideOfRange
                              this.world.getMethodProfiler().enter("spawner");
+                             this.world.timings.mobSpawn.startTiming(); // Spigot
+                             EnumCreatureType[] aenumcreaturetype1 = aenumcreaturetype;
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index e974babf5c5c3bf4113548412a17e5eb110c42de..6cffac9ed955c4c4d54a22e318cbf6dca029df90 100644
+index e85eaf4570bbdc6af6b421fe7b106dd34c6d1dcb..e1b03012776f201d30566e91956e25d66e44f5f7 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
-@@ -114,6 +114,8 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+@@ -116,6 +116,8 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
      public boolean needsChunkCenterUpdate;
      // Tuinity end - view distance api
  
@@ -179,7 +184,7 @@ index 5cad0e4acc0f94d00bfd2ad62054ab3dd5728de2..c691b9a05197ad68b7c61d7f63d9a303
  
      // Paper start
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index e7e57fc04198c60cfe2128fdc2fc6750b17116cb..dd4d8f9615ed6cd0cbcc75218b4175a5b17e5b66 100644
+index 1d4a825f1314a899e47db37dd43d10b2ed3242f6..dd4d8f9615ed6cd0cbcc75218b4175a5b17e5b66 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -137,9 +137,25 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -287,7 +292,7 @@ index e7e57fc04198c60cfe2128fdc2fc6750b17116cb..dd4d8f9615ed6cd0cbcc75218b4175a5
                  } else {
                      playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.p, this);
                  }
-@@ -1407,31 +1467,51 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1407,30 +1467,51 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          return isOutsideOfRange(chunkcoordintpair, false);
      }
  
@@ -310,10 +315,9 @@ index e7e57fc04198c60cfe2128fdc2fc6750b17116cb..dd4d8f9615ed6cd0cbcc75218b4175a5
 -            com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent event;
 -            double blockRange = 16384.0D;
 -            if (reducedRange) {
--                event = new com.destroystokyo.paper.event.entity.PlayerNaturallySpawnCreaturesEvent(entityplayer.getBukkitEntity(), (byte) finalChunkRange);
--                event.callEvent();
+-                event = entityplayer.playerNaturallySpawnedEvent;
+-                if (event == null || event.isCancelled()) return false;
 -                blockRange = (double) ((event.getSpawnRadius() << 4) * (event.getSpawnRadius() << 4));
--                if (event.isCancelled()) return false;
 -            }
 +    final boolean isOutsideOfRange(PlayerChunk playerchunk, ChunkCoordIntPair chunkcoordintpair, boolean reducedRange) {
 +        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange = reducedRange ? playerchunk.playersInMobSpawnRange : playerchunk.playersInChunkTickRange;

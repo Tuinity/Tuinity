@@ -419,7 +419,7 @@ index 5919dbc3e14900db46c5090714a15c2f97c2fdf8..95e3f26061fd1358945b09599fb8a9dc
  
          protected b(int i) {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 25fd415e36de1fa8be1091a9162664264b3e37d0..8be85816e81676dbed0a50b8fc5a160bf01bb57d 100644
+index 6455543d8ac00f3dc38376db1b672bd90de47952..1b0b9501611cec55e1ca8fa03cdc8c8f1693c6b3 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -609,6 +609,12 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -435,10 +435,10 @@ index 25fd415e36de1fa8be1091a9162664264b3e37d0..8be85816e81676dbed0a50b8fc5a160b
      private void tickChunks() {
          long i = this.world.getTime();
          long j = i - this.lastTickTime;
-@@ -646,11 +652,12 @@ public class ChunkProviderServer extends IChunkProvider {
- 
-             this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
-             this.world.getMethodProfiler().exit();
+@@ -655,11 +661,12 @@ public class ChunkProviderServer extends IChunkProvider {
+                 entityPlayer.playerNaturallySpawnedEvent.callEvent();
+             };
+             // Paper end
 -            this.playerChunkMap.f().forEach((playerchunk) -> {
 -                Optional<Chunk> optional = ((Either) playerchunk.b().getNow(PlayerChunk.UNLOADED_CHUNK)).left();
 -
@@ -454,8 +454,8 @@ index 25fd415e36de1fa8be1091a9162664264b3e37d0..8be85816e81676dbed0a50b8fc5a160b
                      this.world.getMethodProfiler().enter("broadcast");
                      this.world.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
 @@ -751,7 +758,22 @@ public class ChunkProviderServer extends IChunkProvider {
-                         this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
                      }
+                     this.world.timings.chunkInhibitedRangeCheck.stopTiming(); // Paper
                  }
 -            });
 +            }; // Tuinity
@@ -513,10 +513,10 @@ index 73657f740731b9bc606e64d0a2a3f32a842db3f5..9ff09b02d6d0f26d935797f41eb99ec7
      private final DoubleList a;
      private final double b;
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index 5a8a3d203c4b0fc689bb539fab202963cf59b219..aa5ab4396d638ac948b2bc789165def39bbf5b02 100644
+index fdaad67553a18d0e4fb6e2c9be36ee4eda7eb663..b7e2603eb92859f0662fdc382efe45f5af60e261 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
-@@ -1778,8 +1778,13 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+@@ -1780,8 +1780,13 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
      }
  
      public void a(ChunkCoordIntPair chunkcoordintpair) {
@@ -1317,7 +1317,7 @@ index b82ea26eb6a10cd02c6404f54c003655045f07b3..ec2dbe946b6656bdbc99853b2aa355c1
          }
  
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index e57cb4c554a2651a4ba03c41ec542d2a260453bb..e9e4d68f1d58d93ef3c57da7df92603b41d8a8fe 100644
+index a00adc188d001de8b8a47ccd4582281afb6e7b7c..ea57ebe06b8af23767565fca645a5305b8e11b22 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -55,8 +55,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -1485,7 +1485,7 @@ index e57cb4c554a2651a4ba03c41ec542d2a260453bb..e9e4d68f1d58d93ef3c57da7df92603b
  
          while (objectbidirectionaliterator.hasNext()) {
              Entry<PlayerChunk> entry = (Entry) objectbidirectionaliterator.next();
-@@ -1358,11 +1374,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1357,11 +1373,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              }
          }
  
@@ -1502,7 +1502,7 @@ index e57cb4c554a2651a4ba03c41ec542d2a260453bb..e9e4d68f1d58d93ef3c57da7df92603b
              }
          }
  
-@@ -1433,35 +1451,47 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1432,35 +1450,47 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              int i2 = Math.max(i, i1) + this.viewDistance;
              int j2 = Math.max(j, j1) + this.viewDistance;
  
@@ -1559,7 +1559,7 @@ index e57cb4c554a2651a4ba03c41ec542d2a260453bb..e9e4d68f1d58d93ef3c57da7df92603b
                  }
              }
          }
-@@ -1727,10 +1757,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1726,10 +1756,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          public void updatePlayer(EntityPlayer entityplayer) {
              org.spigotmc.AsyncCatcher.catchOp("player tracker update"); // Spigot
              if (entityplayer != this.tracker) {
