@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Fri, 28 Feb 2020 19:38:19 -0800
+Subject: [PATCH] Port CB-PR-640
+
+When a chunk goes from a ticket level where it is loading a
+full chunk to an inactive state (i.e ticket level 33 to
+ticket level 45) the full status future will be completed
+with a "Right" Either (indicating unloaded). However, this
+will also schedule the unload callback immediately.
+
+However, the callback is not immediately executed. This means
+the next unload/load callback that needs to be scheduled will
+fail. The fix applied is to not schedule a callback if the
+chunk is not loaded - if the Either is "right."
+
+Even better, due to how completablefuture works, exceptions
+are not printed by default. So the exception thrown by the
+callback executor was not printed and the failure
+hidden from console. This explains why no-one has tracked this issue.
+Now the exception is printed so future failures with the
+callback system (if any) can be tracked easier.
+
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index 1db523546ce7d633f3b18f4c01555812330aa627..03fc19764fc3bbe21d5980399926a74f23575513 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -429,16 +429,24 @@ public class PlayerChunk {
+         // CraftBukkit start
+         // ChunkUnloadEvent: Called before the chunk is unloaded: isChunkLoaded is still true and chunk can still be modified by plugins.
+         if (playerchunk_state.isAtLeast(PlayerChunk.State.BORDER) && !playerchunk_state1.isAtLeast(PlayerChunk.State.BORDER)) {
+-            this.getStatusFutureUnchecked(ChunkStatus.FULL).thenAcceptAsync((either) -> {
+-                either.ifLeft((chunkAccess) -> {
+-                    Chunk chunk = (Chunk) chunkAccess;
+-                    // Minecraft will apply the chunks tick lists to the world once the chunk got loaded, and then store the tick
+-                    // lists again inside the chunk once the chunk becomes inaccessible and set the chunk's needsSaving flag.
+-                    // These actions may however happen deferred, so we manually set the needsSaving flag already here.
+-                    chunk.setNeedsSaving(true);
+-                    chunk.unloadCallback();
+-                });
+-            }, playerchunkmap.callbackExecutor);
++            // Tuinity start - CB-PR-640
++            this.getStatusFutureUnchecked(ChunkStatus.FULL).thenAccept((either) -> {
++                Chunk chunk = (Chunk)either.left().orElse(null);
++                if (chunk != null) {
++                    playerchunkmap.callbackExecutor.execute(() -> {
++                        // Minecraft will apply the chunks tick lists to the world once the chunk got loaded, and then store the tick
++                        // lists again inside the chunk once the chunk becomes inaccessible and set the chunk's needsSaving flag.
++                        // These actions may however happen deferred, so we manually set the needsSaving flag already here.
++                        chunk.setNeedsSaving(true);
++                        chunk.unloadCallback();
++                    });
++                }
++            }).exceptionally((throwable) -> {
++                // ensure exceptions are printed, by default this is not the case
++                MinecraftServer.LOGGER.fatal("Failed to schedule unload callback for chunk " + PlayerChunk.this.location, throwable);
++                return null;
++            });
++            // Tuinity end - CB-PR-640
+ 
+             // Run callback right away if the future was already done
+             playerchunkmap.callbackExecutor.run();
+@@ -595,12 +603,20 @@ public class PlayerChunk {
+         // CraftBukkit start
+         // ChunkLoadEvent: Called after the chunk is loaded: isChunkLoaded returns true and chunk is ready to be modified by plugins.
+         if (!playerchunk_state.isAtLeast(PlayerChunk.State.BORDER) && playerchunk_state1.isAtLeast(PlayerChunk.State.BORDER)) {
+-            this.getStatusFutureUnchecked(ChunkStatus.FULL).thenAcceptAsync((either) -> {
+-                either.ifLeft((chunkAccess) -> {
+-                    Chunk chunk = (Chunk) chunkAccess;
+-                    chunk.loadCallback();
+-                });
+-            }, playerchunkmap.callbackExecutor);
++            // Tuinity start - CB-PR-640
++            this.getStatusFutureUnchecked(ChunkStatus.FULL).thenAccept((either) -> {
++                Chunk chunk = (Chunk)either.left().orElse(null);
++                if (chunk != null) {
++                    playerchunkmap.callbackExecutor.execute(() -> {
++                        chunk.loadCallback();
++                    });
++                }
++            }).exceptionally((throwable) -> {
++                // ensure exceptions are printed, by default this is not the case
++                MinecraftServer.LOGGER.fatal("Failed to schedule load callback for chunk " + PlayerChunk.this.location, throwable);
++                return null;
++            });
++            // Tuinity end - CB-PR-640
+ 
+             // Run callback right away if the future was already done
+             playerchunkmap.callbackExecutor.run();
