@@ -47,6 +47,14 @@ There is no repository required since the artifacts should be locally installed
 via building tuinity.
 
 ## Building and setting up
+
+Requirements:
+- You need `git` installed, with a configured user name and email. 
+   On windows you need to run from git bash.
+- You need `maven` installed
+- You need `jdk` 11+ installed to compile (and `jre` 11 to run)
+- Anything else that `paper` requires to build
+
 Run the following commands in the root directory:
 
 ```
@@ -66,14 +74,7 @@ corresponding patch file.
 
 #### Building
 
-Requirements:
-- You need `git` installed, with a configured user name and email. 
-   On windows you need to run from git bash.
-- You need `maven` installed
-- You need a `jdk` 11+ installed (and a `jre` 11 to run)
-- Anything else that `paper` requires to build
-
-Use the command `./tuinity patch` then `./tuinity build` to build the api and server. 
+Use the command `./tuinity build` to build the api and server. 
 Compiled jars will be placed under `Tuinity-API/target` and `Tuinity-Server/target`.
 
 To get a paperclip jar, run `./tuinity jar`.
