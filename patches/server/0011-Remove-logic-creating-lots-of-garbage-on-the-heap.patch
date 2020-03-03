@@ -762,7 +762,7 @@ index 0f7f4744d9f9e5174fb38ccc72248397a4b064ea..21a15c3b3a861d807ac9256c75e1ff67
      }
  }
 diff --git a/src/main/java/net/minecraft/server/LightEngineStorageSky.java b/src/main/java/net/minecraft/server/LightEngineStorageSky.java
-index 75d9065b32731dc635d9d09c48fb9643172381a9..32816d147f4bef89de829ac6c310f09817b5694f 100644
+index 75d9065b32731dc635d9d09c48fb9643172381a9..4669f31b04d98e8369606d9bedf9c0ccc82e4c00 100644
 --- a/src/main/java/net/minecraft/server/LightEngineStorageSky.java
 +++ b/src/main/java/net/minecraft/server/LightEngineStorageSky.java
 @@ -17,7 +17,7 @@ public class LightEngineStorageSky extends LightEngineStorage<LightEngineStorage
@@ -770,7 +770,7 @@ index 75d9065b32731dc635d9d09c48fb9643172381a9..32816d147f4bef89de829ac6c310f098
  
      protected LightEngineStorageSky(ILightAccess ilightaccess) {
 -        super(EnumSkyBlock.SKY, ilightaccess, new LightEngineStorageSky.a(new Long2ObjectOpenHashMap(), new Long2IntOpenHashMap(), Integer.MAX_VALUE));
-+        super(EnumSkyBlock.SKY, ilightaccess, new LightEngineStorageSky.a(new com.tuinity.tuinity.chunk.QueuedChangesMapLong2Object<>(), new com.tuinity.tuinity.chunk.QueuedChangesMapLong2Int(), Integer.MAX_VALUE)); // Tuinity - avoid copying light data
++        super(EnumSkyBlock.SKY, ilightaccess, new LightEngineStorageSky.a(new com.tuinity.tuinity.chunk.QueuedChangesMapLong2Object<>(), new com.tuinity.tuinity.chunk.QueuedChangesMapLong2Int(), Integer.MAX_VALUE, false)); // Tuinity - avoid copying light data
      }
  
      @Override
@@ -873,8 +873,8 @@ index 75d9065b32731dc635d9d09c48fb9643172381a9..32816d147f4bef89de829ac6c310f098
 -            this.c = long2intopenhashmap;
 -            long2intopenhashmap.defaultReturnValue(i);
 +        // Tuinity start - avoid copying light data
-+        public a(com.tuinity.tuinity.chunk.QueuedChangesMapLong2Object<NibbleArray> data, com.tuinity.tuinity.chunk.QueuedChangesMapLong2Int otherData, int i) {
-+            super(data, false);
++        public a(com.tuinity.tuinity.chunk.QueuedChangesMapLong2Object<NibbleArray> data, com.tuinity.tuinity.chunk.QueuedChangesMapLong2Int otherData, int i, boolean isVisible) {
++            super(data, isVisible);
 +            this.otherData = otherData;
 +            // Tuinity end - avoid copying light data
              this.b = i;
@@ -884,7 +884,7 @@ index 75d9065b32731dc635d9d09c48fb9643172381a9..32816d147f4bef89de829ac6c310f098
          public LightEngineStorageSky.a b() {
 -            return new LightEngineStorageSky.a(this.a.clone(), this.c.clone(), this.b);
 +            this.otherData.performUpdatesLockMap(); // Tuinity - avoid copying light data
-+            return new LightEngineStorageSky.a(this.data, this.otherData, this.b); // Tuinity - avoid copying light data
++            return new LightEngineStorageSky.a(this.data, this.otherData, this.b, true); // Tuinity - avoid copying light data
          }
      }
  }
