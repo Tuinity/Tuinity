@@ -439,7 +439,7 @@ index 8977c3516b2ee9b970b6274a5c71982b019ac2a6..bace6cf36a9e888278a6c7a5c5866d9f
                      double deltaX = this.locX() - player.locX();
                      double deltaZ = this.locZ() - player.locZ();
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index ec2dbe946b6656bdbc99853b2aa355c11a219adc..d9ac98bcff6f97468c45b502fa6b402ae648d0ba 100644
+index ec2dbe946b6656bdbc99853b2aa355c11a219adc..497b9a5f801832da8eb46cbaeb53642264f728ea 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -61,6 +61,28 @@ public class PlayerChunk {
@@ -471,6 +471,24 @@ index ec2dbe946b6656bdbc99853b2aa355c11a219adc..d9ac98bcff6f97468c45b502fa6b402a
      // Paper start
      @Nullable
      public final Chunk getEntityTickingChunk() {
+@@ -194,7 +216,7 @@ public class PlayerChunk {
+     }
+ 
+     public void a(int i, int j, int k) {
+-        Chunk chunk = this.getChunk();
++        Chunk chunk = this.getFullReadyChunk(); // Tuinity - per player view distance - allow block updates in non-ticking chunks
+ 
+         if (chunk != null) {
+             this.r |= 1 << (j >> 4);
+@@ -214,7 +236,7 @@ public class PlayerChunk {
+     }
+ 
+     public void a(EnumSkyBlock enumskyblock, int i) {
+-        Chunk chunk = this.getChunk();
++        Chunk chunk = this.getFullReadyChunk(); // Tuinity - per player view distance - allow block updates in non-ticking chunks
+ 
+         if (chunk != null) {
+             chunk.setNeedsSaving(true);
 @@ -304,6 +326,50 @@ public class PlayerChunk {
      }
  
@@ -966,6 +984,25 @@ index 7b79ee4fe5893d0c8c5825776c3c09ca8553abc8..e07905f1235db6e268f816f46c2f5c84
          Iterator iterator = this.server.getWorlds().iterator();
  
          while (iterator.hasNext()) {
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index d066a4144f3eb41c6c73677c2a7eab22f65f9750..c0c83d4331167f2207f5b3274f82c9379c8c289f 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -438,8 +438,13 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+                 this.b(blockposition, iblockdata1, iblockdata2);
+             }
+ 
+-            if ((i & 2) != 0 && (!this.isClientSide || (i & 4) == 0) && (this.isClientSide || chunk == null || (chunk.getState() != null && chunk.getState().isAtLeast(PlayerChunk.State.TICKING)))) { // allow chunk to be null here as chunk.isReady() is false when we send our notification during block placement
++            if ((i & 2) != 0 && (!this.isClientSide || (i & 4) == 0) && (this.isClientSide || chunk == null || (chunk.getState() != null && chunk.getState().isAtLeast(PlayerChunk.State.TICKING)))) { // allow chunk to be null here as chunk.isReady() is false when we send our notification during block placement // Tuinity - diff on change, see below
+                 this.notify(blockposition, iblockdata1, iblockdata, i);
++                // Tuinity start - per player view distance - allow block updates for non-ticking chunks in player view distance
++                // if copied from above
++            } else if ((i & 2) != 0 && (!this.isClientSide || (i & 4) == 0) && (this.isClientSide || chunk == null || ((WorldServer)this).getChunkProvider().playerChunkMap.playerViewDistanceBroadcastMap.getObjectsInRange(com.tuinity.tuinity.util.Util.getCoordinateKey(blockposition)) != null)) {
++                ((WorldServer)this).getChunkProvider().flagDirty(blockposition);
++                // Tuinity end - per player view distance
+             }
+ 
+             if (!this.isClientSide && (i & 1) != 0) {
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 index d8719b9d96671f068109b96ea281894dc3585e7f..5004a67ad2984b9f88a679b69fb6e922c1d14561 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
