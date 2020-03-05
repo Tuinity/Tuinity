@@ -85,10 +85,10 @@ index 0000000000000000000000000000000000000000..bef788ccfad2b74c3adca54fc6218006
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/server/TuinityTickList.java b/src/main/java/com/tuinity/tuinity/server/TuinityTickList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..11f1d0c1b2c809bc5f12d1a7a9d4804daa65b600
+index 0000000000000000000000000000000000000000..4118dd7e1d4531eb58579ef69c235c35f19ccf57
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/server/TuinityTickList.java
-@@ -0,0 +1,563 @@
+@@ -0,0 +1,614 @@
 +package com.tuinity.tuinity.server;
 +
 +import com.tuinity.tuinity.util.TickThread;
@@ -201,8 +201,6 @@ index 0000000000000000000000000000000000000000..11f1d0c1b2c809bc5f12d1a7a9d4804d
 +                // we dump them to a map to avoid constantly re-scheduling them
 +                this.addToNotTickingReady(entry);
 +            }
-+        } else {
-+            this.onTickEnd(entry);
 +        }
 +    }
 +
@@ -223,6 +221,55 @@ index 0000000000000000000000000000000000000000..11f1d0c1b2c809bc5f12d1a7a9d4804d
 +            }
 +        } else {
 +            this.longScheduled.add(entry);
++        }
++    }
++
++    private void removeEntry(final NextTickListEntry<T> entry) {
++        entry.tickState = STATE_CANCELLED_TICK;
++        // short/long scheduled will skip the entry
++
++        final BlockPosition pos = entry.getPosition();
++        final long blockKey = Util.getBlockKey(pos);
++
++        final ArrayList<NextTickListEntry<T>> currentEntries = this.entriesByBlock.get(blockKey);
++
++        if (currentEntries.size() == 1) {
++            // it should contain our entry
++            this.entriesByBlock.remove(blockKey);
++        } else {
++            // it's more likely that this entry is at the start of the list than the end
++            for (int i = 0, len = currentEntries.size(); i < len; ++i) {
++                final NextTickListEntry<T> currentEntry = currentEntries.get(i);
++                if (currentEntry == entry) {
++                    currentEntries.remove(i);
++                    break;
++                }
++            }
++        }
++
++        final long chunkKey = Util.getCoordinateKey(entry.getPosition());
++
++        ObjectRBTreeSet<NextTickListEntry<T>> set = this.entriesByChunk.get(chunkKey);
++
++        set.remove(entry);
++
++        if (set.isEmpty()) {
++            this.entriesByChunk.remove(chunkKey);
++        }
++
++        ArrayList<NextTickListEntry<T>> pendingTickingLoad = this.pendingChunkTickLoad.get(chunkKey);
++
++        if (pendingTickingLoad != null) {
++            for (int i = 0, len = pendingTickingLoad.size(); i < len; ++i) {
++                if (pendingTickingLoad.get(i) == entry) {
++                    pendingTickingLoad.remove(i);
++                    break;
++                }
++            }
++
++            if (pendingTickingLoad.isEmpty()) {
++                this.pendingChunkTickLoad.remove(chunkKey);
++            }
 +        }
 +    }
 +
@@ -547,12 +594,14 @@ index 0000000000000000000000000000000000000000..11f1d0c1b2c809bc5f12d1a7a9d4804d
 +            }
 +
 +            ret.add(entry);
-+            if (removeReturned) {
-+                // TODO for long scheduled stuff we might want to kill the entry earlier.
-+                entry.tickState = STATE_CANCELLED_TICK;
-+            }
 +            return;
 +        }, TickListServerInterval.ENTRY_COMPARATOR, containingChunks);
++
++        if (removeReturned) {
++            for (NextTickListEntry<T> entry : ret) {
++                this.removeEntry(entry);
++            }
++        }
 +
 +        return ret;
 +    }
@@ -598,9 +647,11 @@ index 0000000000000000000000000000000000000000..11f1d0c1b2c809bc5f12d1a7a9d4804d
 +                continue;
 +            }
 +            ret.add(entry);
-+            if (removeReturned) {
-+                // TODO for long scheduled stuff we might want to kill the entry earlier.
-+                entry.tickState = STATE_CANCELLED_TICK;
++        }
++
++        if (removeReturned) {
++            for (NextTickListEntry<T> entry : ret) {
++                this.removeEntry(entry);
 +            }
 +        }
 +
@@ -813,7 +864,7 @@ index e650a2e48d714609accf1de5e6ca17c7a136d68e..83c5c83292546d76e249b40d24f706c6
          return this.b(baseblockposition.getX(), baseblockposition.getY(), baseblockposition.getZ());
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index f12d828b817a409a903a61735d95f2da37953d33..c341da54241cd5535bb26531cc393f71a20a3be0 100644
+index 09211a97a6b1b77c141139dd8e93219174fd266d..5644748e0cd9d6ea05be970cd56f07b46daa3b32 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -119,6 +119,12 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -912,10 +963,10 @@ index 33cfeabdee03195a294f303f28044a313cb1c4ed..11a4bb882e73df0ead6d9c5f67ea2f1a
      public String toString() {
          return this.e + ": " + this.a + ", " + this.b + ", " + this.c + ", " + this.f;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index c691b9a05197ad68b7c61d7f63d9a303ecc7f8f5..1db523546ce7d633f3b18f4c01555812330aa627 100644
+index 1ce1f79aaf421d543947a47ed71c0ab31e57e07d..e1528d59191260771097e8e5b624e740ab5a7e67 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -524,7 +524,7 @@ public class PlayerChunk {
+@@ -550,7 +550,7 @@ public class PlayerChunk {
                      Chunk tickingChunk = either.left().get();
                      PlayerChunk.this.isTickingReady = true;
  

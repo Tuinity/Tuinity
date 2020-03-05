@@ -13,7 +13,7 @@ plugins or edge cases in code do not spam sync loads since chunks
 without tickets get unloaded immediately.
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index 802b2320ff86c7e2223c5c85a208ac46aac86df7..14959155fbb5dffc40b5177fbaf93a6c8ed3dbd6 100644
+index e9a613e19c9ede2f817b2b483df0f603cead4507..5edae85e7aac5296d56ed3d1533d81f04391c92b 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -1,6 +1,7 @@
@@ -53,7 +53,7 @@ index 24ba03ae580858fde7c32c915bb447b97ea229a6..d3c616e72ddddb87e019864b0b90228c
          this.a(ChunkCoordIntPair.a, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 18526ffc8ab698701700b8c84b693a53b5e4fd82..0c0c3fb0ac44f46960c0495ccc366aea5341c5ed 100644
+index 64d2aeac27283c4d8c4421d89cbaa5132e7be233..11ff8791651dd47beca81e7202d5c181c45a607d 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
@@ -65,11 +65,11 @@ index 18526ffc8ab698701700b8c84b693a53b5e4fd82..0c0c3fb0ac44f46960c0495ccc366aea
      public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); // Tuinity - no longer used
      //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); // Tuinity - no longer used
      private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue // Tuinity - use a better queue
-@@ -45,6 +45,45 @@ public abstract class ChunkMapDistance {
-     // Tuinity start
-     protected PlayerChunkMap chunkMap;
-     protected final ChunkMapDistance.TicketTracker playerTicketHandler = new TicketTracker();
-+
+@@ -48,6 +48,47 @@ public abstract class ChunkMapDistance {
+     protected final ChunkMapDistance.TicketTracker playerNoTickViewDistanceHandler = new TicketTracker(33); // loaded ticket level
+     // Tuinity end
+ 
++    // Tuinity start - delay chunk unloads
 +    private long nextUnloadId; // delay chunk unloads
 +    private final Long2ObjectOpenHashMap<Ticket<Long>> delayedChunks = new Long2ObjectOpenHashMap<>();
 +    public final void removeTickets(long chunk, TicketType<?> type) {
@@ -108,10 +108,12 @@ index 18526ffc8ab698701700b8c84b693a53b5e4fd82..0c0c3fb0ac44f46960c0495ccc366aea
 +        ticket.setTicketLevel(removedLevel);
 +        tickets.add(ticket); // re-add with new expire time and ticket level
 +    }
-     // Tuinity end
- 
++    // Tuinity end - delay chunk unloads
++
      protected ChunkMapDistance(Executor executor, Executor executor1) {
-@@ -63,12 +102,30 @@ public abstract class ChunkMapDistance {
+         executor1.getClass();
+         Mailbox<Runnable> mailbox = Mailbox.a("player ticket throttler", executor1::execute);
+@@ -64,12 +105,30 @@ public abstract class ChunkMapDistance {
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
@@ -143,7 +145,7 @@ index 18526ffc8ab698701700b8c84b693a53b5e4fd82..0c0c3fb0ac44f46960c0495ccc366aea
                  this.e.b(entry.getLongKey(), a((ArraySetSorted) entry.getValue()), false);
              }
  
-@@ -79,6 +136,7 @@ public abstract class ChunkMapDistance {
+@@ -80,6 +139,7 @@ public abstract class ChunkMapDistance {
  
      }
  
@@ -151,7 +153,7 @@ index 18526ffc8ab698701700b8c84b693a53b5e4fd82..0c0c3fb0ac44f46960c0495ccc366aea
      private static int a(ArraySetSorted<Ticket<?>> arraysetsorted) {
          return !arraysetsorted.isEmpty() ? ((Ticket) arraysetsorted.b()).b() : PlayerChunkMap.GOLDEN_TICKET + 1;
      }
-@@ -163,6 +221,11 @@ public abstract class ChunkMapDistance {
+@@ -164,6 +224,11 @@ public abstract class ChunkMapDistance {
          boolean removed = false; // CraftBukkit
          if (arraysetsorted.remove(ticket)) {
              removed = true; // CraftBukkit
@@ -201,10 +203,10 @@ index 4b87ca2ecb6d738908fba111f52e54be463cc809..141664b5545a11c7d382c4e6ea155693
      public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
          return new TicketType<>(s, comparator, 0L);
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index d8719b9d96671f068109b96ea281894dc3585e7f..28a6e1cdab163394463c8b4b1fb297b864c0e756 100644
+index 5004a67ad2984b9f88a679b69fb6e922c1d14561..81f1eef235d6e71c47c6cd729258e3293231a3dd 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-@@ -458,6 +458,7 @@ public class CraftWorld implements World {
+@@ -459,6 +459,7 @@ public class CraftWorld implements World {
          net.minecraft.server.IChunkAccess chunk = world.getChunkProvider().getChunkAt(x, z, ChunkStatus.FULL, false);
          if (chunk != null) {
              world.getChunkProvider().removeTicket(TicketType.PLUGIN, chunk.getPos(), 1, Unit.INSTANCE);
