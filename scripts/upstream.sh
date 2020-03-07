@@ -32,14 +32,14 @@ cd "Paper-Server"
 mcVer=$(mvn -o org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=minecraft_version | sed -n -e '/^\[.*\]/ !{ /^[0-9]/ { p; q } }')
 
 basedir
-. $basedir/scripts/importmcdev.sh
+. "$basedir"/scripts/importmcdev.sh
 
-minecraftversion=$(cat $basedir/Paper/work/BuildData/info.json | grep minecraftVersion | cut -d '"' -f 4)
+minecraftversion=$(cat "$basedir"/Paper/work/BuildData/info.json | grep minecraftVersion | cut -d '"' -f 4)
 version=$(echo -e "Paper: $paperVer\nmc-dev:$importedmcdev")
 tag="${minecraftversion}-${mcVer}-$(echo -e $version | shasum | awk '{print $1}')"
-echo "$tag" > $basedir/current-paper
+echo "$tag" > "$basedir"/current-paper
 
-$basedir/scripts/generatesources.sh
+"$basedir"/scripts/generatesources.sh
 
 cd Paper/
 
@@ -56,7 +56,7 @@ echo "Tagging as $tag"
 echo -e "$version"
 
 forcetag=0
-if [ "$(cat $basedir/current-paper)" != "$tag" ]; then
+if [ "$(cat "$basedir"/current-paper)" != "$tag" ]; then
     forcetag=1
 fi
 

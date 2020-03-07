@@ -9,7 +9,7 @@ MCDEV_REPO=""
 # END config
 
 sourceBase=$(dirname $SOURCE)/../
-cd ${basedir:-$sourceBase}
+cd "${basedir:-$sourceBase}"
 
 basedir=$(pwd -P)
 cd -

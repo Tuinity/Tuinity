@@ -44,7 +44,7 @@ function applyPatch {
         mkdir "$basedir/$target"
         cd "$basedir/$target"
         git init
-        git remote add origin $5
+        git remote add origin "$5"
         cd "$basedir"
     fi
     cd "$basedir/$target"
@@ -56,7 +56,7 @@ function applyPatch {
 
     echo "Resetting $target to $what_name..."
     git remote rm upstream > /dev/null 2>&1
-    git remote add upstream $basedir/$what >/dev/null 2>&1
+    git remote add upstream "$basedir/$what" >/dev/null 2>&1
     git checkout master 2>/dev/null || git checkout -b master
     git fetch upstream >/dev/null 2>&1
     git reset --hard upstream/upstream
