@@ -8,13 +8,13 @@ while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symli
 done
 . $(dirname $SOURCE)/init.sh
 
-workdir=$basedir/Paper/work
-minecraftversion=$(cat $basedir/Paper/work/BuildData/info.json | grep minecraftVersion | cut -d '"' -f 4)
+workdir="$basedir"/Paper/work
+minecraftversion=$(cat "$basedir"/Paper/work/BuildData/info.json | grep minecraftVersion | cut -d '"' -f 4)
 decompiledir=$workdir/Minecraft/$minecraftversion/spigot
 
 nms="net/minecraft/server"
 export MODLOG=""
-cd $basedir
+cd "$basedir"
 
 function containsElement {
     local e
