@@ -59,7 +59,7 @@ index 8da215a85e0a1f91a5e3733bdd664ce516f38319..55a81da243aa2fecc43eb0d262e84a8d
  }
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 95e3f26061fd1358945b09599fb8a9dcdd273397..84573b890705a9901948f24c4ad5b55ba179102e 100644
+index 95e3f26061fd1358945b09599fb8a9dcdd273397..cf6556958ee94a5f0bf5ee66c90f6a9537597f49 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -1,5 +1,6 @@
@@ -84,7 +84,7 @@ index 95e3f26061fd1358945b09599fb8a9dcdd273397..84573b890705a9901948f24c4ad5b55b
      private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.LinkedList<>(); // PAIL pendingChunkUpdates // Paper - use a queue
      private final ChunkTaskQueueSorter i;
      private final Mailbox<ChunkTaskQueueSorter.a<Runnable>> j;
-@@ -41,6 +42,49 @@ public abstract class ChunkMapDistance {
+@@ -41,6 +42,55 @@ public abstract class ChunkMapDistance {
      private final Executor m;
      private long currentTick;
  
@@ -117,6 +117,12 @@ index 95e3f26061fd1358945b09599fb8a9dcdd273397..84573b890705a9901948f24c4ad5b55b
 +        @Override
 +        protected int tryQueueChunk(int chunkX, int chunkZ, EntityPlayer player) {
 +            long coordinate = Util.getCoordinateKey(chunkX, chunkZ);
++            PlayerChunk currentChunk = ChunkMapDistance.this.chunkMap.chunkMap.getUpdating(coordinate);
++            if (currentChunk != null && currentChunk.getTicketLevel() <= this.ticketLevel) {
++                this.chunkReferenceMap.putIfAbsent(coordinate, LOADED_PLAYER_REFERENCE);
++                ChunkMapDistance.this.addTicket(coordinate, new Ticket<>(TicketType.PLAYER, this.ticketLevel, new ChunkCoordIntPair(chunkX, chunkZ)));
++                return ALREADY_QUEUED;
++            }
 +            if (this.chunkReferenceMap.putIfAbsent(coordinate, player.getId()) == -1) {
 +                ChunkMapDistance.this.addTicket(coordinate, new Ticket<>(TicketType.PLAYER, this.ticketLevel, new ChunkCoordIntPair(chunkX, chunkZ)));
 +                return QUEUED;
@@ -134,7 +140,7 @@ index 95e3f26061fd1358945b09599fb8a9dcdd273397..84573b890705a9901948f24c4ad5b55b
      protected ChunkMapDistance(Executor executor, Executor executor1) {
          executor1.getClass();
          Mailbox<Runnable> mailbox = Mailbox.a("player ticket throttler", executor1::execute);
-@@ -87,7 +131,7 @@ public abstract class ChunkMapDistance {
+@@ -87,7 +137,7 @@ public abstract class ChunkMapDistance {
  
      public boolean a(PlayerChunkMap playerchunkmap) {
          this.f.a();
@@ -143,7 +149,7 @@ index 95e3f26061fd1358945b09599fb8a9dcdd273397..84573b890705a9901948f24c4ad5b55b
          int i = Integer.MAX_VALUE - this.e.a(Integer.MAX_VALUE);
          boolean flag = i != 0;
  
-@@ -225,7 +269,7 @@ public abstract class ChunkMapDistance {
+@@ -225,7 +275,7 @@ public abstract class ChunkMapDistance {
              return new ObjectOpenHashSet();
          })).add(entityplayer);
          this.f.b(i, 0, true);
@@ -152,7 +158,7 @@ index 95e3f26061fd1358945b09599fb8a9dcdd273397..84573b890705a9901948f24c4ad5b55b
      }
  
      public void b(SectionPosition sectionposition, EntityPlayer entityplayer) {
-@@ -237,7 +281,7 @@ public abstract class ChunkMapDistance {
+@@ -237,7 +287,7 @@ public abstract class ChunkMapDistance {
          if (objectset.isEmpty()) {
              this.c.remove(i);
              this.f.b(i, Integer.MAX_VALUE, false);
@@ -161,7 +167,7 @@ index 95e3f26061fd1358945b09599fb8a9dcdd273397..84573b890705a9901948f24c4ad5b55b
          }
  
      }
-@@ -255,9 +299,16 @@ public abstract class ChunkMapDistance {
+@@ -255,9 +305,16 @@ public abstract class ChunkMapDistance {
          return s;
      }
  
@@ -179,7 +185,7 @@ index 95e3f26061fd1358945b09599fb8a9dcdd273397..84573b890705a9901948f24c4ad5b55b
  
      public int b() {
          this.f.a();
-@@ -334,6 +385,222 @@ public abstract class ChunkMapDistance {
+@@ -334,6 +391,222 @@ public abstract class ChunkMapDistance {
          }
      }
  
