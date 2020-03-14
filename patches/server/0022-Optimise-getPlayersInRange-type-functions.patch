@@ -18,10 +18,10 @@ index 3fdb52007a2cf53b3319e4decf84d99876e830d0..1a3234bb4760674674392d29c5690776
          return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
      }
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index ad819d439f09dd5239637f53031816c459366014..23e91183ef2983ee666c759adb6393977c60277e 100644
+index 7bc25be4221f929ecc749921e08f8ce67c2a277d..181f1742accd4e5f09d740494d06257cae4242ec 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -250,6 +250,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -297,6 +297,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
  
  
@@ -36,7 +36,7 @@ index ad819d439f09dd5239637f53031816c459366014..23e91183ef2983ee666c759adb639397
      // Tuinity end
  
      public Entity(EntityTypes<?> entitytypes, World world) {
-@@ -1415,6 +1423,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -1462,6 +1470,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return MathHelper.c(f * f + f1 * f1 + f2 * f2);
      }
  
@@ -146,10 +146,10 @@ index e35ec2db078cc888333cfdd44e1cd3fda71246da..e7dfe22acd2b48c64383e2672f5f4117
          if (entityliving == entityliving1) {
              return false;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index e3565d8b9367e4a6f7e472e5ad79773395aa6046..aa625ce2a4a9593ce055b42757675e70886a79a7 100644
+index c77dde8855f055f39f8e292fdb717951ffd05800..6ce0c8f25f01e2818a52679f2bb11324ff8f3e96 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -191,6 +191,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -187,6 +187,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
      // Tuinity end - use distance map to optimise entity tracker
  
@@ -162,8 +162,8 @@ index e3565d8b9367e4a6f7e472e5ad79773395aa6046..aa625ce2a4a9593ce055b42757675e70
      void addPlayerToDistanceMaps(EntityPlayer player) {
          this.updateMaps(player);
  
-@@ -251,6 +257,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-             this.playerEntityTrackerLegacyMap.remove(player);
+@@ -246,6 +252,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             this.playerEntityTrackerUntrackMap.remove(player);
          }
          // Tuinity end - use distance map to optimise entity tracker
 +
@@ -173,8 +173,8 @@ index e3565d8b9367e4a6f7e472e5ad79773395aa6046..aa625ce2a4a9593ce055b42757675e70
      }
  
      void updateDistanceMapsTuinity(EntityPlayer player) {
-@@ -287,6 +297,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-             this.playerEntityTrackerLegacyMap.update(player, chunkX, chunkZ, this.entityTrackerLegacyMapRange);
+@@ -281,6 +291,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             this.playerEntityTrackerUntrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerUntrackRange, effectiveViewDistance));
          }
          // Tuinity end - use distance map to optimise entity tracker
 +
@@ -184,8 +184,8 @@ index e3565d8b9367e4a6f7e472e5ad79773395aa6046..aa625ce2a4a9593ce055b42757675e70
      }
      // Tuinity end
  
-@@ -500,6 +514,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                     null); // tracker tick handles entities moving out of range
+@@ -463,6 +477,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     });
          }
          // Tuinity end - use distance map to optimise entity tracker
 +        // Tuinity start - optimise getPlayersInRange type functions
@@ -195,7 +195,7 @@ index e3565d8b9367e4a6f7e472e5ad79773395aa6046..aa625ce2a4a9593ce055b42757675e70
  
      public void updatePlayerMobTypeMap(Entity entity) {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 57d8fa575c91e58ecf476de59b09a72c8bb8289e..6c1c4ff5978e4f8837eb0c42f85f4f2d3f45f27f 100644
+index adf04fd1761798d8266b857835b0b80765fe8a0f..83ccabe710880772e99ca5ee37bddb7f747766cf 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -197,6 +197,348 @@ public class WorldServer extends World {
