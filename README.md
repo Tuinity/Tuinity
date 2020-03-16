@@ -11,7 +11,7 @@ Fork of [Paper](https://github.com/PaperMC/Paper) aimed at improving server perf
 
 Tuinity uses the same paperclip jar system that Paper uses.
 
-You can download the latest build of Tuinity by going [here](https://github.com/Spottedleaf/Tuinity/actions), 
+You can download the latest build of Tuinity by going [here](https://github.com/Spottedleaf/Tuinity/actions?query=workflow%3A%22Java+CI%22), 
 clicking on the top-most entry, and click on `Tuinity` under the artifacts section.
 
 You can also [build it yourself](https://github.com/Spottedleaf/Tuinity#building)
