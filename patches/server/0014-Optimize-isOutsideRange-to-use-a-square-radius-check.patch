@@ -69,10 +69,10 @@ index 92cf86b8fb7acbc63d12a22936da092d6c0a638d..6d70ed6222101d58fcf34f520b8c2dd1
  
      public String c() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 4ea10db5ceb60dfec0d38c06b7d9972b1aeb5399..8de460966654048514a2c52cc4fd6ef81ec128a5 100644
+index 8d91ad04b691741b31979eda38ecb265823e62e4..94fb4754e780b067bd65d563eedfd00cc6cf17d8 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -629,6 +629,36 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -630,6 +630,36 @@ public class ChunkProviderServer extends IChunkProvider {
          boolean flag1 = this.world.getGameRules().getBoolean(GameRules.DO_MOB_SPAWNING) && !world.getPlayers().isEmpty(); // CraftBukkit
  
          if (!flag) {
@@ -109,7 +109,7 @@ index 4ea10db5ceb60dfec0d38c06b7d9972b1aeb5399..8de460966654048514a2c52cc4fd6ef8
              this.world.getMethodProfiler().enter("pollingChunks");
              int k = this.world.getGameRules().getInt(GameRules.RANDOM_TICK_SPEED);
              BlockPosition blockposition = this.world.getSpawn();
-@@ -662,15 +692,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -663,15 +693,7 @@ public class ChunkProviderServer extends IChunkProvider {
  
              this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
              this.world.getMethodProfiler().exit();
@@ -126,7 +126,7 @@ index 4ea10db5ceb60dfec0d38c06b7d9972b1aeb5399..8de460966654048514a2c52cc4fd6ef8
              // Tuinity start - replace chunk map
              this.isTickingChunks = true;
              for (Chunk chunk : this.entityTickingChunks) {
-@@ -686,10 +708,10 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -687,10 +709,10 @@ public class ChunkProviderServer extends IChunkProvider {
                      ChunkCoordIntPair chunkcoordintpair = playerchunk.i();
  
                      this.world.timings.chunkInhibitedRangeCheck.startTiming();
@@ -140,10 +140,10 @@ index 4ea10db5ceb60dfec0d38c06b7d9972b1aeb5399..8de460966654048514a2c52cc4fd6ef8
                              this.world.timings.mobSpawn.startTiming(); // Spigot
                              EnumCreatureType[] aenumcreaturetype1 = aenumcreaturetype;
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index 5ea1b797c0f79df38a54fbd6d98440369ac50cc7..937e513d81a2d4e4a521204e4d035ec35cc3925b 100644
+index 94c16a2ef34a53845db0aa6d9d4c60e54ae5d9b6..fc185136fbe671732b9ca0cc835a1bc057e8c253 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
-@@ -133,6 +133,8 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+@@ -135,6 +135,8 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
      }
      // Tuinity end - view distance api
  
@@ -153,7 +153,7 @@ index 5ea1b797c0f79df38a54fbd6d98440369ac50cc7..937e513d81a2d4e4a521204e4d035ec3
          super((World) worldserver, gameprofile);
          playerinteractmanager.player = this;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 0ede65662cc4ccc74036b489e603ff9cc60109e2..7a9b7575b355eedb1275c054011743066b227445 100644
+index c039ecaa12eb75694c887b1bc3ce48c2423fc04b..876e2993b4686832adc8ee94ffb16f593ff23143 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -43,6 +43,18 @@ public class PlayerChunk {
@@ -182,12 +182,12 @@ index 0ede65662cc4ccc74036b489e603ff9cc60109e2..7a9b7575b355eedb1275c05401174306
 +        this.updateRanges(); // Tuinity - optimise isOutsideOfRange
      }
  
-     // Tuinity start - per player view distance
+     // Paper start
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 5d5824ff0c70cd586883e9f27e14dac631207e68..15d31e84147ca1ea4a39f1cf92ca88fa2092d32a 100644
+index bb6f806a14556aaea5874da12d60059685858d5a..ba0a80fa77bfbfc0ad25d3a7f29e50e96c577d6a 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -141,9 +141,25 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -143,6 +143,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          player.needsChunkCenterUpdate = true;
          this.playerViewDistanceBroadcastMap.update(player, chunkX, chunkZ, effectiveNoTickViewDistance + 1); // clients need chunk neighbours
          player.needsChunkCenterUpdate = false;
@@ -195,6 +195,10 @@ index 5d5824ff0c70cd586883e9f27e14dac631207e68..15d31e84147ca1ea4a39f1cf92ca88fa
 +        this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, ChunkMapDistance.MOB_SPAWN_RANGE);
 +        // Tuinity end - optimise PlayerChunkMap#isOutsideRange
      }
+ 
+     final class ChunkSendThrottler {
+@@ -348,6 +351,19 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
      // Tuinity end - per player view distance
  
 +    // Tuinity start - optimise PlayerChunkMap#isOutsideRange
@@ -213,9 +217,9 @@ index 5d5824ff0c70cd586883e9f27e14dac631207e68..15d31e84147ca1ea4a39f1cf92ca88fa
      void addPlayerToDistanceMaps(EntityPlayer player) {
          this.updateMaps(player);
  
-@@ -191,6 +207,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-         this.getChunkMapDistanceManager().playerTickViewDistanceHandler.removePlayer(player);
+@@ -397,6 +413,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.getChunkMapDistanceManager().playerNoTickViewDistanceHandler.removePlayer(player);
+         this.chunkSendThrottler.removePlayer(player);
          // Tuinity end - per player view distance
 +
 +        // Tuinity start - optimise PlayerChunkMap#isOutsideRange
@@ -225,7 +229,7 @@ index 5d5824ff0c70cd586883e9f27e14dac631207e68..15d31e84147ca1ea4a39f1cf92ca88fa
      }
  
      void updateDistanceMapsTuinity(EntityPlayer player) {
-@@ -215,6 +236,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -421,6 +442,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.playerViewDistanceBroadcastMap.update(player, chunkX, chunkZ, effectiveNoTickViewDistance + 1); // clients need chunk neighbours
          player.needsChunkCenterUpdate = false;
          // Tuinity end - per player view distance
@@ -236,7 +240,7 @@ index 5d5824ff0c70cd586883e9f27e14dac631207e68..15d31e84147ca1ea4a39f1cf92ca88fa
      }
      // Tuinity end
  
-@@ -293,6 +318,39 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -497,6 +522,39 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      java.util.Arrays.fill(tempPacket, null);
                  });
          // Tuinity end - per player view distance
@@ -276,7 +280,7 @@ index 5d5824ff0c70cd586883e9f27e14dac631207e68..15d31e84147ca1ea4a39f1cf92ca88fa
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -326,6 +384,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -530,6 +588,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          return entityPlayer.mobCounts[enumCreatureType.ordinal()];
      }
  
@@ -284,7 +288,7 @@ index 5d5824ff0c70cd586883e9f27e14dac631207e68..15d31e84147ca1ea4a39f1cf92ca88fa
      private static double a(ChunkCoordIntPair chunkcoordintpair, Entity entity) {
          double d0 = (double) (chunkcoordintpair.x * 16 + 8);
          double d1 = (double) (chunkcoordintpair.z * 16 + 8);
-@@ -478,6 +537,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -682,6 +741,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                  playerchunk = (PlayerChunk) this.pendingUnload.remove(i);
                  if (playerchunk != null) {
                      playerchunk.a(j);
@@ -292,7 +296,7 @@ index 5d5824ff0c70cd586883e9f27e14dac631207e68..15d31e84147ca1ea4a39f1cf92ca88fa
                  } else {
                      playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.p, this);
                  }
-@@ -1424,30 +1484,51 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1628,30 +1688,51 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          return isOutsideOfRange(chunkcoordintpair, false);
      }
  
