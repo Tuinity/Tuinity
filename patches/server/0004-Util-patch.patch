@@ -1630,7 +1630,7 @@ index 0000000000000000000000000000000000000000..cf888454c18cf659f378e3fc494d109a
 +}
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 92065fe029291b7853e748aa717264747c84e4f9..837ee1dd0123f664d04b2992bc944fa791836118 100644
+index 92065fe029291b7853e748aa717264747c84e4f9..95789a6fb9efa539f9267d456585b0d172602a4f 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -162,6 +162,94 @@ public class Chunk implements IChunkAccess {
@@ -1695,7 +1695,7 @@ index 92065fe029291b7853e748aa717264747c84e4f9..837ee1dd0123f664d04b2992bc944fa7
 +                long mask = 0;
 +                for (int dx = -1; dx <= 1; ++dx) {
 +                    for (int dz = -1; dz <= 1; ++dz) {
-+                        mask |= getNeighbourIndex(dx, dz);
++                        mask |= (1L << getNeighbourIndex(dx, dz));
 +                    }
 +                }
 +                return (this.neighbourChunksLoadedBitset & mask) == mask;
@@ -1704,7 +1704,7 @@ index 92065fe029291b7853e748aa717264747c84e4f9..837ee1dd0123f664d04b2992bc944fa7
 +                long mask = 0;
 +                for (int dx = -2; dx <= 2; ++dx) {
 +                    for (int dz = -2; dz <= 2; ++dz) {
-+                        mask |= getNeighbourIndex(dx, dz);
++                        mask |= (1L << getNeighbourIndex(dx, dz));
 +                    }
 +                }
 +                return (this.neighbourChunksLoadedBitset & mask) == mask;
@@ -1713,7 +1713,7 @@ index 92065fe029291b7853e748aa717264747c84e4f9..837ee1dd0123f664d04b2992bc944fa7
 +                long mask = 0;
 +                for (int dx = -3; dx <= 3; ++dx) {
 +                    for (int dz = -3; dz <= 3; ++dz) {
-+                        mask |= getNeighbourIndex(dx, dz);
++                        mask |= (1L << getNeighbourIndex(dx, dz));
 +                    }
 +                }
 +                return (this.neighbourChunksLoadedBitset & mask) == mask;
@@ -1741,7 +1741,7 @@ index 92065fe029291b7853e748aa717264747c84e4f9..837ee1dd0123f664d04b2992bc944fa7
      @Nullable
      private TileEntity j(BlockPosition blockposition) {
          IBlockData iblockdata = this.getType(blockposition);
-@@ -649,6 +743,22 @@ public class Chunk implements IChunkAccess {
+@@ -649,6 +743,23 @@ public class Chunk implements IChunkAccess {
  
      // CraftBukkit start
      public void loadCallback() {
@@ -1759,12 +1759,13 @@ index 92065fe029291b7853e748aa717264747c84e4f9..837ee1dd0123f664d04b2992bc944fa7
 +                }
 +            }
 +        }
++        this.setNeighbourLoaded(0, 0, this);
 +        this.loadedTicketLevel = true;
 +        // Tuinity end - neighbour cache
          org.bukkit.Server server = this.world.getServer();
          ((WorldServer)this.world).getChunkProvider().addLoadedChunk(this); // Paper
          if (server != null) {
-@@ -692,6 +802,21 @@ public class Chunk implements IChunkAccess {
+@@ -692,6 +803,21 @@ public class Chunk implements IChunkAccess {
          // note: saving can be prevented, but not forced if no saving is actually required
          this.mustNotSave = !unloadEvent.isSaveChunk();
          ((WorldServer)this.world).getChunkProvider().removeLoadedChunk(this); // Paper
