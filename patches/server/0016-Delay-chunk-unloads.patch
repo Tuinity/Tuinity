@@ -3,8 +3,8 @@ From: Spottedleaf <Spottedleaf@users.noreply.github.com>
 Date: Fri, 25 Oct 2019 02:11:30 -0700
 Subject: [PATCH] Delay chunk unloads
 
-Chunk unloads are now delayed by 30s. Specifically, ticket level
-reduction is delayed by 30s. This is done to allow players to
+Chunk unloads are now delayed by 10s. Specifically, ticket level
+reduction is delayed by 10s. This is done to allow players to
 teleport and have their pets follow them, as the chunks will no longer
 unload or have entity ticking status removed.
 
@@ -12,8 +12,10 @@ It's also targetted to reduce performance regressions when
 plugins or edge cases in code do not spam sync loads since chunks
 without tickets get unloaded immediately.
 
+Configurable under `delay-chunkunloads-by` in config.
+
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index 8f1070270409344f35957df09b869e81d51fc643..189f2f0468e8c359fa5d8bb620731c5cded64272 100644
+index ae0aa1533a9f47ce46d8afe6315f5772b74e9552..534a6bc7e60b2e8a98bdfe39ecac8abc83b395a2 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -1,6 +1,7 @@
@@ -24,9 +26,9 @@ index 8f1070270409344f35957df09b869e81d51fc643..189f2f0468e8c359fa5d8bb620731c5c
  import org.bukkit.Bukkit;
  import org.bukkit.configuration.ConfigurationSection;
  import org.bukkit.configuration.file.YamlConfiguration;
-@@ -107,6 +108,15 @@ public final class TuinityConfig {
-         tickThreads = TuinityConfig.getInt("server-tick-threads", 1); // will be 4 in the future
-     }*/
+@@ -143,6 +144,16 @@ public final class TuinityConfig {
+         }
+     }
  
 +    public static int delayChunkUnloadsBy;
 +
@@ -37,9 +39,10 @@ index 8f1070270409344f35957df09b869e81d51fc643..189f2f0468e8c359fa5d8bb620731c5c
 +        }
 +    }
 +
-     public static int maxChunkLoadsPerPlayer;
-     public static double maxChunkSendsPerPlayer; // per second
++
+     public static final class WorldConnfig {
  
+         public final String worldName;
 diff --git a/src/main/java/net/minecraft/server/ChunkMap.java b/src/main/java/net/minecraft/server/ChunkMap.java
 index 24ba03ae580858fde7c32c915bb447b97ea229a6..d3c616e72ddddb87e019864b0b90228c96636ebc 100644
 --- a/src/main/java/net/minecraft/server/ChunkMap.java
@@ -53,7 +56,7 @@ index 24ba03ae580858fde7c32c915bb447b97ea229a6..d3c616e72ddddb87e019864b0b90228c
          this.a(ChunkCoordIntPair.a, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 6d70ed6222101d58fcf34f520b8c2dd15b1c767b..cb2e67d1598ab66eab0251e8973b0847badf7633 100644
+index 223097ec271a25344480d88635fd8b51deca88ff..6826c0369c063b3e7b8867181f1bec260e57234a 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
@@ -65,8 +68,8 @@ index 6d70ed6222101d58fcf34f520b8c2dd15b1c767b..cb2e67d1598ab66eab0251e8973b0847
      public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); // Tuinity - no longer used
      //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); // Tuinity - no longer used
      private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue // Tuinity - use a better queue
-@@ -91,6 +91,47 @@ public abstract class ChunkMapDistance {
-     };
+@@ -105,6 +105,47 @@ public abstract class ChunkMapDistance {
+     }
      // Tuinity end
  
 +    // Tuinity start - delay chunk unloads
@@ -113,7 +116,7 @@ index 6d70ed6222101d58fcf34f520b8c2dd15b1c767b..cb2e67d1598ab66eab0251e8973b0847
      protected ChunkMapDistance(Executor executor, Executor executor1) {
          executor1.getClass();
          Mailbox<Runnable> mailbox = Mailbox.a("player ticket throttler", executor1::execute);
-@@ -107,12 +148,30 @@ public abstract class ChunkMapDistance {
+@@ -121,12 +162,30 @@ public abstract class ChunkMapDistance {
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
@@ -145,7 +148,7 @@ index 6d70ed6222101d58fcf34f520b8c2dd15b1c767b..cb2e67d1598ab66eab0251e8973b0847
                  this.e.b(entry.getLongKey(), a((ArraySetSorted) entry.getValue()), false);
              }
  
-@@ -123,6 +182,7 @@ public abstract class ChunkMapDistance {
+@@ -137,6 +196,7 @@ public abstract class ChunkMapDistance {
  
      }
  
@@ -153,7 +156,7 @@ index 6d70ed6222101d58fcf34f520b8c2dd15b1c767b..cb2e67d1598ab66eab0251e8973b0847
      private static int a(ArraySetSorted<Ticket<?>> arraysetsorted) {
          return !arraysetsorted.isEmpty() ? ((Ticket) arraysetsorted.b()).b() : PlayerChunkMap.GOLDEN_TICKET + 1;
      }
-@@ -207,6 +267,11 @@ public abstract class ChunkMapDistance {
+@@ -221,6 +281,11 @@ public abstract class ChunkMapDistance {
          boolean removed = false; // CraftBukkit
          if (arraysetsorted.remove(ticket)) {
              removed = true; // CraftBukkit
