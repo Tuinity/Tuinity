@@ -42,10 +42,10 @@ index 4349d22cc8390628e3adee9896dd33cc2cca4d99..d529b795c5434328a81c015558708b49
          nbttagcompound1.setString("Status", ichunkaccess.getChunkStatus().d());
          ChunkConverter chunkconverter = ichunkaccess.p();
 diff --git a/src/main/java/net/minecraft/server/RegionFile.java b/src/main/java/net/minecraft/server/RegionFile.java
-index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433b99c7b49 100644
+index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..4c5f9f157b1b41bc32515fe74014119591503f12 100644
 --- a/src/main/java/net/minecraft/server/RegionFile.java
 +++ b/src/main/java/net/minecraft/server/RegionFile.java
-@@ -28,14 +28,342 @@ public class RegionFile implements AutoCloseable {
+@@ -28,14 +28,349 @@ public class RegionFile implements AutoCloseable {
      private static final Logger LOGGER = LogManager.getLogger();
      private static final ByteBuffer b = ByteBuffer.allocateDirect(1);
      private final FileChannel dataFile;
@@ -118,6 +118,22 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433
 +        return length.getInt(0);
 +    }
 +
++    private void backupRegionFile() {
++        File backup = new File(this.file.getParent(), this.file.getName() + "." + new java.util.Random().nextLong() + ".backup");
++        this.backupRegionFile(backup);
++    }
++
++    private void backupRegionFile(File to) {
++        try {
++            this.dataFile.force(true);
++            MinecraftServer.LOGGER.warn("Backing up regionfile \"" + this.file.getAbsolutePath() + "\" to " + to.getAbsolutePath());
++            java.nio.file.Files.copy(this.file.toPath(), to.toPath());
++            MinecraftServer.LOGGER.warn("Backed up the regionfile to " + to.getAbsolutePath());
++        } catch (IOException ex) {
++            MinecraftServer.LOGGER.error("Failed to backup to " + to.getAbsolutePath(), ex);
++        }
++    }
++
 +    // note: only call for CHUNK regionfiles
 +    void recalculateHeader() throws IOException {
 +        if (!this.canRecalcHeader) {
@@ -128,16 +144,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433
 +
 +            // try to backup file so maybe it could be sent to us for further investigation
 +
-+            File backup = new File(this.file.getParent(), this.file.getName() + "." + new java.util.Random().nextLong() + ".backup");
-+            try {
-+                this.dataFile.force(true);
-+                MinecraftServer.LOGGER.warn("Backing up to " + backup.getAbsolutePath());
-+                java.nio.file.Files.copy(this.file.toPath(), backup.toPath());
-+                MinecraftServer.LOGGER.warn("Backed up the regionfile " + backup.getAbsolutePath());
-+            } catch (IOException ex) {
-+                MinecraftServer.LOGGER.error("Failed to backup to " + backup.getAbsolutePath(), ex);
-+            }
-+
++            this.backupRegionFile();
 +            NBTTagCompound[] compounds = new NBTTagCompound[32 * 32]; // only in the regionfile (i.e exclude mojang/aikar oversized data)
 +            int[] rawLengths = new int[32 * 32]; // length of chunk data including 4 byte length field, bytes
 +            int[] sectorOffsets = new int[32 * 32]; // in sectors
@@ -392,7 +399,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433
      public final java.util.concurrent.locks.ReentrantLock fileLock = new java.util.concurrent.locks.ReentrantLock(true); // Paper
  
      // Paper start - Cache chunk status
-@@ -63,10 +391,21 @@ public class RegionFile implements AutoCloseable {
+@@ -63,10 +398,21 @@ public class RegionFile implements AutoCloseable {
      // Paper end
  
      public RegionFile(File file, File file1) throws IOException {
@@ -415,27 +422,71 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433
          this.file = java_nio_file_path.toFile(); // Paper
          this.f = ByteBuffer.allocateDirect(8192);
          initOversizedState();
-@@ -90,6 +429,8 @@ public class RegionFile implements AutoCloseable {
+@@ -90,12 +436,15 @@ public class RegionFile implements AutoCloseable {
                      RegionFile.LOGGER.warn("Region file {} has truncated header: {}", java_nio_file_path, i);
                  }
  
-+                boolean needsHeaderRecalc = false;  // Tuinity - recalculate header on header corruption
+-                for (int j = 0; j < 1024; ++j) {
++                boolean needsHeaderRecalc = false; // Tuinity - recalculate header on header corruption
++                boolean hasBackedUp = false; // Tuinity - recalculate header on header corruption
 +
-                 for (int j = 0; j < 1024; ++j) {
++                for (int j = 0; j < 1024; ++j) { // Tuinity - diff on change, we expect j to be the header location
                      int k = this.g.get(j);
  
-@@ -105,20 +446,53 @@ public class RegionFile implements AutoCloseable {
+                     if (k != 0) {
+-                        int l = b(k);
+-                        int i1 = a(k);
++                        int l = b(k); // Tuinity - diff on change, we expect l to be offset in file
++                        int i1 = a(k); // Tuinity - diff on change, we expect i1 to be sector length of region
+                         // Spigot start
+                         if (i1 == 255) {
+                             // We're maxed out, so we need to read the proper length from the section
+@@ -105,20 +454,87 @@ public class RegionFile implements AutoCloseable {
                          }
                          // Spigot end
  
 -                        this.freeSectors.a(l, i1);
-+                        needsHeaderRecalc |= !this.freeSectors.tryAllocate(l, i1); // Tuinity - recalculate header on header corruption
++                        // Tuinity start - recalculate header on header corruption
++                        if (l < 0 || i1 < 0 || (l + i1) < 0) {
++                            if (canRecalcHeader) {
++                                MinecraftServer.LOGGER.error("Detected invalid header for regionfile " + this.file.getAbsolutePath() + "! Recalculating header...");
++                                needsHeaderRecalc = true;
++                                break;
++                            } else {
++                                // location = chunkX | (chunkZ << 5);
++                                MinecraftServer.LOGGER.fatal("Detected invalid header for regionfile " + this.file.getAbsolutePath() +
++                                        "! Cannot recalculate, removing local chunk (" + (j & 31) + "," + (j >>> 5) + ") from header");
++                                if (!hasBackedUp) {
++                                    hasBackedUp = true;
++                                    this.backupRegionFile();
++                                }
++                                this.getTimestamps().put(j, 0); // be consistent, delete the timestamp too
++                                this.getOffsets().put(j, 0); // delete the entry from header
++                                continue;
++                            }
++                        }
++                        boolean failedToAllocate = !this.freeSectors.tryAllocate(l, i1);
++                        if (failedToAllocate && !canRecalcHeader) {
++                            // location = chunkX | (chunkZ << 5);
++                            MinecraftServer.LOGGER.fatal("Detected invalid header for regionfile " + this.file.getAbsolutePath() +
++                                    "! Cannot recalculate, removing local chunk (" + (j & 31) + "," + (j >>> 5) + ") from header");
++                            if (!hasBackedUp) {
++                                hasBackedUp = true;
++                                this.backupRegionFile();
++                            }
++                            this.getTimestamps().put(j, 0); // be consistent, delete the timestamp too
++                            this.getOffsets().put(j, 0); // delete the entry from header
++                            continue;
++                        }
++                        needsHeaderRecalc |= failedToAllocate;
++                        // Tuinity end - recalculate header on header corruption
                      }
                  }
 +
 +                // Tuinity start - recalculate header on header corruption
 +                // we move the recalc here so comparison to old header is correct when logging to console
 +                if (needsHeaderRecalc) { // true if header gave us overlapping allocations
++                    MinecraftServer.LOGGER.error("Recalculating regionfile " + this.file.getAbsolutePath() + ", header gave conflicting offsets & locations");
 +                    this.recalculateHeader();
 +                }
 +                // Tuinity end
@@ -480,7 +531,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433
      @Nullable public synchronized DataInputStream getReadStream(ChunkCoordIntPair chunkCoordIntPair) throws IOException { return a(chunkCoordIntPair);} // Paper - OBFHELPER
      @Nullable
      public synchronized DataInputStream a(ChunkCoordIntPair chunkcoordintpair) throws IOException {
-@@ -142,6 +516,12 @@ public class RegionFile implements AutoCloseable {
+@@ -142,6 +558,12 @@ public class RegionFile implements AutoCloseable {
              this.dataFile.read(bytebuffer, (long) (j * 4096));
              ((java.nio.Buffer) bytebuffer).flip();
              if (bytebuffer.remaining() < 5) {
@@ -493,7 +544,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433
                  RegionFile.LOGGER.error("Chunk {} header is truncated: expected {} but read {}", chunkcoordintpair, l, bytebuffer.remaining());
                  return null;
              } else {
-@@ -150,6 +530,12 @@ public class RegionFile implements AutoCloseable {
+@@ -150,6 +572,12 @@ public class RegionFile implements AutoCloseable {
  
                  if (i1 == 0) {
                      RegionFile.LOGGER.warn("Chunk {} is allocated, but stream is missing", chunkcoordintpair);
@@ -506,7 +557,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433
                      return null;
                  } else {
                      int j1 = i1 - 1;
-@@ -162,9 +548,21 @@ public class RegionFile implements AutoCloseable {
+@@ -162,9 +590,21 @@ public class RegionFile implements AutoCloseable {
                          return this.a(chunkcoordintpair, b(b0));
                      } else if (j1 > bytebuffer.remaining()) {
                          RegionFile.LOGGER.error("Chunk {} stream is truncated: expected {} but read {}", chunkcoordintpair, j1, bytebuffer.remaining());
@@ -528,7 +579,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433
                          return null;
                      } else {
                          return this.a(chunkcoordintpair, b0, a(bytebuffer, j1));
-@@ -323,10 +721,15 @@ public class RegionFile implements AutoCloseable {
+@@ -323,10 +763,15 @@ public class RegionFile implements AutoCloseable {
      }
  
      private ByteBuffer a() {
@@ -545,7 +596,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..5bd7b8f55378b643af38648e963c1433
          ((java.nio.Buffer) bytebuffer).flip();
          return bytebuffer;
      }
-@@ -363,6 +766,7 @@ public class RegionFile implements AutoCloseable {
+@@ -363,6 +808,7 @@ public class RegionFile implements AutoCloseable {
          };
      }
  
