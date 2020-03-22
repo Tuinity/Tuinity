@@ -801,7 +801,7 @@ index 0000000000000000000000000000000000000000..934792ad396aa427ffd4ca99279fa863
 \ No newline at end of file
 diff --git a/src/main/java/com/tuinity/tuinity/util/Util.java b/src/main/java/com/tuinity/tuinity/util/Util.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..a69fc14880bc7654094d5d5ea3306fc82a9b97d5
+index 0000000000000000000000000000000000000000..92f43870fb2d4f1669ed92f2d51aa83fcfe2b2ed
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/Util.java
 @@ -0,0 +1,103 @@
@@ -833,11 +833,11 @@ index 0000000000000000000000000000000000000000..a69fc14880bc7654094d5d5ea3306fc8
 +    }
 +
 +    public static long getCoordinateKey(final BlockPosition blockPos) {
-+        return getCoordinateKey(blockPos.getX() >> 4, blockPos.getZ() >> 4);
++        return ((long)(blockPos.getZ() >> 4) << 32) | ((blockPos.getX() >> 4) & 0xFFFFFFFFL);
 +    }
 +
 +    public static long getCoordinateKey(final Entity entity) {
-+        return getCoordinateKey(getChunkCoordinate(entity.locX()), getChunkCoordinate(entity.locZ()));
++        return ((long)(Util.fastFloor(entity.locZ()) >> 4) << 32) | ((Util.fastFloor(entity.locX()) >> 4) & 0xFFFFFFFFL);
 +    }
 +
 +    public static int fastFloor(double x) {
@@ -851,7 +851,7 @@ index 0000000000000000000000000000000000000000..a69fc14880bc7654094d5d5ea3306fc8
 +    }
 +
 +    public static long getCoordinateKey(final ChunkCoordIntPair pair) {
-+        return getCoordinateKey(pair.x, pair.z);
++        return ((long)pair.z << 32) | (pair.x & 0xFFFFFFFFL);
 +    }
 +
 +    public static long getCoordinateKey(final int x, final int z) {
@@ -910,7 +910,7 @@ index 0000000000000000000000000000000000000000..a69fc14880bc7654094d5d5ea3306fc8
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/util/map/AreaMap.java b/src/main/java/com/tuinity/tuinity/util/map/AreaMap.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..dfb7a417eaf44013824aef8d1b27b6c0a61b2e92
+index 0000000000000000000000000000000000000000..a350e4204d4b42ec0770b650efc07d6d51e9e983
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/map/AreaMap.java
 @@ -0,0 +1,388 @@
@@ -970,12 +970,12 @@ index 0000000000000000000000000000000000000000..dfb7a417eaf44013824aef8d1b27b6c0
 +
 +    @Nullable
 +    public PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> getObjectsInRange(final ChunkCoordIntPair chunkPos) {
-+        return this.getObjectsInRange(chunkPos.x, chunkPos.z);
++        return this.areaMap.get(Util.getCoordinateKey(chunkPos));
 +    }
 +
 +    @Nullable
 +    public PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E> getObjectsInRange(final int chunkX, final int chunkZ) {
-+        return this.getObjectsInRange(Util.getCoordinateKey(chunkX, chunkZ));
++        return this.areaMap.get(Util.getCoordinateKey(chunkX, chunkZ));
 +    }
 +
 +    // Long.MIN_VALUE indicates the object is not mapped
