@@ -6,7 +6,7 @@ Subject: [PATCH] Use distance map to optimise entity tracker
 Add a new config option to enable tracking entities by a chunk range.
 
 diff --git a/src/main/java/co/aikar/timings/WorldTimingsHandler.java b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-index 51281cfa2d3f398602d93dd021d17aa25a7190d3..5b0b722b01b6861000a944f708152542e1230fa5 100644
+index c9a3ba4bfb1a4c3b08d752f00e2c125accc1c502..af24eb0bcf20b655446f76c2143e037c4d8f7f63 100644
 --- a/src/main/java/co/aikar/timings/WorldTimingsHandler.java
 +++ b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
 @@ -34,6 +34,7 @@ public class WorldTimingsHandler {
@@ -17,7 +17,7 @@ index 51281cfa2d3f398602d93dd021d17aa25a7190d3..5b0b722b01b6861000a944f708152542
      public final Timing doTick;
      public final Timing tickEntities;
      public final Timing chunks;
-@@ -119,6 +120,7 @@ public class WorldTimingsHandler {
+@@ -118,6 +119,7 @@ public class WorldTimingsHandler {
  
          tracker1 = Timings.ofSafe(name + "tracker stage 1");
          tracker2 = Timings.ofSafe(name + "tracker stage 2");
@@ -669,7 +669,7 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..ca4e4cf03c47232d0b9fcd1610b63ed9
              Iterator iterator = list.iterator();
  
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 2b630dc1876ddb88c9df677eaebfbf59480d364e..270468071e785a496aa768581f4f9be7f2889b64 100644
+index 51b3c9d561152acb1f4b5adf72e9939a5f32675a..5d6f08f2969e65510fc41fff29e7c097a5792144 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -82,6 +82,8 @@ public class WorldServer extends World {
@@ -681,7 +681,7 @@ index 2b630dc1876ddb88c9df677eaebfbf59480d364e..270468071e785a496aa768581f4f9be7
      // Paper start - optimise getPlayerByUUID
      @Nullable
      @Override
-@@ -818,6 +820,10 @@ public class WorldServer extends World {
+@@ -829,6 +831,10 @@ public class WorldServer extends World {
          int k = MathHelper.floor(entity.locZ() / 16.0D);
  
          if (!entity.inChunk || entity.chunkX != i || entity.chunkY != j || entity.chunkZ != k) {
@@ -692,7 +692,7 @@ index 2b630dc1876ddb88c9df677eaebfbf59480d364e..270468071e785a496aa768581f4f9be7
              if (entity.inChunk && this.isChunkLoaded(entity.chunkX, entity.chunkZ)) {
                  this.getChunkAt(entity.chunkX, entity.chunkZ).a(entity, entity.chunkY);
              }
-@@ -827,6 +833,83 @@ public class WorldServer extends World {
+@@ -838,6 +844,83 @@ public class WorldServer extends World {
              } else {
                  this.getChunkAt(i, k).a(entity);
              }

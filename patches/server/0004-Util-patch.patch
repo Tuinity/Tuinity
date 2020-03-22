@@ -1630,7 +1630,7 @@ index 0000000000000000000000000000000000000000..cf888454c18cf659f378e3fc494d109a
 +}
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 92065fe029291b7853e748aa717264747c84e4f9..95789a6fb9efa539f9267d456585b0d172602a4f 100644
+index 07073af991d446ff0b5de4ff1d017383a1e8a25e..dcda848f4f5efe9d2e78bcdd7e3ab5baa6f4abe8 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -162,6 +162,94 @@ public class Chunk implements IChunkAccess {
@@ -1728,7 +1728,7 @@ index 92065fe029291b7853e748aa717264747c84e4f9..95789a6fb9efa539f9267d456585b0d1
      public Chunk(World world, ProtoChunk protochunk) {
          this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.getInhabitedTime(), protochunk.getSections(), (Consumer) null);
          Iterator iterator = protochunk.y().iterator();
-@@ -508,6 +596,12 @@ public class Chunk implements IChunkAccess {
+@@ -512,6 +600,12 @@ public class Chunk implements IChunkAccess {
          return ((HeightMap) this.heightMap.get(heightmap_type)).a(i & 15, j & 15) - 1;
      }
  
@@ -1741,7 +1741,7 @@ index 92065fe029291b7853e748aa717264747c84e4f9..95789a6fb9efa539f9267d456585b0d1
      @Nullable
      private TileEntity j(BlockPosition blockposition) {
          IBlockData iblockdata = this.getType(blockposition);
-@@ -649,6 +743,23 @@ public class Chunk implements IChunkAccess {
+@@ -653,6 +747,23 @@ public class Chunk implements IChunkAccess {
  
      // CraftBukkit start
      public void loadCallback() {
@@ -1765,7 +1765,7 @@ index 92065fe029291b7853e748aa717264747c84e4f9..95789a6fb9efa539f9267d456585b0d1
          org.bukkit.Server server = this.world.getServer();
          ((WorldServer)this.world).getChunkProvider().addLoadedChunk(this); // Paper
          if (server != null) {
-@@ -692,6 +803,21 @@ public class Chunk implements IChunkAccess {
+@@ -696,6 +807,21 @@ public class Chunk implements IChunkAccess {
          // note: saving can be prevented, but not forced if no saving is actually required
          this.mustNotSave = !unloadEvent.isSaveChunk();
          ((WorldServer)this.world).getChunkProvider().removeLoadedChunk(this); // Paper
@@ -1788,10 +1788,10 @@ index 92065fe029291b7853e748aa717264747c84e4f9..95789a6fb9efa539f9267d456585b0d1
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index cf9021d605c9d29a1ed1cad6b4ba108598bc3d50..894f2cedc42b25f66ca77e1aecc7b92476c8b856 100644
+index 1dcd0980ecf81f1fdc1f792ffdac48da00ec1ac6..7da38954b334045ec9458d287d0b809a1c13b549 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -636,11 +636,10 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -643,11 +643,10 @@ public class ChunkProviderServer extends IChunkProvider {
              EnumCreatureType[] aenumcreaturetype = EnumCreatureType.values();
              // Paper start - per player mob spawning
              int[] worldMobCount;
@@ -1806,7 +1806,7 @@ index cf9021d605c9d29a1ed1cad6b4ba108598bc3d50..894f2cedc42b25f66ca77e1aecc7b924
                  // re-set mob counts
                  for (EntityPlayer player : this.world.players) {
                      Arrays.fill(player.mobCounts, 0);
-@@ -724,9 +723,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -730,9 +729,23 @@ public class ChunkProviderServer extends IChunkProvider {
  
                                      if (this.world.paperConfig.perPlayerMobSpawns) {
                                          int minDiff = Integer.MAX_VALUE;
@@ -2002,10 +2002,10 @@ index 5117dafbcf402d0db82d791a6b4b821eaa1350ba..549d975cb9df17d5979261b2f8e0bf2c
                  if (chunk != null) {
                      chunk.a(oclass, axisalignedbb, list, predicate);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index c74b85917ac1f31e79c9e80bd920c30fe0e8ee6d..aed7182cb4bf289591e48f068c3ca079ee62d684 100644
+index 2de48e75379f505d6428ab8ac0e6a2fb202cff21..fa19835106f96624f7905834b154ef9ba7302b1c 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -1178,6 +1178,7 @@ public class WorldServer extends World {
+@@ -1189,6 +1189,7 @@ public class WorldServer extends World {
  
          this.registerEntity(entityplayer);
          this.getChunkProvider().playerChunkMap.addPlayerToDistanceMaps(entityplayer); // Paper - distance maps
@@ -2013,7 +2013,7 @@ index c74b85917ac1f31e79c9e80bd920c30fe0e8ee6d..aed7182cb4bf289591e48f068c3ca079
      }
  
      // CraftBukkit start
-@@ -1360,6 +1361,7 @@ public class WorldServer extends World {
+@@ -1371,6 +1372,7 @@ public class WorldServer extends World {
  
              this.players.remove(entityplayer);
              this.getChunkProvider().playerChunkMap.removePlayerFromDistanceMaps(entityplayer); // Paper - distance maps

@@ -69,10 +69,10 @@ index 6442f6bd83f79876bb3c8f111f37992c88865b44..223097ec271a25344480d88635fd8b51
  
      public String c() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index bd196d5e28b43984d46e9ffa1d3ab85140e0e20f..afac07723032135358bbbeed2e3a7227859c601f 100644
+index 0149092b36381a14c0f120d1f61ef4e48e6ed511..df8317e72f488ee9841d10abb9fb6b465fcd1486 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -629,6 +629,36 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -636,6 +636,36 @@ public class ChunkProviderServer extends IChunkProvider {
          boolean flag1 = this.world.getGameRules().getBoolean(GameRules.DO_MOB_SPAWNING) && !world.getPlayers().isEmpty(); // CraftBukkit
  
          if (!flag) {
@@ -109,7 +109,7 @@ index bd196d5e28b43984d46e9ffa1d3ab85140e0e20f..afac07723032135358bbbeed2e3a7227
              this.world.getMethodProfiler().enter("pollingChunks");
              int k = this.world.getGameRules().getInt(GameRules.RANDOM_TICK_SPEED);
              BlockPosition blockposition = this.world.getSpawn();
-@@ -662,15 +692,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -669,15 +699,7 @@ public class ChunkProviderServer extends IChunkProvider {
  
              this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
              this.world.getMethodProfiler().exit();
@@ -126,10 +126,10 @@ index bd196d5e28b43984d46e9ffa1d3ab85140e0e20f..afac07723032135358bbbeed2e3a7227
              // Tuinity start - replace chunk map
              this.isTickingChunks = true;
              for (Chunk chunk : this.entityTickingChunks) {
-@@ -686,10 +708,10 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -692,10 +714,10 @@ public class ChunkProviderServer extends IChunkProvider {
+                     this.world.getMethodProfiler().exit();
                      ChunkCoordIntPair chunkcoordintpair = playerchunk.i();
  
-                     this.world.timings.chunkInhibitedRangeCheck.startTiming();
 -                    if (!this.playerChunkMap.isOutsideOfRange(chunkcoordintpair)) {
 +                    if (!this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false)) { // Tuinity - optimise isOutsideOfRange
                          // Paper end
@@ -153,7 +153,7 @@ index 3d37d54200c65449b9e7df77161aba5cd2ecde85..d49c45ce7fa14b28c28f8f1daa713f39
          super((World) worldserver, gameprofile);
          playerinteractmanager.player = this;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 5a05306a0bfb85b5b8d2445bf837299a76e1bb04..f7653551ec8e5f96e2a50663c913c1ed11f70d7c 100644
+index d822e6c86c75c618deccdce982ace58eaf4fcf13..cc5ae6eef4f8356a1778506c465f267a27283ab7 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -43,6 +43,18 @@ public class PlayerChunk {
