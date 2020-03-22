@@ -6,7 +6,7 @@ Subject: [PATCH] Tuinity Server Config
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..16dcdb8553103436889648b35de01029d64d3b2e
+index 0000000000000000000000000000000000000000..fb21ae58c9bf2ccb364477c941e5627ba3ddc7da
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -0,0 +1,219 @@
@@ -117,13 +117,13 @@ index 0000000000000000000000000000000000000000..16dcdb8553103436889648b35de01029
 +        return TuinityConfig.config.getDouble(path, dfl);
 +    }
 +
-+    public static final class WorldConnfig {
++    public static final class WorldConfig {
 +
 +        public final String worldName;
 +        public ConfigurationSection config;
 +        ConfigurationSection worldDefaults;
 +
-+        public WorldConnfig(final String worldName) {
++        public WorldConfig(final String worldName) {
 +            this.worldName = worldName;
 +            this.init();
 +        }
@@ -147,7 +147,7 @@ index 0000000000000000000000000000000000000000..16dcdb8553103436889648b35de01029
 +        public void load(final ConfigurationSection config) {
 +            this.config = config;
 +
-+            for (final Method method : TuinityConfig.WorldConnfig.class.getDeclaredMethods()) {
++            for (final Method method : TuinityConfig.WorldConfig.class.getDeclaredMethods()) {
 +                if (method.getReturnType() != void.class || method.getParameterCount() != 0 ||
 +                        !Modifier.isPrivate(method.getModifiers()) || Modifier.isStatic(method.getModifiers())) {
 +                    continue;
@@ -243,14 +243,14 @@ index 349a0ea213f7f45e927d439985e121e8fa66c041..c4890b5ad55b7003d06e075eaa532630
          this.setSpawnAnimals(dedicatedserverproperties.spawnAnimals);
          this.setSpawnNPCs(dedicatedserverproperties.spawnNpcs);
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 549d975cb9df17d5979261b2f8e0bf2c6b996ea5..55dec7a5905b74ed37955f3f83bd9f690745d306 100644
+index 549d975cb9df17d5979261b2f8e0bf2c6b996ea5..6c62446f24438fab0975efbd76ebe4ef43391618 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -82,6 +82,8 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
      public final com.destroystokyo.paper.PaperWorldConfig paperConfig; // Paper
      public final ChunkPacketBlockController chunkPacketBlockController; // Paper - Anti-Xray
  
-+    public final com.tuinity.tuinity.config.TuinityConfig.WorldConnfig tuinityConfig; // Tuinity - Server Config
++    public final com.tuinity.tuinity.config.TuinityConfig.WorldConfig tuinityConfig; // Tuinity - Server Config
 +
      public final co.aikar.timings.WorldTimingsHandler timings; // Paper
      public static BlockPosition lastPhysicsProblem; // Spigot
@@ -259,7 +259,7 @@ index 549d975cb9df17d5979261b2f8e0bf2c6b996ea5..55dec7a5905b74ed37955f3f83bd9f69
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig( worlddata.getName() ); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(worlddata.getName(), this.spigotConfig); // Paper
          this.chunkPacketBlockController = this.paperConfig.antiXray ? new ChunkPacketBlockControllerAntiXray(this.paperConfig) : ChunkPacketBlockController.NO_OPERATION_INSTANCE; // Paper - Anti-Xray
-+        this.tuinityConfig = new com.tuinity.tuinity.config.TuinityConfig.WorldConnfig(worlddata.getName()); // Tuinity - Server Config
++        this.tuinityConfig = new com.tuinity.tuinity.config.TuinityConfig.WorldConfig(worlddata.getName()); // Tuinity - Server Config
          this.generator = gen;
          this.world = new CraftWorld((WorldServer) this, gen, env);
          this.ticksPerAnimalSpawns = this.getServer().getTicksPerAnimalSpawns(); // CraftBukkit
