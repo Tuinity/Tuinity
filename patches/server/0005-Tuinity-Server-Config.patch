@@ -6,10 +6,10 @@ Subject: [PATCH] Tuinity Server Config
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..68e3b915a81b49578be05628216af2326a72df41
+index 0000000000000000000000000000000000000000..16dcdb8553103436889648b35de01029d64d3b2e
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,219 @@
 +package com.tuinity.tuinity.config;
 +
 +import ca.spottedleaf.concurrentutil.util.Throw;
@@ -20,12 +20,13 @@ index 0000000000000000000000000000000000000000..68e3b915a81b49578be05628216af232
 +import java.io.File;
 +import java.lang.reflect.Method;
 +import java.lang.reflect.Modifier;
++import java.util.List;
 +import java.util.logging.Level;
 +
 +public final class TuinityConfig {
 +
 +    public static final String CONFIG_HEADER = "Configuration file for Tuinity.";
-+    public static final int CURRENT_CONFIG_VERSION = 0;
++    public static final int CURRENT_CONFIG_VERSION = 1;
 +
 +    private static final Object[] EMPTY = new Object[0];
 +
@@ -67,6 +68,7 @@ index 0000000000000000000000000000000000000000..68e3b915a81b49578be05628216af232
 +    public static void load(final YamlConfiguration config) {
 +        TuinityConfig.config = config;
 +        TuinityConfig.configVersion = TuinityConfig.getInt("config-version-please-do-not-modify-me", CURRENT_CONFIG_VERSION);
++        TuinityConfig.set("config-version-please-do-not-modify-me", CURRENT_CONFIG_VERSION);
 +
 +        for (final Method method : TuinityConfig.class.getDeclaredMethods()) {
 +            if (method.getReturnType() != void.class || method.getParameterCount() != 0 ||
@@ -91,17 +93,26 @@ index 0000000000000000000000000000000000000000..68e3b915a81b49578be05628216af232
 +        }
 +    }
 +
-+    private static boolean getBoolean(final String path, final boolean dfl) {
++    static void set(final String path, final Object value) {
++        TuinityConfig.config.set(path, value);
++    }
++
++    static boolean getBoolean(final String path, final boolean dfl) {
 +        TuinityConfig.config.addDefault(path, Boolean.valueOf(dfl));
 +        return TuinityConfig.config.getBoolean(path, dfl);
 +    }
 +
-+    private static int getInt(final String path, final int dfl) {
++    static int getInt(final String path, final int dfl) {
 +        TuinityConfig.config.addDefault(path, Integer.valueOf(dfl));
 +        return TuinityConfig.config.getInt(path, dfl);
 +    }
 +
-+    private static double getDouble(final String path, final double dfl) {
++    static long getLong(final String path, final long dfl) {
++        TuinityConfig.config.addDefault(path, Long.valueOf(dfl));
++        return TuinityConfig.config.getLong(path, dfl);
++    }
++
++    static double getDouble(final String path, final double dfl) {
 +        TuinityConfig.config.addDefault(path, Double.valueOf(dfl));
 +        return TuinityConfig.config.getDouble(path, dfl);
 +    }
@@ -110,6 +121,7 @@ index 0000000000000000000000000000000000000000..68e3b915a81b49578be05628216af232
 +
 +        public final String worldName;
 +        public ConfigurationSection config;
++        ConfigurationSection worldDefaults;
 +
 +        public WorldConnfig(final String worldName) {
 +            this.worldName = worldName;
@@ -117,11 +129,17 @@ index 0000000000000000000000000000000000000000..68e3b915a81b49578be05628216af232
 +        }
 +
 +        public void init() {
-+            ConfigurationSection section = TuinityConfig.config.getConfigurationSection(this.worldName);
-+            if (section == null) {
-+                section = TuinityConfig.config.createSection(this.worldName);
++            this.worldDefaults = TuinityConfig.config.getConfigurationSection("world-settings.default");
++            if (this.worldDefaults == null) {
++                this.worldDefaults = TuinityConfig.config.createSection("world-settings.default");
 +            }
-+            TuinityConfig.config.set(this.worldName, section);
++
++            String worldSectionPath = TuinityConfig.configVersion < 1 ? this.worldName : "world-settings.".concat(this.worldName);
++            ConfigurationSection section = TuinityConfig.config.getConfigurationSection(worldSectionPath);
++            if (section == null) {
++                section = TuinityConfig.config.createSection(worldSectionPath);
++            }
++            TuinityConfig.config.set(worldSectionPath, section);
 +
 +            this.load(section);
 +        }
@@ -144,6 +162,12 @@ index 0000000000000000000000000000000000000000..68e3b915a81b49578be05628216af232
 +                }
 +            }
 +
++            if (TuinityConfig.configVersion < 1) {
++                ConfigurationSection oldSection = TuinityConfig.config.getConfigurationSection(this.worldName);
++                TuinityConfig.config.set("world-settings.".concat(this.worldName), oldSection);
++                TuinityConfig.config.set(this.worldName, null);
++            }
++
 +            /* We re-save to add new options */
 +            try {
 +                TuinityConfig.config.save(TuinityConfig.configFile);
@@ -152,19 +176,55 @@ index 0000000000000000000000000000000000000000..68e3b915a81b49578be05628216af232
 +            }
 +        }
 +
-+        private boolean getBoolean(final String path, final boolean dfl) {
-+            this.config.addDefault(path, Boolean.valueOf(dfl));
-+            return this.config.getBoolean(path, dfl);
++        /**
++         * update world defaults for the specified path, but also sets this world's config value for the path
++         * if it exists
++         */
++        void set(final String path, final Object val) {
++            this.worldDefaults.set(path, val);
++            if (this.config.get(path) != null) {
++                this.config.set(path, val);
++            }
 +        }
 +
-+        private int getInt(final String path, final int dfl) {
-+            this.config.addDefault(path, Integer.valueOf(dfl));
-+            return this.config.getInt(path, dfl);
++        boolean getBoolean(final String path, final boolean dfl) {
++            this.worldDefaults.addDefault(path, Boolean.valueOf(dfl));
++            if (TuinityConfig.configVersion < 1) {
++                if (this.config.getBoolean(path) == dfl) {
++                    this.config.set(path, null);
++                }
++            }
++            return this.config.getBoolean(path, this.worldDefaults.getBoolean(path));
 +        }
 +
-+        private double getDouble(final String path, final double dfl) {
-+            this.config.addDefault(path, Double.valueOf(dfl));
-+            return this.config.getDouble(path, dfl);
++        int getInt(final String path, final int dfl) {
++            this.worldDefaults.addDefault(path, Integer.valueOf(dfl));
++            if (TuinityConfig.configVersion < 1) {
++                if (this.config.getInt(path) == dfl) {
++                    this.config.set(path, null);
++                }
++            }
++            return this.config.getInt(path, this.worldDefaults.getInt(path));
++        }
++
++        long getLong(final String path, final long dfl) {
++            this.worldDefaults.addDefault(path, Long.valueOf(dfl));
++            if (TuinityConfig.configVersion < 1) {
++                if (this.config.getLong(path) == dfl) {
++                    this.config.set(path, null);
++                }
++            }
++            return this.config.getLong(path, this.worldDefaults.getLong(path));
++        }
++
++        double getDouble(final String path, final double dfl) {
++            this.worldDefaults.addDefault(path, Double.valueOf(dfl));
++            if (TuinityConfig.configVersion < 1) {
++                if (this.config.getDouble(path) == dfl) {
++                    this.config.set(path, null);
++                }
++            }
++            return this.config.getDouble(path, this.worldDefaults.getDouble(path));
 +        }
 +    }
 +
