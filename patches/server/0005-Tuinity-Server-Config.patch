@@ -6,10 +6,10 @@ Subject: [PATCH] Tuinity Server Config
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..89a4567a8ee9591bab78c444f45cf73393e294df
+index 0000000000000000000000000000000000000000..fd09b37cd3387ea7870166a3f48def6da3ed2f0d
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,168 @@
 +package com.tuinity.tuinity.config;
 +
 +import ca.spottedleaf.concurrentutil.util.Throw;
@@ -91,6 +91,15 @@ index 0000000000000000000000000000000000000000..89a4567a8ee9591bab78c444f45cf733
 +        }
 +    }
 +
++    private static ConfigurationSection worldConfigDefault;
++    private static void worldConfigDefault() {
++        worldConfigDefault = TuinityConfig.config.getConfigurationSection("defaults");
++        if (worldConfigDefault == null) {
++            worldConfigDefault = TuinityConfig.config.createSection("defaults");
++        }
++        TuinityConfig.config.set("defaults", worldConfigDefault);
++    }
++
 +    private static boolean getBoolean(final String path, final boolean dfl) {
 +        TuinityConfig.config.addDefault(path, Boolean.valueOf(dfl));
 +        return TuinityConfig.config.getBoolean(path, dfl);
@@ -153,23 +162,22 @@ index 0000000000000000000000000000000000000000..89a4567a8ee9591bab78c444f45cf733
 +        }
 +
 +        private boolean getBoolean(final String path, final boolean dfl) {
-+            this.config.addDefault(path, Boolean.valueOf(dfl));
-+            return this.config.getBoolean(path, dfl);
++            TuinityConfig.worldConfigDefault.addDefault(path, Boolean.valueOf(dfl));
++            return this.config.getBoolean(path, TuinityConfig.worldConfigDefault.getBoolean(path, dfl));
 +        }
 +
 +        private int getInt(final String path, final int dfl) {
-+            this.config.addDefault(path, Integer.valueOf(dfl));
-+            return this.config.getInt(path, dfl);
++            TuinityConfig.worldConfigDefault.addDefault(path, Integer.valueOf(dfl));
++            return this.config.getInt(path, TuinityConfig.worldConfigDefault.getInt(path, dfl));
 +        }
 +
 +        private double getDouble(final String path, final double dfl) {
-+            this.config.addDefault(path, Double.valueOf(dfl));
-+            return this.config.getDouble(path, dfl);
++            TuinityConfig.worldConfigDefault.addDefault(path, Double.valueOf(dfl));
++            return this.config.getDouble(path, TuinityConfig.worldConfigDefault.getDouble(path, dfl));
 +        }
 +    }
 +
 +}
-\ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
 index 349a0ea213f7f45e927d439985e121e8fa66c041..c4890b5ad55b7003d06e075eaa532630c435ed99 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
