@@ -6,10 +6,10 @@ Subject: [PATCH] Add soft async catcher
 Must be enabled via -Dtuinity.strict-thread-checks=true
 
 diff --git a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
-index 666f49fe96a56bd19155e78abcf4b13b04c90320..7f55de899144675064b2a8cfc79b185c5f3ea2fa 100644
+index e948012d5b2096ab1ced310141d0315c074210c7..4ace0d8d78bb184b3f23935259b2e0ca94323266 100644
 --- a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
 +++ b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
-@@ -181,6 +181,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -189,6 +189,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
      }
  
      public void onChunkSetTicking(final int chunkX, final int chunkZ) {
@@ -17,7 +17,7 @@ index 666f49fe96a56bd19155e78abcf4b13b04c90320..7f55de899144675064b2a8cfc79b185c
          final ArrayList<NextTickListEntry<T>> pending = this.pendingChunkTickLoad.remove(MCUtil.getCoordinateKey(chunkX, chunkZ));
          if (pending == null) {
              return;
-@@ -261,6 +262,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -269,6 +270,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public void tick() {
@@ -25,7 +25,7 @@ index 666f49fe96a56bd19155e78abcf4b13b04c90320..7f55de899144675064b2a8cfc79b185c
          final ChunkProviderServer chunkProvider = this.world.getChunkProvider();
  
          this.world.getMethodProfiler().enter("cleaning");
-@@ -401,6 +403,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -409,6 +411,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
      }
  
      public void schedule(final BlockPosition pos, final T data, final long targetTick, final TickListPriority priority) {
@@ -33,7 +33,7 @@ index 666f49fe96a56bd19155e78abcf4b13b04c90320..7f55de899144675064b2a8cfc79b185c
          final NextTickListEntry<T> entry = new NextTickListEntry<>(pos, data, targetTick, priority);
          if (this.excludeFromScheduling.test(entry.getData())) {
              return;
-@@ -453,6 +456,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -468,6 +471,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public List<NextTickListEntry<T>> getEntriesInBoundingBox(final StructureBoundingBox structureboundingbox, final boolean removeReturned, final boolean excludeTicked) {
@@ -41,7 +41,7 @@ index 666f49fe96a56bd19155e78abcf4b13b04c90320..7f55de899144675064b2a8cfc79b185c
          if (structureboundingbox.getMinX() == structureboundingbox.getMaxX() || structureboundingbox.getMinZ() == structureboundingbox.getMaxZ()) {
              return Collections.emptyList(); // vanilla behaviour, check isBlockInSortof above
          }
-@@ -509,6 +513,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -524,6 +528,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public void copy(StructureBoundingBox structureboundingbox, BlockPosition blockposition) {
@@ -49,7 +49,7 @@ index 666f49fe96a56bd19155e78abcf4b13b04c90320..7f55de899144675064b2a8cfc79b185c
          // start copy from TickListServer // TODO check on update
          List<NextTickListEntry<T>> list = this.getEntriesInBoundingBox(structureboundingbox, false, false);
          Iterator<NextTickListEntry<T>> iterator = list.iterator();
-@@ -528,6 +533,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -543,6 +548,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public List<NextTickListEntry<T>> getEntriesInChunk(ChunkCoordIntPair chunkPos, boolean removeReturned, boolean excludeTicked) {
@@ -57,7 +57,7 @@ index 666f49fe96a56bd19155e78abcf4b13b04c90320..7f55de899144675064b2a8cfc79b185c
          // Vanilla DOES get the entries 2 blocks out of the chunk too, but that doesn't matter since we ignore chunks
          // not at ticking status, and ticking status requires neighbours loaded
          // so with this method we will reduce scheduler churning
-@@ -559,6 +565,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -574,6 +580,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public NBTTagList serialize(ChunkCoordIntPair chunkcoordintpair) {
@@ -65,7 +65,7 @@ index 666f49fe96a56bd19155e78abcf4b13b04c90320..7f55de899144675064b2a8cfc79b185c
          // start copy from TickListServer  // TODO check on update
          List<NextTickListEntry<T>> list = this.getEntriesInChunk(chunkcoordintpair, false, true);
  
-@@ -568,6 +575,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -583,6 +590,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public int getTotalScheduledEntries() {
@@ -155,7 +155,7 @@ index dcda848f4f5efe9d2e78bcdd7e3ab5baa6f4abe8..2edd644e4ac56678871038b0ec2131cc
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 73d157076562e7ee8757b981d3acfe6b46e46de4..5919dbc3e14900db46c5090714a15c2f97c2fdf8 100644
+index 0244768f76d83af427a07bd235c9bcec8ad5429e..8fa9b268b8e61b5e9d971bb3ef095742bf0d1c6f 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -53,6 +53,7 @@ public abstract class ChunkMapDistance {
@@ -213,7 +213,7 @@ index 73d157076562e7ee8757b981d3acfe6b46e46de4..5919dbc3e14900db46c5090714a15c2f
 +        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async ticket remove"); // Tuinity
          Ticket<T> target = new Ticket<>(ticketType, ticketLevel, ticketIdentifier);
  
-         for (java.util.Iterator<ArraySetSorted<Ticket<?>>> iterator = this.tickets.values().iterator(); iterator.hasNext();) {
+         for (java.util.Iterator<Entry<ArraySetSorted<Ticket<?>>>> iterator = this.tickets.long2ObjectEntrySet().fastIterator(); iterator.hasNext();) {
 diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
 index 3a88c9a67062eb73ad8257ea786efca7e7e99f65..3e5d6a9e151fb990b777c1ac48cabea653ea1c27 100644
 --- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
