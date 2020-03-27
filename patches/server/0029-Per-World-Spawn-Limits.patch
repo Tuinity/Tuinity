@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Chase Whipple <chasewhip20@gmail.com>
+Date: Thu, 26 Mar 2020 21:45:54 -0600
+Subject: [PATCH] Per World Spawn Limits
+
+
+diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+index 78c011309a26e572e176378ff80e51a035870d2c..43f8fd9ad2ab335a06c8cc45f245b71b1278db35 100644
+--- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
++++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+@@ -142,13 +142,13 @@ public final class TuinityConfig {
+ 
+         // we want to spread out a and b over the interval so it's smooth
+ 
+-        int aInt = (int)a;
+-        int bInt = (int)b;
++        int aInt = (int) a;
++        int bInt = (int) b;
+         double total = b;
+         maxChunkSendsPerPlayerChoice[0] = bInt;
+ 
+         for (int i = 1, len = maxChunkSendsPerPlayerChoice.length; i < len; ++i) {
+-            if (total / (double)i >= rateTick) {
++            if (total / (double) i >= rateTick) {
+                 total += a;
+                 maxChunkSendsPerPlayerChoice[i] = aInt;
+             } else {
+@@ -277,7 +277,9 @@ public final class TuinityConfig {
+             return this.config.getDouble(path, this.worldDefaults.getDouble(path));
+         }
+ 
+-        /** ignored if {@link TuinityConfig#tickWorldsInParallel} == false */
++        /**
++         * ignored if {@link TuinityConfig#tickWorldsInParallel} == false
++         */
+         public int threads;
+ 
+         /*
+@@ -287,6 +289,7 @@ public final class TuinityConfig {
+         }*/
+ 
+         public int noTickViewDistance;
++
+         private void noTickViewDistance() {
+             this.noTickViewDistance = this.getInt("no-tick-view-distance", -1);
+         }
+@@ -300,6 +303,19 @@ public final class TuinityConfig {
+             }
+             this.useOptimizedTracker = this.getBoolean("optimized-tracker", true);
+         }
+-    }
+ 
++        public int spawnLimitMonsters;
++        public int spawnLimitAnimals;
++        public int spawnLimitWaterAnimals;
++        public int spawnLimitAmbient;
++
++        private void perWorldSpawnLimit() {
++            String path = "spawn-limits";
++
++            spawnLimitMonsters = getInt(path + ".monsters", -1);
++            spawnLimitAnimals = getInt(path + ".animals", -1);
++            spawnLimitWaterAnimals = getInt(path + ".water-animals", -1);
++            spawnLimitAmbient = getInt(path + ".ambient", -1);
++        }
++    }
+ }
+\ No newline at end of file
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+index 4db397d9f9b57d5281617b11c9a00743c1c947fb..680be2efeb641af65c0fa67ff1b1ba206acb302d 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+@@ -329,6 +329,13 @@ public class CraftWorld implements World {
+         this.generator = gen;
+ 
+         environment = env;
++
++        //Paper start - per world spawn limits
++        monsterSpawn = world.tuinityConfig.spawnLimitMonsters;
++        animalSpawn = world.tuinityConfig.spawnLimitAnimals;
++        waterAnimalSpawn = world.tuinityConfig.spawnLimitWaterAnimals;
++        ambientSpawn = world.tuinityConfig.spawnLimitAmbient;
++        //Paper end
+     }
+ 
+     @Override
