@@ -40,7 +40,7 @@ index b98b4f9b52ff29ef4a52165dd63787663b13e582..d3bcecb90759dd5827ad2d02eeb16e86
  
      public void checkDespawn() {}
 diff --git a/src/main/java/net/minecraft/server/PlayerConnectionUtils.java b/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
-index eb3269e0ea3ce33d08e9eee3bca7cf434921e991..aab95b27ded86af8e1a9b6aab015145d510a541b 100644
+index eb3269e0ea3ce33d08e9eee3bca7cf434921e991..0f7bb50a9638018fa8a61cc443718c37d11cccdb 100644
 --- a/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
 +++ b/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
 @@ -13,10 +13,25 @@ public class PlayerConnectionUtils {
@@ -48,7 +48,7 @@ index eb3269e0ea3ce33d08e9eee3bca7cf434921e991..aab95b27ded86af8e1a9b6aab015145d
      }
  
 +    // Tuinity start - detailed watchdog information
-+    private static final ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<PacketListener> packetProcessing = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>();
++    private static final java.util.concurrent.ConcurrentLinkedDeque<PacketListener> packetProcessing = new java.util.concurrent.ConcurrentLinkedDeque<>();
 +
 +    public static java.util.List<PacketListener> getCurrentPacketProcessors() {
 +        java.util.List<PacketListener> ret = new java.util.ArrayList<>(4);
@@ -64,7 +64,7 @@ index eb3269e0ea3ce33d08e9eee3bca7cf434921e991..aab95b27ded86af8e1a9b6aab015145d
          if (!iasynctaskhandler.isMainThread()) {
              Timing timing = MinecraftTimings.getPacketTiming(packet); // Paper - timings
              iasynctaskhandler.execute(() -> {
-+                packetProcessing.add(t0); // Tuinity - detailed watchdog information
++                packetProcessing.push(t0); // Tuinity - detailed watchdog information
 +                try { // Tuinity - detailed watchdog information
                  if (MinecraftServer.getServer().hasStopped() || (t0 instanceof PlayerConnection && ((PlayerConnection) t0).processedDisconnect)) return; // CraftBukkit, MC-142590
                  if (t0.a().isConnected()) {
@@ -75,14 +75,14 @@ index eb3269e0ea3ce33d08e9eee3bca7cf434921e991..aab95b27ded86af8e1a9b6aab015145d
                  }
 +                // Tuinity start - detailed watchdog information
 +                } finally {
-+                    packetProcessing.poll();
++                    packetProcessing.pop();
 +                }
 +                // Tuinity end - detailed watchdog information
  
              });
              throw CancelledPacketHandleException.INSTANCE;
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 92b79e3e718f558d366685eed12a5d226ee70e74..2a348ffd400290c8b2bd5dac67acf1a81efff048 100644
+index 92b79e3e718f558d366685eed12a5d226ee70e74..9fc38244aa2867cf3f84e9aeb7c0692a0e814d66 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -1102,7 +1102,26 @@ public class WorldServer extends World {
@@ -90,7 +90,7 @@ index 92b79e3e718f558d366685eed12a5d226ee70e74..2a348ffd400290c8b2bd5dac67acf1a8
      }
  
 +    // Tuinity start - log detailed entity tick information
-+    static final ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<Entity> currentlyTickingEntities = new ca.spottedleaf.concurrentutil.queue.MultiThreadedQueue<>();
++    static final java.util.concurrent.ConcurrentLinkedDeque<Entity> currentlyTickingEntities = new java.util.concurrent.ConcurrentLinkedDeque<>();
 +
 +    public static List<Entity> getCurrentlyTickingEntities() {
 +        List<Entity> ret = Lists.newArrayListWithCapacity(4);
@@ -107,7 +107,7 @@ index 92b79e3e718f558d366685eed12a5d226ee70e74..2a348ffd400290c8b2bd5dac67acf1a8
 +        // Tuinity start - log detailed entity tick information
 +        com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot tick an entity off-main");
 +        try {
-+            currentlyTickingEntities.add(entity);
++            currentlyTickingEntities.push(entity);
 +        // Tuinity end - log detailed entity tick information
          if (entity instanceof EntityHuman || this.getChunkProvider().a(entity)) {
              ++TimingHistory.entityTicks; // Paper - timings
@@ -118,7 +118,7 @@ index 92b79e3e718f558d366685eed12a5d226ee70e74..2a348ffd400290c8b2bd5dac67acf1a8
          }
 +        // Tuinity start - log detailed entity tick information
 +        } finally {
-+            currentlyTickingEntities.poll();
++            currentlyTickingEntities.pop();
 +        }
 +        // Tuinity end - log detailed entity tick information
      }
