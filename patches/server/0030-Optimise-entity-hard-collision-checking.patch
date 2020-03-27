@@ -1,0 +1,235 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 26 Mar 2020 20:19:05 -0700
+Subject: [PATCH] Optimise entity hard collision checking
+
+Very few entities actually hard collide, so store them in their own
+entity slices and provide a special getEntites type call just for them.
+This reduces entity collision checking impact (in my testing) by 25%
+for crammed entities (shove 130 cows into an 8x6 area in one chunk).
+Less crammed entities are likely to show significantly less benefit.
+Effectively, this patch optimises crammed entity situations.
+
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index 8b8e1d900e1a5e6c4418fc3822afb6de4ba87983..00bc88b2bfae533bc7f17d084ec7e3b4106d14de 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -92,6 +92,55 @@ public class Chunk implements IChunkAccess {
+     private final int[] inventoryEntityCounts = new int[16];
+     // Paper end
+ 
++    // Tuinity start - optimise hard collision handling
++    final com.tuinity.tuinity.util.EntityList[] hardCollidingEntities = new com.tuinity.tuinity.util.EntityList[16];
++
++    {
++        for (int i = 0, len = this.hardCollidingEntities.length; i < len; ++i) {
++            this.hardCollidingEntities[i] = new com.tuinity.tuinity.util.EntityList();
++        }
++    }
++
++    public final void getHardCollidingEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<Entity> into) {
++        // copied from getEntities
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        int min = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
++        int max = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
++
++        min = MathHelper.clamp(min, 0, this.hardCollidingEntities.length - 1);
++        max = MathHelper.clamp(max, 0, this.hardCollidingEntities.length - 1);
++
++        for (int k = min; k <= max; ++k) {
++            com.tuinity.tuinity.util.EntityList entityList = this.hardCollidingEntities[k];
++            Entity[] entities = entityList.getRawData();
++
++            for (int i = 0, len = entityList.size(); i < len; ++i) {
++                Entity entity1 = entities[i];
++                if (entity1.shouldBeRemoved) continue; // Paper
++
++                if (entity1 != entity && entity1.getBoundingBox().intersects(axisalignedbb)) {
++                    into.add(entity1);
++
++                    if (!(entity1 instanceof EntityEnderDragon)) {
++                        continue;
++                    }
++
++                    EntityComplexPart[] aentitycomplexpart = ((EntityEnderDragon) entity1).getComplexParts();
++                    int l = aentitycomplexpart.length;
++
++                    for (int i1 = 0; i1 < l; ++i1) {
++                        EntityComplexPart entitycomplexpart = aentitycomplexpart[i1];
++
++                        if (entitycomplexpart != entity && entitycomplexpart.getBoundingBox().intersects(axisalignedbb)) {
++                            into.add(entitycomplexpart);
++                        }
++                    }
++                }
++            }
++        }
++    }
++    // Tuinity end - optimise hard collision handling
++
+     public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeStorage biomestorage, ChunkConverter chunkconverter, TickList<Block> ticklist, TickList<FluidType> ticklist1, long i, @Nullable ChunkSection[] achunksection, @Nullable Consumer<Chunk> consumer) {
+         this.sections = new ChunkSection[16];
+         this.e = Maps.newHashMap();
+@@ -546,7 +595,7 @@ public class Chunk implements IChunkAccess {
+         entity.chunkY = k;
+         entity.chunkZ = this.loc.z;
+         this.entities.add(entity); // Paper - per chunk entity list
+-        this.entitySlices[k].add(entity);
++        this.entitySlices[k].add(entity); if (entity.hardCollides()) this.hardCollidingEntities[k].add(entity); // Tuinity - optimise hard colliding entities
+         // Paper start
+         if (entity instanceof EntityItem) {
+             itemCounts[k]++;
+@@ -583,7 +632,7 @@ public class Chunk implements IChunkAccess {
+         if (entitySlices[i] == entity.entitySlice) {
+             entity.entitySlice = null;
+         }
+-        if (!this.entitySlices[i].remove(entity)) {
++        if (entity.hardCollides()) this.hardCollidingEntities[i].remove(entity); if (!this.entitySlices[i].remove(entity)) { // Tuinity - optimise hard colliding entities
+             return;
+         }
+         if (entity instanceof EntityItem) {
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index 223ad3965ce0f44e37dd5ef6dca50046e88997fd..b98b4f9b52ff29ef4a52165dd63787663b13e582 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -344,6 +344,40 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+     }
+     // Tuinity end
+ 
++    // Tuinity start
++    /**
++     * Overriding this field will cause memory leaks.
++     */
++    private final boolean hardCollides;
++
++    private static final java.util.Map<Class<? extends Entity>, Boolean> cachedOverrides = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
++    {
++        Boolean hardCollides = cachedOverrides.get(this.getClass());
++        if (hardCollides == null) {
++            try {
++                Object getHardCollisionBoxMethod = Entity.class.getMethod("au");
++                Object getHardCollisionBoxEntityMethod = Entity.class.getMethod("j", Entity.class);
++                if (!this.getClass().getMethod("au").equals(getHardCollisionBoxMethod)) {
++                    hardCollides = Boolean.TRUE;
++                } else if (!this.getClass().getMethod("j", Entity.class).equals(getHardCollisionBoxEntityMethod)) {
++                    hardCollides = Boolean.TRUE;
++                } else {
++                    hardCollides = Boolean.FALSE;
++                }
++                cachedOverrides.put(this.getClass(), hardCollides);
++            } catch (Throwable thr) {
++                // shouldn't happen, just explode
++                throw new RuntimeException(thr);
++            }
++        }
++        this.hardCollides = hardCollides.booleanValue();
++    }
++
++    public final boolean hardCollides() {
++        return this.hardCollides;
++    }
++    // Tuinity end
++
+     public Entity(EntityTypes<?> entitytypes, World world) {
+         this.id = Entity.entityCount.incrementAndGet();
+         this.passengers = Lists.newArrayList();
+@@ -1214,7 +1248,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+     }
+ 
+     @Nullable
+-    public AxisAlignedBB au() {
++    public AxisAlignedBB au() { // Tuinity - diff on change, we expect this to be "getHardCollisionBox" (hard collision optimisation)
+         return null;
+     }
+ 
+@@ -2126,7 +2160,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+     }
+ 
+     @Nullable
+-    public AxisAlignedBB j(Entity entity) {
++    public AxisAlignedBB j(Entity entity) { // Tuinity - diff on change, we expect this to be "getHardCollisionBox" (hard collision optimisation)
+         return null;
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/EntityEnderDragon.java b/src/main/java/net/minecraft/server/EntityEnderDragon.java
+index bf14d33c0dda2861fdb2cbab19358b66495d16e9..206abf636a9f1057a9e0d72e042a7a910d4d92d1 100644
+--- a/src/main/java/net/minecraft/server/EntityEnderDragon.java
++++ b/src/main/java/net/minecraft/server/EntityEnderDragon.java
+@@ -847,6 +847,7 @@ public class EntityEnderDragon extends EntityInsentient implements IMonster {
+     @Override
+     public void checkDespawn() {}
+ 
++    public final EntityComplexPart[] getComplexParts() { return this.eo(); } // Tuinity - OBFHELPER
+     public EntityComplexPart[] eo() {
+         return this.children;
+     }
+diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
+index c522a7c2a7554dd691e5c8013658787ad2e61348..2108923f5f7e7681c273b9e23bf8dcc8197bab2a 100644
+--- a/src/main/java/net/minecraft/server/IEntityAccess.java
++++ b/src/main/java/net/minecraft/server/IEntityAccess.java
+@@ -42,17 +42,26 @@ public interface IEntityAccess {
+         return this.b(oclass, axisalignedbb, IEntitySelector.f);
+     }
+ 
++    // Tuinity start - optimise hard collision
++    /**
++     * Not guaranteed to only return hard colliding entites
++     */
++    default List<Entity> getHardCollidingEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
++        return this.getEntities(entity, axisalignedbb);
++    }
++    // Tuinity end - optimise hard collision
++
+     default Stream<VoxelShape> b(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
+         if (axisalignedbb.a() < 1.0E-7D) {
+             return Stream.empty();
+         } else {
+             AxisAlignedBB axisalignedbb1 = axisalignedbb.g(1.0E-7D);
+-            Stream<AxisAlignedBB> stream = this.getEntities(entity, axisalignedbb1).stream().filter((entity1) -> { // Paper - decompile fix
++            Stream<AxisAlignedBB> stream = this.getHardCollidingEntities(entity, axisalignedbb1).stream().filter((entity1) -> { // Paper - decompile fix // Tuinity - optimise hard collision
+                 return !set.contains(entity1);
+             }).filter((entity1) -> {
+                 return entity == null || !entity.isSameVehicle(entity1);
+             }).flatMap((entity1) -> {
+-                return Stream.of(entity1.au(), entity == null ? null : entity.j(entity1));
++                return Stream.of(entity1.au(), entity == null ? null : entity.j(entity1)); // Tuinity - optimise hard collision - diff on change, these are the methods that only hard colliding entities override
+             }).filter(Objects::nonNull);
+ 
+             return stream.filter(axisalignedbb1::c).map(VoxelShapes::a);
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 2b5d0ecd0d520b28a06483f01473a7c080bef808..6d34f487eaaa022d3884ba44fe3a962cd914ecb4 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -1180,6 +1180,32 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+         return this.getChunkAt(i, j, ChunkStatus.FULL, false);
+     }
+ 
++    // Tuinity start - optimise hard collision handling
++    @Override
++    public List<Entity> getHardCollidingEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
++        // copied from below
++        List<Entity> list = Lists.newArrayList();
++        int i = MathHelper.floor((axisalignedbb.minX - 2.0D) / 16.0D);
++        int j = MathHelper.floor((axisalignedbb.maxX + 2.0D) / 16.0D);
++        int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
++        int l = MathHelper.floor((axisalignedbb.maxZ + 2.0D) / 16.0D);
++
++        ChunkProviderServer chunkProvider = ((ChunkProviderServer)this.chunkProvider); // Tuinity - optimize for loaded chunks
++
++        for (int i1 = i; i1 <= j; ++i1) {
++            for (int j1 = k; j1 <= l; ++j1) {
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(i1, j1); // Paper // Tuinity - optimize for loaded chunks
++
++                if (chunk != null) {
++                    chunk.getHardCollidingEntities(entity, axisalignedbb, list);
++                }
++            }
++        }
++
++        return list;
++    }
++    // Tuinity end - optimise hard collision handling
++
+     @Override
+     public List<Entity> getEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Predicate<? super Entity> predicate) {
+         this.getMethodProfiler().c("getEntities");
