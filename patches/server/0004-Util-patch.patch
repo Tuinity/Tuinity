@@ -6,10 +6,10 @@ Subject: [PATCH] Util patch
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java b/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..d528d08ea5c17059e3f252acd3192f3c1e13f309
+index 0000000000000000000000000000000000000000..a5c38bc078dd03187a16c9cdff4939dacde3f7dd
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java
-@@ -0,0 +1,155 @@
+@@ -0,0 +1,159 @@
 +package com.tuinity.tuinity.chunk;
 +
 +import ca.spottedleaf.concurrentutil.lock.WeakSeqLock;
@@ -115,6 +115,8 @@ index 0000000000000000000000000000000000000000..d528d08ea5c17059e3f252acd3192f3c
 +            }
 +        }
 +
++        this.queuedPuts.clear();
++
 +        final LongIterator iterator1 = this.queuedRemove.iterator();
 +        while (iterator1.hasNext()) {
 +            final long key = iterator1.nextLong();
@@ -127,6 +129,7 @@ index 0000000000000000000000000000000000000000..d528d08ea5c17059e3f252acd3192f3c
 +            }
 +        }
 +
++        this.queuedRemove.clear();
 +
 +        return true;
 +    }
@@ -157,10 +160,11 @@ index 0000000000000000000000000000000000000000..d528d08ea5c17059e3f252acd3192f3c
 +                this.visibleMap.remove(key);
 +            }
 +
-+
 +            return true;
 +        } finally {
 +            this.updatingMapSeqLock.releaseWrite();
++            this.queuedRemove.clear();
++            this.queuedPuts.clear();
 +        }
 +    }
 +
