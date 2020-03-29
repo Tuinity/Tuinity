@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Chase Whipple <chasewhip20@gmail.com>
+Date: Thu, 26 Mar 2020 21:45:54 -0600
+Subject: [PATCH] Per World Spawn Limits
+
+
+diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+index 78c011309a26e572e176378ff80e51a035870d2c..bcc5866aaee295887a323cc5cdbb08fa66937255 100644
+--- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
++++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+@@ -300,6 +300,19 @@ public final class TuinityConfig {
+             }
+             this.useOptimizedTracker = this.getBoolean("optimized-tracker", true);
+         }
+-    }
+ 
++        public int spawnLimitMonsters;
++        public int spawnLimitAnimals;
++        public int spawnLimitWaterAnimals;
++        public int spawnLimitAmbient;
++
++        private void perWorldSpawnLimit() {
++            String path = "spawn-limits";
++
++            spawnLimitMonsters = getInt(path + ".monsters", -1);
++            spawnLimitAnimals = getInt(path + ".animals", -1);
++            spawnLimitWaterAnimals = getInt(path + ".water-animals", -1);
++            spawnLimitAmbient = getInt(path + ".ambient", -1);
++        }
++    }
+ }
+\ No newline at end of file
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+index 4db397d9f9b57d5281617b11c9a00743c1c947fb..ae461b77b3c37f664e139ca9d1bb144235b3da91 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+@@ -329,6 +329,13 @@ public class CraftWorld implements World {
+         this.generator = gen;
+ 
+         environment = env;
++
++        //Tuinity start - per world spawn limits
++        monsterSpawn = world.tuinityConfig.spawnLimitMonsters;
++        animalSpawn = world.tuinityConfig.spawnLimitAnimals;
++        waterAnimalSpawn = world.tuinityConfig.spawnLimitWaterAnimals;
++        ambientSpawn = world.tuinityConfig.spawnLimitAmbient;
++        //Tuinity end
+     }
+ 
+     @Override
