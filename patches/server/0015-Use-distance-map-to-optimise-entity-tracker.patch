@@ -5,91 +5,52 @@ Subject: [PATCH] Use distance map to optimise entity tracker
 
 Add a new config option to enable tracking entities by a chunk range.
 
-diff --git a/src/main/java/co/aikar/timings/WorldTimingsHandler.java b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-index c9a3ba4bfb1a4c3b08d752f00e2c125accc1c502..af24eb0bcf20b655446f76c2143e037c4d8f7f63 100644
---- a/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-+++ b/src/main/java/co/aikar/timings/WorldTimingsHandler.java
-@@ -34,6 +34,7 @@ public class WorldTimingsHandler {
-     public final Timing tileEntityPending;
-     public final Timing tracker1;
-     public final Timing tracker2;
-+    public final Timing tracker3; // Tuinity - legacy tracker
-     public final Timing doTick;
-     public final Timing tickEntities;
-     public final Timing chunks;
-@@ -118,6 +119,7 @@ public class WorldTimingsHandler {
- 
-         tracker1 = Timings.ofSafe(name + "tracker stage 1");
-         tracker2 = Timings.ofSafe(name + "tracker stage 2");
-+        tracker3 = Timings.ofSafe(name + "tracker stage 3"); // Tuinity - legacy tracker
-         doTick = Timings.ofSafe(name + "doTick");
-         tickEntities = Timings.ofSafe(name + "tickEntities");
- 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index a541e9e87f8d56a6fd228e0e806a633090f6fa11..053f93ea8bfd85a4d953537875c50a9e3e061f0e 100644
+index a541e9e87f8d56a6fd228e0e806a633090f6fa11..77b0b467dd7ede58bf3da36be8d5777e1682488e 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-@@ -280,6 +280,16 @@ public final class TuinityConfig {
+@@ -280,6 +280,26 @@ public final class TuinityConfig {
          private void noTickViewDistance() {
              this.noTickViewDistance = this.getInt("no-tick-view-distance", -1);
          }
 +
 +        public boolean useOptimizedTracker;
++        public int optimizedTrackerTrackRange;
++        public int optimizedTrackerUntrackRange;
 +
 +        private void optimizetracker() {
-+            if (TuinityConfig.configVersion < 1) {
-+                this.set("optimized-tracker-track-range", null);
-+                this.set("optimized-tracker-untrack-range", null);
-+            }
 +            this.useOptimizedTracker = this.getBoolean("optimized-tracker", true);
++            this.optimizedTrackerTrackRange = this.getInt("optimized-tracker-track-range", -1);
++            this.optimizedTrackerUntrackRange = this.getInt("optimized-tracker-untrack-range", -1);
++            if (!this.useOptimizedTracker) {
++                this.optimizedTrackerTrackRange = -1;
++                this.optimizedTrackerUntrackRange = -1;
++                return;
++            }
++            if (this.optimizedTrackerTrackRange != this.optimizedTrackerUntrackRange && (this.optimizedTrackerTrackRange | this.optimizedTrackerUntrackRange) == -1) {
++                // TODO error here
++                this.optimizedTrackerTrackRange = -1;
++                this.optimizedTrackerUntrackRange = -1;
++            }
 +        }
      }
  
  }
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 8974c16bf92cae8cfd1ae9cf24c4aecdb0c91a7c..a31998313b9042079716f2875c94b5cf2f924b73 100644
+index 8974c16bf92cae8cfd1ae9cf24c4aecdb0c91a7c..7bc25be4221f929ecc749921e08f8ce67c2a277d 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -208,6 +208,134 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -208,6 +208,97 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
      // CraftBukkit end
  
 +    // Tuinity start
-+    boolean isLegacyTrackingEntity = this instanceof EntityPlayer; // TODO temp, fix citizens...
-+
-+    private com.tuinity.tuinity.util.map.PlayerAreaMap trackingAreaMap;
-+    private com.tuinity.tuinity.util.map.PlayerAreaMap unTrackingAreaMap;
-+
-+    final com.tuinity.tuinity.util.map.PlayerAreaMap getTrackingAreaMap() {
-+        if (this.trackingAreaMap == null) {
-+            // stupid plugins incorrectly adding entities into the world.
-+            if (this.world == null) {
-+                throw new IllegalStateException("Entity " + this + " has incorrectly been added to the world.");
-+            }
-+            this.acquireTrackingMap(((WorldServer)this.world).getChunkProvider().playerChunkMap);
-+        }
-+        return this.trackingAreaMap;
-+    }
-+
-+    final com.tuinity.tuinity.util.map.PlayerAreaMap getUnTrackingAreaMap() {
-+        if (this.unTrackingAreaMap == null) {
-+            // stupid plugins incorrectly adding entities into the world.
-+            if (this.world == null) {
-+                throw new IllegalStateException("Entity " + this + " has incorrectly been added to the world.");
-+            }
-+            this.acquireTrackingMap(((WorldServer)this.world).getChunkProvider().playerChunkMap);
-+        }
-+        return this.unTrackingAreaMap;
-+    }
-+
-+    final void acquireTrackingMap(PlayerChunkMap chunkMap) {
-+        int key = org.spigotmc.TrackingRange.getTrackingRangeType(this).ordinal();
-+        this.trackingAreaMap = chunkMap.playerEntityTrackerTrackMaps[key];
-+        this.unTrackingAreaMap = chunkMap.playerEntityTrackerUntrackMaps[key];
-+    }
++    // ender dragon is special cased for its large range, player is special cased for spectator mode + npc plugins
++    boolean isLegacyTrackingEntity = this instanceof EntityEnderDragon || this instanceof EntityPlayer;
 +
 +    public final void setLegacyTrackingEntity(final boolean isLegacyTrackingEntity) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot update legacy tracking off of the main thread");
 +        if (this.isLegacyTrackingEntity == isLegacyTrackingEntity) {
 +            return;
 +        }
@@ -102,37 +63,35 @@ index 8974c16bf92cae8cfd1ae9cf24c4aecdb0c91a7c..a31998313b9042079716f2875c94b5cf
 +        WorldServer world = (WorldServer)this.world;
 +        PlayerChunkMap chunkMap = world.getChunkProvider().playerChunkMap;
 +
-+        if (!chunkMap.optimisedTrackerEnabled) {
++        if (chunkMap.playerEntityTrackerTrackMap == null) {
 +            this.isLegacyTrackingEntity = isLegacyTrackingEntity;
 +            return;
 +        }
-+        com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot update legacy tracking off of the main thread");
 +
 +        if (this.isLegacyTrackingEntity) {
 +            this.isLegacyTrackingEntity = false;
 +            chunkMap.activelyTrackedEntitiesLegacy.remove(this);
 +
-+            PlayerChunkMap.EntityTracker tracker = this.tracker;
++            PlayerChunkMap.EntityTracker tracker = chunkMap.trackedEntities.get(this.getId());
 +            if (tracker != null) {
-+                com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> inRange = this.getTrackingAreaMap().getObjectsInRange(com.tuinity.tuinity.util.Util.getCoordinateKey(this));
-+
 +                for (EntityPlayer player : world.getPlayers()) {
-+                    tracker.clear(player);
-+                    if (inRange != null && inRange.contains(player)) {
-+                        this.addToTrackQueue(player);
-+                    }
++                    tracker.removeTrackingPlayer(player);
++                    tracker.updatePlayer(player);
 +                }
 +            }
 +        } else {
 +            this.isLegacyTrackingEntity = true;
 +            chunkMap.activelyTrackedEntitiesLegacy.add(this);
 +
-+            PlayerChunkMap.EntityTracker tracker = chunkMap.trackedEntities.get(this.getId());
++            PlayerChunkMap.EntityTracker tracker = this.tracker;
 +            if (tracker != null) {
++                com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> inRange = chunkMap.playerEntityTrackerTrackMap.getObjectsInRange(com.tuinity.tuinity.util.Util.getCoordinateKey(this));
++
 +                for (EntityPlayer player : world.getPlayers()) {
-+                    this.clearTrackingQueues(player);
 +                    tracker.clear(player);
-+                    tracker.updatePlayer(player);
++                    if (inRange != null && inRange.contains(player)) {
++                        tracker.updateTrackingPlayer(player);
++                    }
 +                }
 +            }
 +        }
@@ -146,10 +105,9 @@ index 8974c16bf92cae8cfd1ae9cf24c4aecdb0c91a7c..a31998313b9042079716f2875c94b5cf
 +        if (player == this) {
 +            return;
 +        }
-+        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Adding to track queue from off-main thread");
 +        int id = player.getId();
-+        this.unTrackQueue.remove(id);
 +        this.trackQueue.add(id);
++        this.unTrackQueue.remove(id);
 +        ((WorldServer)this.world).trackingUpdateQueue.add(this);
 +    }
 +
@@ -157,13 +115,8 @@ index 8974c16bf92cae8cfd1ae9cf24c4aecdb0c91a7c..a31998313b9042079716f2875c94b5cf
 +        if (player == this) {
 +            return;
 +        }
-+        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Removing from track queue from off-main thread");
 +        int id = player.getId();
 +        this.trackQueue.remove(id);
-+        // don't queue untrack if we're not tracked
-+        if (this.tracker == null || !this.tracker.trackedPlayers.contains(player)) {
-+            return;
-+        }
 +        this.unTrackQueue.add(id);
 +        ((WorldServer)this.world).trackingUpdateQueue.add(this);
 +    }
@@ -187,7 +140,7 @@ index 8974c16bf92cae8cfd1ae9cf24c4aecdb0c91a7c..a31998313b9042079716f2875c94b5cf
          this.id = Entity.entityCount.incrementAndGet();
          this.passengers = Lists.newArrayList();
 diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
-index 40d6e8bf7c34d91bbc44d23efc498daa4f61b7e2..0323055c688e3eadf4f2c56b82b20cdd7f365a30 100644
+index 40d6e8bf7c34d91bbc44d23efc498daa4f61b7e2..b4d3c4a4f9c0041f1bdf4ef32db0bbb3d011c3d1 100644
 --- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
 +++ b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
 @@ -18,7 +18,7 @@ import org.bukkit.event.player.PlayerVelocityEvent;
@@ -218,10 +171,25 @@ index 40d6e8bf7c34d91bbc44d23efc498daa4f61b7e2..0323055c688e3eadf4f2c56b82b20cdd
                  boolean flag = Math.abs(i - this.yRot) >= 1 || Math.abs(j - this.xRot) >= 1;
  
                  if (flag) {
-@@ -253,11 +254,13 @@ public class EntityTrackerEntry {
+@@ -253,11 +254,28 @@ public class EntityTrackerEntry {
  
      }
  
++    // Tuinity end - optimise entity tracking
++    // TODO make use of this in second pass rewrite
++    final void resetState() {
++        // required since we do not tick all tracker entries unless they have trackers - so data can and will get stale
++        if (this.trackedPlayers.size() != 0) {
++            return;
++        }
++
++        this.synchronizeLocation();
++        this.writeStaleData();
++        this.xRot = MathHelper.d(this.tracker.yaw * 256.0F / 360.0F); // Tuinity - diff on change, used in forceStaleMeta
++        this.yRot = MathHelper.d(this.tracker.pitch * 256.0F / 360.0F); // Tuinity - diff on change, used in forceStaleMeta
++    }
++    // Tuinity end - optimise entity tracking
++
 +    public final void onUntrack(EntityPlayer player) { this.a(player); } // Tuinity - OBFHELPER
      public void a(EntityPlayer entityplayer) {
          this.tracker.c(entityplayer);
@@ -232,46 +200,52 @@ index 40d6e8bf7c34d91bbc44d23efc498daa4f61b7e2..0323055c688e3eadf4f2c56b82b20cdd
      public void b(EntityPlayer entityplayer) {
          PlayerConnection playerconnection = entityplayer.playerConnection;
  
+@@ -357,6 +375,7 @@ public class EntityTrackerEntry {
+ 
+     }
+ 
++    private final void writeStaleData() { this.c(); } // Tuinity - OBFHELPER
+     private void c() {
+         DataWatcher datawatcher = this.tracker.getDataWatcher();
+ 
+@@ -382,6 +401,7 @@ public class EntityTrackerEntry {
+ 
+     }
+ 
++    private final void synchronizeLocation() { this.d(); } // Tuinity - OBFHELPER
+     private void d() {
+         this.xLoc = PacketPlayOutEntity.a(this.tracker.locX());
+         this.yLoc = PacketPlayOutEntity.a(this.tracker.locY());
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e327315e05cf4 100644
+index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..14ba3df05a8e53154b212d1917e8d762bcefea06 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -146,6 +146,21 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -146,6 +146,14 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          // Tuinity start - optimise PlayerChunkMap#isOutsideRange
          this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, ChunkMapDistance.MOB_SPAWN_RANGE);
          // Tuinity end - optimise PlayerChunkMap#isOutsideRange
 +
 +        // Tuinity start - use distance map to optimise entity tracker
 +        // force propagate tracker changes
-+        if (this.optimisedTrackerEnabled) {
-+            for (int i = 0, len = TRACKING_RANGE_TYPES.length; i < len; ++i) {
-+                com.tuinity.tuinity.util.map.PlayerAreaMap trackMap = this.playerEntityTrackerTrackMaps[i];
-+                com.tuinity.tuinity.util.map.PlayerAreaMap untrackMap = this.playerEntityTrackerUntrackMaps[i];
-+                int trackRange = this.entityTrackerTrackRanges[i];
-+                int untrackRange = this.entityTrackerUntrackRanges[i];
-+
-+                trackMap.update(player, chunkX, chunkZ, Math.min(trackRange, effectiveViewDistance));
-+                untrackMap.update(player, chunkX, chunkZ, Math.min(untrackRange, effectiveViewDistance));
-+            }
++        if (this.playerEntityTrackerTrackMap != null) {
++            this.playerEntityTrackerTrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerTrackRange, effectiveViewDistance));
++            this.playerEntityTrackerUntrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerUntrackRange, effectiveViewDistance));
 +        }
 +        // Tuinity end - use distance map to optimise entity tracker
      }
  
      final class ChunkSendThrottler {
-@@ -364,6 +379,27 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -364,6 +372,25 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      // Tuinity end - optimise PlayerChunkMap#isOutsideRange
  
 +    // Tuinity start - use distance map to optimise entity tracker
-+    public final boolean optimisedTrackerEnabled;
++    public final com.tuinity.tuinity.util.map.PlayerAreaMap playerEntityTrackerTrackMap;
++    public final com.tuinity.tuinity.util.map.PlayerAreaMap playerEntityTrackerUntrackMap;
++    public final int entityTrackerTrackRange;
++    public final int entityTrackerUntrackRange;
 +
-+    // inlined EnumMap, TrackingRange.TrackingRangeType
-+    static final org.spigotmc.TrackingRange.TrackingRangeType[] TRACKING_RANGE_TYPES = org.spigotmc.TrackingRange.TrackingRangeType.values();
-+    final com.tuinity.tuinity.util.map.PlayerAreaMap[] playerEntityTrackerTrackMaps;
-+    final com.tuinity.tuinity.util.map.PlayerAreaMap[] playerEntityTrackerUntrackMaps;
-+    final int[] entityTrackerTrackRanges;
-+    final int[] entityTrackerUntrackRanges;
-+
++    //public final com.tuinity.tuinity.util.EntityList activelyTrackedEntities; // TODO not yet
 +    final com.tuinity.tuinity.util.EntityList activelyTrackedEntitiesLegacy;
 +
 +    public static boolean isLegacyTrackingEntity(Entity entity) {
@@ -279,165 +253,128 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
 +    }
 +
 +    private static int getEntityTrackingChunkRange(int blockRange) {
-+        return blockRange >>> 4 + ((blockRange & 15) != 0 ? 1 : 0);
++        int centerChunkRange = (blockRange - 8); // on average, players are in the middle of a chunk, so subtract 8
++        return centerChunkRange >>> 4 + ((centerChunkRange & 15) != 0 ? 1 : 0);
 +    }
 +    // Tuinity end - use distance map to optimise entity tracker
 +
      void addPlayerToDistanceMaps(EntityPlayer player) {
          this.updateMaps(player);
  
-@@ -416,6 +452,17 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -416,6 +443,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.playerMobSpawnMap.remove(player);
          this.playerChunkTickRangeMap.remove(player);
          // Tuinity end - optimise PlayerChunkMap#isOutsideRange
 +
 +        // Tuinity start - use distance map to optimise entity tracker
-+        if (this.optimisedTrackerEnabled) {
-+            for (com.tuinity.tuinity.util.map.PlayerAreaMap trackMap : this.playerEntityTrackerTrackMaps) {
-+                trackMap.remove(player);
-+            }
-+            for (com.tuinity.tuinity.util.map.PlayerAreaMap trackMap : this.playerEntityTrackerUntrackMaps) {
-+                trackMap.remove(player);
-+            }
++        if (this.playerEntityTrackerTrackMap != null) {
++            this.playerEntityTrackerTrackMap.remove(player);
++            this.playerEntityTrackerUntrackMap.remove(player);
 +        }
 +        // Tuinity end - use distance map to optimise entity tracker
      }
  
      void updateDistanceMapsTuinity(EntityPlayer player) {
-@@ -444,6 +491,20 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -444,6 +478,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          // Tuinity start - optimise PlayerChunkMap#isOutsideRange
          this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, ChunkMapDistance.MOB_SPAWN_RANGE);
          // Tuinity end - optimise PlayerChunkMap#isOutsideRange
 +
 +        // Tuinity start - use distance map to optimise entity tracker
-+        if (this.optimisedTrackerEnabled) {
-+            for (int i = 0, len = TRACKING_RANGE_TYPES.length; i < len; ++i) {
-+                com.tuinity.tuinity.util.map.PlayerAreaMap trackMap = this.playerEntityTrackerTrackMaps[i];
-+                com.tuinity.tuinity.util.map.PlayerAreaMap untrackMap = this.playerEntityTrackerUntrackMaps[i];
-+                int trackRange = this.entityTrackerTrackRanges[i];
-+                int untrackRange = this.entityTrackerUntrackRanges[i];
-+
-+                trackMap.update(player, chunkX, chunkZ, Math.min(trackRange, effectiveViewDistance));
-+                untrackMap.update(player, chunkX, chunkZ, Math.min(untrackRange, effectiveViewDistance));
-+            }
++        if (this.playerEntityTrackerTrackMap != null) {
++            this.playerEntityTrackerTrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerTrackRange, effectiveViewDistance));
++            this.playerEntityTrackerUntrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerUntrackRange, effectiveViewDistance));
 +        }
 +        // Tuinity end - use distance map to optimise entity tracker
      }
      // Tuinity end
  
-@@ -557,6 +618,103 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -557,6 +598,76 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      }
                  });
          // Tuinity end
 +
 +        // Tuinity start - use distance map to optimise entity tracker
 +        if (!this.world.tuinityConfig.useOptimizedTracker) {
++            this.playerEntityTrackerTrackMap = null;
++            this.playerEntityTrackerUntrackMap = null;
++            this.entityTrackerTrackRange = -1;
++            this.entityTrackerUntrackRange = -1;
 +            this.activelyTrackedEntitiesLegacy = null;
-+            this.playerEntityTrackerTrackMaps = null;
-+            this.playerEntityTrackerUntrackMaps = null;
-+            this.entityTrackerTrackRanges = null;
-+            this.entityTrackerUntrackRanges = null;
-+            this.optimisedTrackerEnabled = false;
 +        } else {
-+            this.optimisedTrackerEnabled = true;
 +            this.activelyTrackedEntitiesLegacy = new com.tuinity.tuinity.util.EntityList();
 +
-+            this.playerEntityTrackerTrackMaps = new com.tuinity.tuinity.util.map.PlayerAreaMap[TRACKING_RANGE_TYPES.length];
-+            this.playerEntityTrackerUntrackMaps = new com.tuinity.tuinity.util.map.PlayerAreaMap[TRACKING_RANGE_TYPES.length];
-+            this.entityTrackerTrackRanges = new int[TRACKING_RANGE_TYPES.length];
-+            this.entityTrackerUntrackRanges = new int[TRACKING_RANGE_TYPES.length];
++            // avoid player range, that's special-cased
++            int maxEntityTrackRange = this.world.spigotConfig.animalTrackingRange;
++            if (this.world.spigotConfig.monsterTrackingRange > maxEntityTrackRange) {
++                maxEntityTrackRange = this.world.spigotConfig.monsterTrackingRange;
++            }
++            if (this.world.spigotConfig.miscTrackingRange > maxEntityTrackRange) {
++                maxEntityTrackRange = this.world.spigotConfig.miscTrackingRange;
++            }
++            if (this.world.spigotConfig.otherTrackingRange > maxEntityTrackRange) {
++                maxEntityTrackRange = this.world.spigotConfig.otherTrackingRange;
++            }
++            maxEntityTrackRange = (maxEntityTrackRange >> 4) + ((maxEntityTrackRange & 15) != 0 ? 1 : 0);
 +
-+            org.spigotmc.SpigotWorldConfig spigotWorldConfig = this.world.spigotConfig;
++            if (this.world.tuinityConfig.optimizedTrackerTrackRange == -1) {
++                this.entityTrackerUntrackRange = this.entityTrackerTrackRange = Math.max(1, maxEntityTrackRange - 1);
++            } else {
++                this.entityTrackerTrackRange = this.world.tuinityConfig.optimizedTrackerTrackRange;
++                this.entityTrackerUntrackRange = this.world.tuinityConfig.optimizedTrackerUntrackRange;
++            }
 +
-+            for (int ordinal = 0, len = TRACKING_RANGE_TYPES.length; ordinal < len; ++ordinal) {
-+                org.spigotmc.TrackingRange.TrackingRangeType trackingRangeType = TRACKING_RANGE_TYPES[ordinal];
-+                int configuredSpigotValue;
-+                switch (trackingRangeType) {
-+                    case PLAYER:
-+                        configuredSpigotValue = spigotWorldConfig.playerTrackingRange;
-+                        break;
-+                    case ANIMAL:
-+                        configuredSpigotValue = spigotWorldConfig.animalTrackingRange;
-+                        break;
-+                    case MONSTER:
-+                        configuredSpigotValue = spigotWorldConfig.monsterTrackingRange;
-+                        break;
-+                    case MISC:
-+                        configuredSpigotValue = spigotWorldConfig.miscTrackingRange;
-+                        break;
-+                    case OTHER:
-+                        configuredSpigotValue = spigotWorldConfig.otherTrackingRange;
-+                        break;
-+                    case ENDERDRAGON:
-+                        configuredSpigotValue = 10 * 16; // default is 10 chunk range // TODO check on update
-+                        break;
-+                    default:
-+                        throw new IllegalStateException("Missing case for enum " + trackingRangeType);
-+                }
-+
-+                int untrackRange = Math.max(1, getEntityTrackingChunkRange(configuredSpigotValue));
-+                int trackRange = untrackRange - 1;
-+                this.entityTrackerTrackRanges[ordinal] = trackRange;
-+                this.entityTrackerUntrackRanges[ordinal] = untrackRange;
-+
-+                this.playerEntityTrackerTrackMaps[ordinal] = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets,
-+                        (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
-+                         com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
-+                            Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfLoadedMainThreadNoCache(rangeX, rangeZ);
-+                            if (chunk == null || !player.loadedChunks.contains(com.tuinity.tuinity.util.Util.getCoordinateKey(rangeX, rangeZ))) {
-+                                return;
-+                            }
-+                            Entity[] entities = chunk.entities.getRawData();
-+                            for (int index = 0, length = chunk.entities.size(); index < length; ++index) {
-+                                Entity entity = entities[index];
-+                                if (org.spigotmc.TrackingRange.getTrackingRangeType(entity) != trackingRangeType) {
-+                                    continue;
-+                                }
-+                                if (entity.tracker == null) {
-+                                    entity.addToTrackQueue(player);
-+                                } else {
-+                                    entity.tracker.updateTrackingPlayer(player);
-+                                    entity.clearTrackingQueues(player);
-+                                }
-+                            }
-+                        },
-+                        null);
-+                this.playerEntityTrackerUntrackMaps[ordinal] = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets,
-+                        null,
-+                        (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
-+                         com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
-+                            Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfCachedImmediately(rangeX, rangeZ);
-+                            if (chunk == null) {
-+                                return;
-+                            }
-+                            Entity[] entities = chunk.entities.getRawData();
-+                            for (int index = 0, length = chunk.entities.size(); index < length; ++index) {
-+                                Entity entity = entities[index];
-+                                if (entity.tracker == null) {
-+                                    return; // not tracked by player for sure
-+                                }
-+                                if (org.spigotmc.TrackingRange.getTrackingRangeType(entity) != trackingRangeType) {
-+                                    continue;
-+                                }
-+                                entity.tracker.removeTrackingPlayer(player);
++            this.playerEntityTrackerTrackMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets,
++                    (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
++                     com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                        Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfCachedImmediately(rangeX, rangeZ);
++                        if (chunk == null) {
++                            return;
++                        }
++                        Entity[] entities = chunk.entities.getRawData();
++                        for (int index = 0, len = chunk.entities.size(); index < len; ++index) {
++                            Entity entity = entities[index];
++                            if (entity.tracker == null) {
++                                entity.addToTrackQueue(player);
++                            } else {
++                                entity.tracker.updateTrackingPlayer(player);
 +                                entity.clearTrackingQueues(player);
 +                            }
-+                        });
-+            }
++                        }
++                    },
++                    null);
++            this.playerEntityTrackerUntrackMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets,
++                    null,
++                    (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
++                     com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                        Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfCachedImmediately(rangeX, rangeZ);
++                        if (chunk == null) {
++                            return;
++                        }
++                        Entity[] entities = chunk.entities.getRawData();
++                        for (int index = 0, len = chunk.entities.size(); index < len; ++index) {
++                            Entity entity = entities[index];
++                            if (entity.tracker == null) {
++                                return; // not tracked by player for sure
++                            }
++                            entity.tracker.removeTrackingPlayer(player);
++                            entity.clearTrackingQueues(player);
++                        }
++                    });
 +        }
 +        // Tuinity end - use distance map to optimise entity tracker
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -1779,6 +1937,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1779,6 +1890,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public void movePlayer(EntityPlayer entityplayer) {
-+        if (!this.optimisedTrackerEnabled) { // Tuinity - optimized tracker
++        if (this.playerEntityTrackerTrackMap == null) { // Tuinity - optimized tracker
          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
          while (objectiterator.hasNext()) {
-@@ -1790,6 +1949,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1790,6 +1902,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                  playerchunkmap_entitytracker.updatePlayer(entityplayer);
              }
          }
@@ -445,22 +382,21 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
  
          int i = MathHelper.floor(entityplayer.locX()) >> 4;
          int j = MathHelper.floor(entityplayer.locZ()) >> 4;
-@@ -1894,11 +2054,37 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1894,11 +2007,36 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
                      entity.tracker = playerchunkmap_entitytracker; // Paper - Fast access to tracker
                      this.trackedEntities.put(entity.getId(), playerchunkmap_entitytracker);
-+                    if (!this.optimisedTrackerEnabled) { // Tuinity - implement optimized tracker
++                    if (this.playerEntityTrackerTrackMap == null) { // Tuinity - implement optimized tracker
                      playerchunkmap_entitytracker.track(this.world.getPlayers());
 +                        // Tuinity start - implement optimized tracker
 +                    } else {
-+                        entity.acquireTrackingMap(this);
 +                        if (PlayerChunkMap.isLegacyTrackingEntity(entity)) {
 +                            this.activelyTrackedEntitiesLegacy.add(entity);
 +                            // tracker tick will propagate updates
 +                        } else {
 +                            int chunkX = com.tuinity.tuinity.util.Util.getChunkCoordinate(entity.locX());
 +                            int chunkZ = com.tuinity.tuinity.util.Util.getChunkCoordinate(entity.locZ());
-+                            com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersTracking = entity.getTrackingAreaMap().getObjectsInRange(chunkX, chunkZ);
++                            com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersTracking = this.playerEntityTrackerTrackMap.getObjectsInRange(chunkX, chunkZ);
 +                            if (playersTracking != null) {
 +                                Object[] backingSet = playersTracking.getBackingSet();
 +                                for (int index = 0, len = backingSet.length; index < len; ++index) {
@@ -468,7 +404,7 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
 +                                    if (!(temp instanceof EntityPlayer)) {
 +                                        continue;
 +                                    }
-+                                    EntityPlayer trackingPlayer = (EntityPlayer)temp;
++                                    EntityPlayer trackingPlayer = (EntityPlayer) temp;
 +                                    playerchunkmap_entitytracker.updateTrackingPlayer(trackingPlayer);
 +                                }
 +                            }
@@ -479,11 +415,11 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
                          EntityPlayer entityplayer = (EntityPlayer) entity;
  
                          this.a(entityplayer, true);
-+                        if (!this.optimisedTrackerEnabled) { // Tuinity - implement optimized tracker
++                        if (this.playerEntityTrackerTrackMap == null) { // Tuinity - implement optimized tracker
                          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
                          while (objectiterator.hasNext()) {
-@@ -1908,6 +2094,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1908,6 +2046,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                                  playerchunkmap_entitytracker1.updatePlayer(entityplayer);
                              }
                          }
@@ -491,7 +427,7 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
                      }
  
                  }
-@@ -1936,9 +2123,104 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1936,9 +2075,102 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              playerchunkmap_entitytracker1.a();
          }
          entity.tracker = null; // Paper - We're no longer tracked
@@ -526,7 +462,7 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
 +                int chunkZ = com.tuinity.tuinity.util.Util.getChunkCoordinate(player.locZ());
 +
 +                com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> inRange =
-+                        tracked.getUnTrackingAreaMap().getObjectsInRange(chunkX, chunkZ);
++                        this.playerEntityTrackerUntrackMap.getObjectsInRange(chunkX, chunkZ);
 +
 +                if (inRange != null && inRange.contains(player)) {
 +                    tracker.updateTrackingPlayer((EntityPlayer)player);
@@ -565,7 +501,6 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
 +
 +        // legacy tracker
 +
-+        this.world.timings.tracker3.startTiming();
 +        Entity[] legacyEntities = this.activelyTrackedEntitiesLegacy.getRawData();
 +        for (int i = 0, size = this.activelyTrackedEntitiesLegacy.size(); i < size; ++i) {
 +            Entity entity = legacyEntities[i];
@@ -582,13 +517,12 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
 +            tracker.track(this.world.getPlayers());
 +            entry.tick(); // always tick the entry, even if no player is tracking
 +        }
-+        this.world.timings.tracker3.stopTiming();
 +    }
 +    // Tuinity end - optimized tracker
 +
      protected void g() {
 +        // Tuinity start - optimized tracker
-+        if (this.optimisedTrackerEnabled) {
++        if (this.playerEntityTrackerTrackMap != null) {
 +            this.processTrackQueue();
 +            return;
 +        }
@@ -596,15 +530,15 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
          List<EntityPlayer> list = Lists.newArrayList();
          List<EntityPlayer> list1 = this.world.getPlayers();
  
-@@ -2007,6 +2289,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2007,6 +2239,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          PacketDebug.a(this.world, chunk.getPos());
          List<Entity> list = Lists.newArrayList();
          List<Entity> list1 = Lists.newArrayList();
-+        if (!this.optimisedTrackerEnabled) { // Tuinity - implement optimized tracker
++        if (this.playerEntityTrackerTrackMap == null) { // Tuinity - implement optimized tracker
          ObjectIterator objectiterator = this.trackedEntities.values().iterator();
  
          while (objectiterator.hasNext()) {
-@@ -2024,6 +2307,31 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2024,6 +2257,32 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                  }
              }
          }
@@ -614,29 +548,30 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
 +            // Tuinity start - implement optimized tracker
 +            // It's important to note that this is ONLY called when the chunk is at ticking level.
 +            // At this point, the entities should be added in the chunk.
++            com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange
++                    = this.playerEntityTrackerTrackMap.getObjectsInRange(chunk.getPos());
 +            // only send entities when they're in tracking range...
-+            Entity[] entities = chunk.entities.getRawData();
-+            for (int i = 0, len = chunk.entities.size(); i < len; ++i) {
-+                Entity entityInChunk = entities[i];
-+                com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playersInRange
-+                        = entityInChunk.getTrackingAreaMap().getObjectsInRange(chunk.getPos());
-+                if (playersInRange == null || !playersInRange.contains(entityplayer)) {
-+                    continue;
-+                }
-+                PlayerChunkMap.EntityTracker tracker = entityInChunk.tracker;
-+                if (tracker == null) {
-+                    continue;
-+                }
++            if (playersInRange != null && playersInRange.contains(entityplayer)) {
++                chunk.forEachEntity((Entity entityInChunk) -> {
++                    PlayerChunkMap.EntityTracker tracker = entityInChunk.tracker;
++                    if (tracker == null) {
++                        return; // when added to tracker, this entity will propagate to players
++                    }
 +
-+                // Note: We don't add to the lists because the track logic will handle it
-+                tracker.updateTrackingPlayer(entityplayer);
++                    if (entityInChunk == entityplayer) {
++                        return; // can't track himself
++                    }
++
++                    // Note: We don't add to the lists because the track logic will handle it
++                    tracker.updateTrackingPlayer(entityplayer);
++                });
 +            }
 +        }
 +        // Tuinity end - implement optimized tracker
  
          Iterator iterator;
          Entity entity1;
-@@ -2061,7 +2369,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2061,7 +2320,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      public class EntityTracker {
  
@@ -645,12 +580,12 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
          private final Entity tracker;
          private final int trackingDistance;
          private SectionPosition e;
-@@ -2184,6 +2492,42 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2184,6 +2443,44 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              return i;
          }
  
 +        // Tuinity start - optimized tracker
-+        final void updateTrackingPlayer(EntityPlayer entityplayer) {
++        public final void updateTrackingPlayer(EntityPlayer entityplayer) {
 +            if (entityplayer == this.tracker) {
 +                return;
 +            }
@@ -659,13 +594,15 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
 +            // we also add a world check since we queue tracking changes
 +            // TODO check on update
 +            // CraftBukkit start - respect vanish API
-+            boolean shouldTrack = entityplayer.world == tracker.world && entityplayer.loadedChunks.contains(com.tuinity.tuinity.util.Util.getCoordinateKey(this.tracker));
++            boolean shouldTrack = entityplayer.world == tracker.world;
 +            if (this.tracker instanceof EntityPlayer) {
 +                Player player = ((EntityPlayer)this.tracker).getBukkitEntity();
 +                if (!entityplayer.getBukkitEntity().canSee(player)) {
 +                    shouldTrack = false;
 +                }
 +            }
++
++            entityplayer.removeQueue.remove(Integer.valueOf(this.tracker.getId()));
 +            // CraftBukkit end
 +
 +            if (shouldTrack) {
@@ -677,7 +614,7 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
 +            }
 +        }
 +
-+        final void removeTrackingPlayer(EntityPlayer player) {
++        public final void removeTrackingPlayer(EntityPlayer player) {
 +            com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Tracker update"); // Tuinity
 +            if (this.trackedPlayers.remove(player)) {
 +                this.trackerEntry.onUntrack(player);
@@ -689,7 +626,7 @@ index 5e27af90f1fc8f76ce68effd82a5ea66849f1e63..b938ac9c134290d18dcf2bc9ad1e3273
              Iterator iterator = list.iterator();
  
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 51b3c9d561152acb1f4b5adf72e9939a5f32675a..90c919dca2383b5560c197b1a36b510583214dd3 100644
+index 51b3c9d561152acb1f4b5adf72e9939a5f32675a..f449853e6205a9e1bab32e263d22a93becd5dbb6 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -82,6 +82,8 @@ public class WorldServer extends World {
@@ -721,13 +658,13 @@ index 51b3c9d561152acb1f4b5adf72e9939a5f32675a..90c919dca2383b5560c197b1a36b5105
 +            int newChunkZ = entity.chunkZ;
 +            if (entity.valid && (prevChunkX != newChunkX || prevChunkZ != newChunkZ)) {
 +                PlayerChunkMap chunkMap = this.getChunkProvider().playerChunkMap;
-+                if (chunkMap.optimisedTrackerEnabled) {
++                if (chunkMap.playerEntityTrackerTrackMap != null) {
 +                    if (!PlayerChunkMap.isLegacyTrackingEntity(entity)) {
 +                        // handle tracking
 +                        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> oldRange =
-+                                entity.getTrackingAreaMap().getObjectsInRange(prevChunkX, prevChunkZ);
++                                chunkMap.playerEntityTrackerTrackMap.getObjectsInRange(prevChunkX, prevChunkZ);
 +                        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newRange =
-+                                entity.getTrackingAreaMap().getObjectsInRange(newChunkX, newChunkZ);
++                                chunkMap.playerEntityTrackerTrackMap.getObjectsInRange(newChunkX, newChunkZ);
 +
 +                        if (oldRange != newRange) { // optimization: equal pooled sets are identity equal
 +                            if (newRange != null) {
@@ -759,8 +696,8 @@ index 51b3c9d561152acb1f4b5adf72e9939a5f32675a..90c919dca2383b5560c197b1a36b5105
 +                        }
 +
 +                        // handle untracking
-+                        oldRange = entity.getUnTrackingAreaMap().getObjectsInRange(prevChunkX, prevChunkZ);
-+                        newRange = entity.getUnTrackingAreaMap().getObjectsInRange(newChunkX, newChunkZ);
++                        oldRange = chunkMap.playerEntityTrackerUntrackMap.getObjectsInRange(prevChunkX, prevChunkZ);
++                        newRange = chunkMap.playerEntityTrackerUntrackMap.getObjectsInRange(newChunkX, newChunkZ);
 +                        if (oldRange != newRange) { // optimization: equal pooled sets are identity equal
 +                            if (oldRange != null) {
 +                                if (newRange == null) {
@@ -797,69 +734,20 @@ index 51b3c9d561152acb1f4b5adf72e9939a5f32675a..90c919dca2383b5560c197b1a36b5105
  
          this.getMethodProfiler().exit();
 diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
-index 651ff6647398747199cbfcc5f49b8ccd707609af..b5ffd144139babb6619c1916ef96f4156be8669a 100644
+index 651ff6647398747199cbfcc5f49b8ccd707609af..516a0164809656af85f2880da7de9a403ed1c958 100644
 --- a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
 @@ -1275,7 +1275,13 @@ public class CraftPlayer extends CraftHumanEntity implements Player {
  
          PlayerChunkMap.EntityTracker entry = tracker.trackedEntities.get(other.getId());
          if (entry != null && !entry.trackedPlayers.contains(getHandle())) {
-+            if (!getHandle().getWorldServer().getChunkProvider().playerChunkMap.optimisedTrackerEnabled || PlayerChunkMap.isLegacyTrackingEntity(other)) { // Tuinity - optimized tracker
++            if (getHandle().getWorldServer().getChunkProvider().playerChunkMap.playerEntityTrackerTrackMap == null) { // Tuinity - optimized tracker
              entry.updatePlayer(getHandle());
 +                // Tuinity start - optimized tracker
 +            } else {
-+                other.addToTrackQueue(getHandle());
++                other.addToTrackQueue(other);
 +            }
 +            // Tuinity end - optimized tracker
          }
      }
      // Paper start
-diff --git a/src/main/java/org/spigotmc/TrackingRange.java b/src/main/java/org/spigotmc/TrackingRange.java
-index 46c33e6917e6e81afcd85f1a15a841ce8ba333fc..76a4d4315272c3caa70c98c666869be471fd912f 100644
---- a/src/main/java/org/spigotmc/TrackingRange.java
-+++ b/src/main/java/org/spigotmc/TrackingRange.java
-@@ -47,4 +47,44 @@ public class TrackingRange
-             return config.otherTrackingRange;
-         }
-     }
-+
-+    // Tuinity start - optimise entity tracking
-+    // copied from above, TODO check on update
-+    public static TrackingRangeType getTrackingRangeType(Entity entity)
-+    {
-+        SpigotWorldConfig config = entity.world.spigotConfig;
-+        if ( entity instanceof EntityPlayer )
-+        {
-+            return TrackingRangeType.PLAYER;
-+            // Paper start - Simplify and set water mobs to animal tracking range
-+        }
-+        switch (entity.activationType) {
-+            case RAIDER:
-+            case MONSTER:
-+                return TrackingRangeType.MONSTER;
-+            case WATER:
-+            case ANIMAL:
-+                return TrackingRangeType.ANIMAL;
-+            case MISC:
-+        }
-+        if ( entity instanceof EntityItemFrame || entity instanceof EntityPainting || entity instanceof EntityItem || entity instanceof EntityExperienceOrb )
-+        // Paper end
-+        {
-+            return TrackingRangeType.MISC;
-+        } else
-+        {
-+            if (entity instanceof EntityEnderDragon) return TrackingRangeType.ENDERDRAGON; // Paper - enderdragon is exempt
-+            return TrackingRangeType.OTHER;
-+        }
-+    }
-+
-+    public static enum TrackingRangeType {
-+        PLAYER,
-+        ANIMAL,
-+        MONSTER,
-+        MISC,
-+        OTHER,
-+        ENDERDRAGON;
-+    }
-+    // Tuinity end
- }
