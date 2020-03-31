@@ -6,7 +6,7 @@ Subject: [PATCH] Add soft async catcher
 Must be enabled via -Dtuinity.strict-thread-checks=true
 
 diff --git a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
-index e948012d5b2096ab1ced310141d0315c074210c7..4ace0d8d78bb184b3f23935259b2e0ca94323266 100644
+index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b9debb9e7 100644
 --- a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
 +++ b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
 @@ -189,6 +189,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
@@ -25,7 +25,7 @@ index e948012d5b2096ab1ced310141d0315c074210c7..4ace0d8d78bb184b3f23935259b2e0ca
          final ChunkProviderServer chunkProvider = this.world.getChunkProvider();
  
          this.world.getMethodProfiler().enter("cleaning");
-@@ -409,6 +411,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -414,6 +416,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
      }
  
      public void schedule(final BlockPosition pos, final T data, final long targetTick, final TickListPriority priority) {
@@ -33,7 +33,7 @@ index e948012d5b2096ab1ced310141d0315c074210c7..4ace0d8d78bb184b3f23935259b2e0ca
          final NextTickListEntry<T> entry = new NextTickListEntry<>(pos, data, targetTick, priority);
          if (this.excludeFromScheduling.test(entry.getData())) {
              return;
-@@ -468,6 +471,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -473,6 +476,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public List<NextTickListEntry<T>> getEntriesInBoundingBox(final StructureBoundingBox structureboundingbox, final boolean removeReturned, final boolean excludeTicked) {
@@ -41,7 +41,7 @@ index e948012d5b2096ab1ced310141d0315c074210c7..4ace0d8d78bb184b3f23935259b2e0ca
          if (structureboundingbox.getMinX() == structureboundingbox.getMaxX() || structureboundingbox.getMinZ() == structureboundingbox.getMaxZ()) {
              return Collections.emptyList(); // vanilla behaviour, check isBlockInSortof above
          }
-@@ -524,6 +528,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -529,6 +533,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public void copy(StructureBoundingBox structureboundingbox, BlockPosition blockposition) {
@@ -49,7 +49,7 @@ index e948012d5b2096ab1ced310141d0315c074210c7..4ace0d8d78bb184b3f23935259b2e0ca
          // start copy from TickListServer // TODO check on update
          List<NextTickListEntry<T>> list = this.getEntriesInBoundingBox(structureboundingbox, false, false);
          Iterator<NextTickListEntry<T>> iterator = list.iterator();
-@@ -543,6 +548,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -548,6 +553,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public List<NextTickListEntry<T>> getEntriesInChunk(ChunkCoordIntPair chunkPos, boolean removeReturned, boolean excludeTicked) {
@@ -57,7 +57,7 @@ index e948012d5b2096ab1ced310141d0315c074210c7..4ace0d8d78bb184b3f23935259b2e0ca
          // Vanilla DOES get the entries 2 blocks out of the chunk too, but that doesn't matter since we ignore chunks
          // not at ticking status, and ticking status requires neighbours loaded
          // so with this method we will reduce scheduler churning
-@@ -574,6 +580,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -579,6 +585,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public NBTTagList serialize(ChunkCoordIntPair chunkcoordintpair) {
@@ -65,7 +65,7 @@ index e948012d5b2096ab1ced310141d0315c074210c7..4ace0d8d78bb184b3f23935259b2e0ca
          // start copy from TickListServer  // TODO check on update
          List<NextTickListEntry<T>> list = this.getEntriesInChunk(chunkcoordintpair, false, true);
  
-@@ -583,6 +590,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -588,6 +595,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public int getTotalScheduledEntries() {
@@ -227,10 +227,10 @@ index 3a88c9a67062eb73ad8257ea786efca7e7e99f65..3e5d6a9e151fb990b777c1ac48cabea6
  
          if (!list.equals(this.p)) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 11da834912a244f477358ef783f0ee925c87d569..a00adc188d001de8b8a47ccd4582281afb6e7b7c 100644
+index 1057ded606d5625f365cfc4f124912d1f295de8c..1ec116f54a8d25b1591d7b4b68896233953e65a3 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -349,6 +349,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -383,6 +383,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      @Nullable
      private PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k) {
