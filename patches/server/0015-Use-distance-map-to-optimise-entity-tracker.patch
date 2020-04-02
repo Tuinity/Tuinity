@@ -38,10 +38,10 @@ index a541e9e87f8d56a6fd228e0e806a633090f6fa11..77b0b467dd7ede58bf3da36be8d5777e
  }
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 8da54c68cc0617ec6d3d007c303dbf488e867927..20e3ef85ebe865a6b76a8078527fba3ba85db84f 100644
+index 8da54c68cc0617ec6d3d007c303dbf488e867927..276937e13926a2c5cf59f7a735b475fd0518f0a7 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -209,6 +209,97 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -209,6 +209,105 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
      // CraftBukkit end
  
@@ -98,8 +98,8 @@ index 8da54c68cc0617ec6d3d007c303dbf488e867927..20e3ef85ebe865a6b76a8078527fba3b
 +    }
 +
 +    // We queue changes to tracker here because when adding to a chunk we do not know if the entity is in a trackable state
-+    public final it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet trackQueue = new it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet(8);
-+    public final it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet unTrackQueue = new it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet(8);
++    public final it.unimi.dsi.fastutil.ints.IntOpenHashSet trackQueue = new it.unimi.dsi.fastutil.ints.IntOpenHashSet(1, 0.8f);
++    public final it.unimi.dsi.fastutil.ints.IntOpenHashSet unTrackQueue = new it.unimi.dsi.fastutil.ints.IntOpenHashSet(1, 0.8f);
 +
 +    public final void addToTrackQueue(EntityPlayer player) {
 +        if (player == this) {
@@ -107,7 +107,9 @@ index 8da54c68cc0617ec6d3d007c303dbf488e867927..20e3ef85ebe865a6b76a8078527fba3b
 +        }
 +        int id = player.getId();
 +        this.trackQueue.add(id);
-+        this.unTrackQueue.remove(id);
++        if (!this.unTrackQueue.isEmpty()) {
++            this.unTrackQueue.remove(id);
++        }
 +        ((WorldServer)this.world).trackingUpdateQueue.add(this);
 +    }
 +
@@ -116,7 +118,9 @@ index 8da54c68cc0617ec6d3d007c303dbf488e867927..20e3ef85ebe865a6b76a8078527fba3b
 +            return;
 +        }
 +        int id = player.getId();
-+        this.trackQueue.remove(id);
++        if (!this.trackQueue.isEmpty()) {
++            this.trackQueue.remove(id);
++        }
 +        this.unTrackQueue.add(id);
 +        ((WorldServer)this.world).trackingUpdateQueue.add(this);
 +    }
@@ -126,8 +130,12 @@ index 8da54c68cc0617ec6d3d007c303dbf488e867927..20e3ef85ebe865a6b76a8078527fba3b
 +            return;
 +        }
 +        int id = player.getId();
-+        this.trackQueue.remove(id);
-+        this.unTrackQueue.remove(id);
++        if (!this.trackQueue.isEmpty()) {
++            this.trackQueue.remove(id);
++        }
++        if (!this.unTrackQueue.isEmpty()) {
++            this.unTrackQueue.remove(id);
++        }
 +        if (this.trackQueue.isEmpty() && this.unTrackQueue.isEmpty()) {
 +            ((WorldServer)this.world).trackingUpdateQueue.remove(this);
 +        }

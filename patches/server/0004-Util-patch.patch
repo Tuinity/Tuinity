@@ -4,6 +4,128 @@ Date: Sat, 18 May 2019 12:25:19 -0700
 Subject: [PATCH] Util patch
 
 
+diff --git a/src/main/java/com/destroystokyo/paper/util/maplist/ChunkList.java b/src/main/java/com/destroystokyo/paper/util/maplist/ChunkList.java
+index 4ec248adb6948551e8f888324e4d10119911babe..405b99c0b72c53745c7f601e4cf29facc9636812 100644
+--- a/src/main/java/com/destroystokyo/paper/util/maplist/ChunkList.java
++++ b/src/main/java/com/destroystokyo/paper/util/maplist/ChunkList.java
+@@ -13,12 +13,14 @@ import java.util.NoSuchElementException;
+  */
+ public final class ChunkList implements Iterable<Chunk> {
+ 
+-    protected final Long2IntOpenHashMap chunkToIndex = new Long2IntOpenHashMap();
++    protected final Long2IntOpenHashMap chunkToIndex = new Long2IntOpenHashMap(2, 0.8f);
+     {
+         this.chunkToIndex.defaultReturnValue(Integer.MIN_VALUE);
+     }
+ 
+-    protected Chunk[] chunks = new Chunk[16];
++    private static final Chunk[] EMPTY_LIST = new Chunk[0];
++
++    protected Chunk[] chunks = EMPTY_LIST;
+     protected int count;
+ 
+     public int size() {
+@@ -26,11 +28,11 @@ public final class ChunkList implements Iterable<Chunk> {
+     }
+ 
+     public boolean contains(final Chunk chunk) {
+-        return this.chunkToIndex.containsKey(MCUtil.getCoordinateKey(chunk.getPos()));
++        return this.chunkToIndex.containsKey(chunk.coordinateKey);
+     }
+ 
+     public boolean remove(final Chunk chunk) {
+-        final int index = this.chunkToIndex.remove(MCUtil.getCoordinateKey(chunk.getPos()));
++        final int index = this.chunkToIndex.remove(chunk.coordinateKey);
+         if (index == Integer.MIN_VALUE) {
+             return false;
+         }
+@@ -40,7 +42,7 @@ public final class ChunkList implements Iterable<Chunk> {
+         final Chunk end = this.chunks[endIndex];
+         if (index != endIndex) {
+             // not empty after this call
+-            this.chunkToIndex.put(MCUtil.getCoordinateKey(end.getPos()), index); // update index
++            this.chunkToIndex.put(end.coordinateKey, index); // update index
+         }
+         this.chunks[index] = end;
+         this.chunks[endIndex] = null;
+@@ -50,7 +52,7 @@ public final class ChunkList implements Iterable<Chunk> {
+ 
+     public boolean add(final Chunk chunk) {
+         final int count = this.count;
+-        final int currIndex = this.chunkToIndex.putIfAbsent(MCUtil.getCoordinateKey(chunk.getPos()), count);
++        final int currIndex = this.chunkToIndex.putIfAbsent(chunk.coordinateKey, count);
+ 
+         if (currIndex != Integer.MIN_VALUE) {
+             return false; // already in this list
+@@ -60,7 +62,7 @@ public final class ChunkList implements Iterable<Chunk> {
+ 
+         if (list.length == count) {
+             // resize required
+-            list = this.chunks = Arrays.copyOf(list, count * 2); // overflow results in negative
++            list = this.chunks = Arrays.copyOf(list, (int)Math.max(4L, count * 2L)); // overflow results in negative
+         }
+ 
+         list[count] = chunk;
+diff --git a/src/main/java/com/destroystokyo/paper/util/maplist/EntityList.java b/src/main/java/com/destroystokyo/paper/util/maplist/EntityList.java
+index f3cb346c9da4046876379597f9b9fbb9511b9649..cdda74564ced196ae577a64782236c2bfe36e433 100644
+--- a/src/main/java/com/destroystokyo/paper/util/maplist/EntityList.java
++++ b/src/main/java/com/destroystokyo/paper/util/maplist/EntityList.java
+@@ -12,12 +12,14 @@ import java.util.NoSuchElementException;
+  */
+ public final class EntityList implements Iterable<Entity> {
+ 
+-    protected final Int2IntOpenHashMap entityToIndex = new Int2IntOpenHashMap();
++    protected final Int2IntOpenHashMap entityToIndex = new Int2IntOpenHashMap(2, 0.8f);
+     {
+         this.entityToIndex.defaultReturnValue(Integer.MIN_VALUE);
+     }
+ 
+-    protected Entity[] entities = new Entity[16];
++    protected static final Entity[] EMPTY_LIST = new Entity[0];
++
++    protected Entity[] entities = EMPTY_LIST;
+     protected int count;
+ 
+     public int size() {
+@@ -59,7 +61,7 @@ public final class EntityList implements Iterable<Entity> {
+ 
+         if (list.length == count) {
+             // resize required
+-            list = this.entities = Arrays.copyOf(list, count * 2); // overflow results in negative
++            list = this.entities = Arrays.copyOf(list, (int)Math.max(4L, count * 2L)); // overflow results in negative
+         }
+ 
+         list[count] = entity;
+diff --git a/src/main/java/com/destroystokyo/paper/util/maplist/IBlockDataList.java b/src/main/java/com/destroystokyo/paper/util/maplist/IBlockDataList.java
+index c2f7e4ca0f877a124e3f3664919482ea87e583dc..84ef8d9ecab4745a90504718f803110b9e2dbf65 100644
+--- a/src/main/java/com/destroystokyo/paper/util/maplist/IBlockDataList.java
++++ b/src/main/java/com/destroystokyo/paper/util/maplist/IBlockDataList.java
+@@ -15,12 +15,14 @@ public final class IBlockDataList {
+     static final DataPaletteGlobal<IBlockData> GLOBAL_PALETTE = (DataPaletteGlobal)ChunkSection.GLOBAL_PALETTE;
+ 
+     // map of location -> (index | (location << 16) | (palette id << 32))
+-    private final Short2LongOpenHashMap map = new Short2LongOpenHashMap(16, 0.7f);
++    private final Short2LongOpenHashMap map = new Short2LongOpenHashMap(2, 0.8f);
+     {
+         this.map.defaultReturnValue(Long.MAX_VALUE);
+     }
+ 
+-    private long[] byIndex = new long[16];
++    private static final long[] EMPTY_LIST = new long[0];
++
++    private long[] byIndex = EMPTY_LIST;
+     private int size;
+ 
+     public static int getLocationKey(final int x, final int y, final int z) {
+@@ -60,7 +62,7 @@ public final class IBlockDataList {
+             this.map.put((short)location, raw);
+ 
+             if (index >= this.byIndex.length) {
+-                this.byIndex = Arrays.copyOf(this.byIndex, this.byIndex.length * 2);
++                this.byIndex = Arrays.copyOf(this.byIndex, (int)Math.max(4L, this.byIndex.length * 2L));
+             }
+ 
+             this.byIndex[index] = raw;
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java b/src/main/java/com/tuinity/tuinity/chunk/QueuedChangesMapLong2Int.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..a5c38bc078dd03187a16c9cdff4939dacde3f7dd
@@ -348,10 +470,10 @@ index 0000000000000000000000000000000000000000..e5bb56cca9cabf08070a66929ae13ed9
 \ No newline at end of file
 diff --git a/src/main/java/com/tuinity/tuinity/util/ChunkList.java b/src/main/java/com/tuinity/tuinity/util/ChunkList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..66c64be8f33bf99768e20c883f1d2145174376c0
+index 0000000000000000000000000000000000000000..889b4b55ea0c6481b017c4e858c57cd0da0f2e03
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/ChunkList.java
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,121 @@
 +package com.tuinity.tuinity.util;
 +
 +import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
@@ -364,12 +486,14 @@ index 0000000000000000000000000000000000000000..66c64be8f33bf99768e20c883f1d2145
 +// list with O(1) remove & contains
 +public final class ChunkList implements Iterable<Chunk> {
 +
-+    protected final Long2IntOpenHashMap chunkToIndex = new Long2IntOpenHashMap();
++    protected final Long2IntOpenHashMap chunkToIndex = new Long2IntOpenHashMap(2, 0.8f);
 +    {
 +        this.chunkToIndex.defaultReturnValue(Integer.MIN_VALUE);
 +    }
 +
-+    protected Chunk[] chunks = new Chunk[16];
++    private static final Chunk[] EMPTY_LIST = new Chunk[0];
++
++    protected Chunk[] chunks = EMPTY_LIST;
 +    protected int count;
 +
 +    public int size() {
@@ -377,11 +501,11 @@ index 0000000000000000000000000000000000000000..66c64be8f33bf99768e20c883f1d2145
 +    }
 +
 +    public boolean contains(final Chunk chunk) {
-+        return this.chunkToIndex.containsKey(Util.getCoordinateKey(chunk.getPos()));
++        return this.chunkToIndex.containsKey(chunk.coordinateKey);
 +    }
 +
 +    public boolean remove(final Chunk chunk) {
-+        final int index = this.chunkToIndex.remove(Util.getCoordinateKey(chunk.getPos()));
++        final int index = this.chunkToIndex.remove(chunk.coordinateKey);
 +        if (index == Integer.MIN_VALUE) {
 +            return false;
 +        }
@@ -391,7 +515,7 @@ index 0000000000000000000000000000000000000000..66c64be8f33bf99768e20c883f1d2145
 +        final Chunk end = this.chunks[endIndex];
 +        if (index != endIndex) {
 +            // not empty after this call
-+            this.chunkToIndex.put(Util.getCoordinateKey(end.getPos()), index); // update index
++            this.chunkToIndex.put(end.coordinateKey, index); // update index
 +        }
 +        this.chunks[index] = end;
 +        this.chunks[endIndex] = null;
@@ -401,7 +525,7 @@ index 0000000000000000000000000000000000000000..66c64be8f33bf99768e20c883f1d2145
 +
 +    public boolean add(final Chunk chunk) {
 +        final int count = this.count;
-+        final int currIndex = this.chunkToIndex.putIfAbsent(Util.getCoordinateKey(chunk.getPos()), count);
++        final int currIndex = this.chunkToIndex.putIfAbsent(chunk.coordinateKey, count);
 +
 +        if (currIndex != Integer.MIN_VALUE) {
 +            return false; // already in this list
@@ -411,7 +535,7 @@ index 0000000000000000000000000000000000000000..66c64be8f33bf99768e20c883f1d2145
 +
 +        if (list.length == count) {
 +            // resize required
-+            list = this.chunks = Arrays.copyOf(list, count * 2); // overflow results in negative
++            list = this.chunks = Arrays.copyOf(list, (int)Math.max(4L, count * 2L)); // overflow results in negative
 +        }
 +
 +        list[count] = chunk;
@@ -473,10 +597,10 @@ index 0000000000000000000000000000000000000000..66c64be8f33bf99768e20c883f1d2145
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/util/EntityList.java b/src/main/java/com/tuinity/tuinity/util/EntityList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..570c44e26af96c2d3ef467be4fb42b5d8562de43
+index 0000000000000000000000000000000000000000..f78d75fb286ec3a38926449521bc2a91c1bb1683
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/EntityList.java
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,126 @@
 +package com.tuinity.tuinity.util;
 +
 +import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
@@ -489,12 +613,14 @@ index 0000000000000000000000000000000000000000..570c44e26af96c2d3ef467be4fb42b5d
 +// list with O(1) remove & contains
 +public final class EntityList implements Iterable<Entity> {
 +
-+    protected final Int2IntOpenHashMap entityToIndex = new Int2IntOpenHashMap();
++    protected final Int2IntOpenHashMap entityToIndex = new Int2IntOpenHashMap(2, 0.8f);
 +    {
 +        this.entityToIndex.defaultReturnValue(Integer.MIN_VALUE);
 +    }
 +
-+    protected Entity[] entities = new Entity[16];
++    protected static final Entity[] EMPTY_LIST = new Entity[0];
++
++    protected Entity[] entities = EMPTY_LIST;
 +    protected int count;
 +
 +    public int size() {
@@ -536,7 +662,7 @@ index 0000000000000000000000000000000000000000..570c44e26af96c2d3ef467be4fb42b5d
 +
 +        if (list.length == count) {
 +            // resize required
-+            list = this.entities = Arrays.copyOf(list, count * 2); // overflow results in negative
++            list = this.entities = Arrays.copyOf(list, (int)Math.max(4L, count * 2L)); // overflow results in negative
 +        }
 +
 +        list[count] = entity;
@@ -603,10 +729,10 @@ index 0000000000000000000000000000000000000000..570c44e26af96c2d3ef467be4fb42b5d
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/util/IBlockDataList.java b/src/main/java/com/tuinity/tuinity/util/IBlockDataList.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..ce15ce532b86dba60f3f1be8cea1718a92e3b5d3
+index 0000000000000000000000000000000000000000..6a778655d226b1d7b96ca40cd3999179806e57f7
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/IBlockDataList.java
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,125 @@
 +package com.tuinity.tuinity.util;
 +
 +import it.unimi.dsi.fastutil.longs.LongIterator;
@@ -621,12 +747,14 @@ index 0000000000000000000000000000000000000000..ce15ce532b86dba60f3f1be8cea1718a
 +    static final DataPaletteGlobal<IBlockData> GLOBAL_PALETTE = (DataPaletteGlobal)ChunkSection.GLOBAL_PALETTE;
 +
 +    // map of location -> (index | (location << 16) | (palette id << 32))
-+    private final Short2LongOpenHashMap map = new Short2LongOpenHashMap(16, 0.7f);
++    private final Short2LongOpenHashMap map = new Short2LongOpenHashMap(2, 0.8f);
 +    {
 +        this.map.defaultReturnValue(Long.MAX_VALUE);
 +    }
 +
-+    private long[] byIndex = new long[16];
++    private static final long[] EMPTY_LIST = new long[0];
++
++    private long[] byIndex = EMPTY_LIST;
 +    private int size;
 +
 +    public static int getLocationKey(final int x, final int y, final int z) {
@@ -666,7 +794,7 @@ index 0000000000000000000000000000000000000000..ce15ce532b86dba60f3f1be8cea1718a
 +            this.map.put((short)location, raw);
 +
 +            if (index >= this.byIndex.length) {
-+                this.byIndex = Arrays.copyOf(this.byIndex, this.byIndex.length * 2);
++                this.byIndex = Arrays.copyOf(this.byIndex, (int)Math.max(4L, this.byIndex.length * 2L));
 +            }
 +
 +            this.byIndex[index] = raw;
@@ -914,7 +1042,7 @@ index 0000000000000000000000000000000000000000..92f43870fb2d4f1669ed92f2d51aa83f
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/util/map/AreaMap.java b/src/main/java/com/tuinity/tuinity/util/map/AreaMap.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..a350e4204d4b42ec0770b650efc07d6d51e9e983
+index 0000000000000000000000000000000000000000..77046768ca7d54de7900400abbd6451986cb1b06
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/map/AreaMap.java
 @@ -0,0 +1,388 @@
@@ -946,7 +1074,7 @@ index 0000000000000000000000000000000000000000..a350e4204d4b42ec0770b650efc07d6d
 +
 +    // we use linked for better iteration.
 +    // map of: coordinate to set of objects in coordinate
-+    private final Long2ObjectOpenHashMap<PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E>> areaMap = new Long2ObjectOpenHashMap<>(1024, 0.3f);
++    private final Long2ObjectOpenHashMap<PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<E>> areaMap = new Long2ObjectOpenHashMap<>(1024, 0.7f);
 +    private final PooledLinkedHashSets<E> pooledHashSets;
 +
 +    private final ChangeCallback<E> addCallback;
@@ -1804,7 +1932,7 @@ index 07073af991d446ff0b5de4ff1d017383a1e8a25e..dcda848f4f5efe9d2e78bcdd7e3ab5ba
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 1dcd0980ecf81f1fdc1f792ffdac48da00ec1ac6..7da38954b334045ec9458d287d0b809a1c13b549 100644
+index 1dcd0980ecf81f1fdc1f792ffdac48da00ec1ac6..aff61c2c8cb71d715085171c081d4205df71eb73 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -643,11 +643,10 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -1828,7 +1956,7 @@ index 1dcd0980ecf81f1fdc1f792ffdac48da00ec1ac6..7da38954b334045ec9458d287d0b809a
                                          int minDiff = Integer.MAX_VALUE;
 -                                        for (EntityPlayer entityplayer : this.playerChunkMap.playerMobDistanceMap.getPlayersInRange(chunk.getPos())) {
 +                                        // Tuinity start - use view distance map
-+                                        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = this.playerChunkMap.playerViewDistanceMap.getObjectsInRange(chunk.getPos());
++                                        com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> players = this.playerChunkMap.playerViewDistanceMap.getObjectsInRange(chunk.coordinateKey);
 +                                        if (players != null) {
 +                                            Object[] backingSet = players.getBackingSet();
 +                                            for (int index = 0, len = backingSet.length; index < len; ++index) {
