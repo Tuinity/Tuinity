@@ -22,7 +22,7 @@ Each time you want to update your dependency you must re-build tuinity.
 Tuinity-API maven dependency:
 ```xml
 <dependency>
-    <groupId>ca.spottedleaf.tuinity</groupId>
+    <groupId>com.tuinity</groupId>
     <artifactId>tuinity-api</artifactId>
     <version>1.15.2-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
@@ -32,7 +32,7 @@ Tuinity-API maven dependency:
 Tuinity-Server maven dependency:
 ```xml
 <dependency>
-    <groupId>ca.spottedleaf.tuinity</groupId>
+    <groupId>com.tuinity</groupId>
     <artifactId>tuinity</artifactId>
     <version>1.15.2-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
