@@ -18,14 +18,13 @@ index b5f0904dea53d07aec4bdf76f33ef4c12e0926cc..de15d4518cbaaecf4aaf90c1dbf99304
          return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
      }
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 38175da4c614d92ac6bd0c9f0af8103342dd13e4..3442189b20fc7af6e4b6a4ab2afe7883c9a67efb 100644
+index 862a64b6fdb6f86dc2699ecc4aa83f67bf16861b..e476baa0be0e9c609a8dd7855ec0007349f6ed75 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -307,6 +307,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -209,6 +209,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return getCurrentChunk() != null;
      }
- 
- 
-+    // Tuinity end
+     // CraftBukkit end
 +    // Tuinity start
 +    public final double getDistanceXZSquared(double x, double z) {
 +        double diffX = x - this.locX();
@@ -33,10 +32,11 @@ index 38175da4c614d92ac6bd0c9f0af8103342dd13e4..3442189b20fc7af6e4b6a4ab2afe7883
 +
 +        return (diffX * diffX) + (diffZ * diffZ);
 +    }
-     // Tuinity end
++    // Tuinity end
  
      public Entity(EntityTypes<?> entitytypes, World world) {
-@@ -1478,6 +1486,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         this.id = Entity.entityCount.incrementAndGet();
+@@ -1379,6 +1387,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return MathHelper.c(f * f + f1 * f1 + f2 * f2);
      }
  
@@ -146,12 +146,12 @@ index e35ec2db078cc888333cfdd44e1cd3fda71246da..e7dfe22acd2b48c64383e2672f5f4117
          if (entityliving == entityliving1) {
              return false;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 41db80b7c1819e660f735cd298f2b5ffadbd86e3..dcb01b9001a6d4f32d1ae9ad924e2fffbb3f4ae9 100644
+index 0b2623629bcf4222375a7ff6c7c7d46ba5f33482..937ccaba4a9f645bbf47263734a37c003de5bc33 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -391,6 +391,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-     }
-     // Tuinity end - use distance map to optimise entity tracker
+@@ -364,6 +364,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+     // Tuinity end - optimise PlayerChunkMap#isOutsideRange
  
 +    // Tuinity start - optimise getPlayersInRange type functions
 +    public final com.tuinity.tuinity.util.map.PlayerAreaMap playerGeneralAreaMap;
@@ -162,10 +162,10 @@ index 41db80b7c1819e660f735cd298f2b5ffadbd86e3..dcb01b9001a6d4f32d1ae9ad924e2fff
      void addPlayerToDistanceMaps(EntityPlayer player) {
          this.updateMaps(player);
  
-@@ -450,6 +456,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-             this.playerEntityTrackerUntrackMap.remove(player);
-         }
-         // Tuinity end - use distance map to optimise entity tracker
+@@ -416,6 +422,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         this.playerMobSpawnMap.remove(player);
+         this.playerChunkTickRangeMap.remove(player);
+         // Tuinity end - optimise PlayerChunkMap#isOutsideRange
 +
 +        // Tuinity start - optimise getPlayersInRange type functions
 +        this.playerGeneralAreaMap.remove(player);
@@ -173,10 +173,10 @@ index 41db80b7c1819e660f735cd298f2b5ffadbd86e3..dcb01b9001a6d4f32d1ae9ad924e2fff
      }
  
      void updateDistanceMapsTuinity(EntityPlayer player) {
-@@ -485,6 +495,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-             this.playerEntityTrackerUntrackMap.update(player, chunkX, chunkZ, Math.min(this.entityTrackerUntrackRange, effectiveViewDistance));
-         }
-         // Tuinity end - use distance map to optimise entity tracker
+@@ -444,6 +454,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         // Tuinity start - optimise PlayerChunkMap#isOutsideRange
+         this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, ChunkMapDistance.MOB_SPAWN_RANGE);
+         // Tuinity end - optimise PlayerChunkMap#isOutsideRange
 +
 +        // Tuinity start - optimise getPlayersInRange type functions
 +        this.playerGeneralAreaMap.update(player, chunkX, chunkZ, PLAYER_GENERAL_AREA_MAP_DISTANCE);
@@ -184,10 +184,11 @@ index 41db80b7c1819e660f735cd298f2b5ffadbd86e3..dcb01b9001a6d4f32d1ae9ad924e2fff
      }
      // Tuinity end
  
-@@ -673,6 +687,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                     });
-         }
-         // Tuinity end - use distance map to optimise entity tracker
+@@ -591,6 +605,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     }
+                 });
+         // Tuinity end
++
 +        // Tuinity start - optimise getPlayersInRange type functions
 +        this.playerGeneralAreaMap = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets);
 +        // Tuinity end - optimise getPlayersInRange type functions
@@ -195,10 +196,10 @@ index 41db80b7c1819e660f735cd298f2b5ffadbd86e3..dcb01b9001a6d4f32d1ae9ad924e2fff
  
      public void updatePlayerMobTypeMap(Entity entity) {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 7187d864236add312b9dc5754bb736f88ad11b33..bff588ad139271a35287438e0056915b3943caef 100644
+index 1222c74c23eeec1e5294465b7fd6891198ad826b..7faff54ef0a411b32f4bf47cad28e7ad3026d9db 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -198,6 +198,348 @@ public class WorldServer extends World {
+@@ -196,6 +196,348 @@ public class WorldServer extends World {
      }
      // Tuinity end - Optimize entity list iteration requiring entities be in loaded chunks
  
