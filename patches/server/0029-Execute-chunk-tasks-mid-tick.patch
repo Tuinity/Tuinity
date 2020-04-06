@@ -48,7 +48,7 @@ index 6d34f487eaaa022d3884ba44fe3a962cd914ecb4..b5a208945115d421c1e7a315ea43fdfb
  
              if (tileentity.isRemoved()) {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..c340578e859989f537475bd0ddf2b4e4aece6443 100644
+index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..2cb38d36c7404a83a514ad413bc5709b56679fec 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -1,5 +1,6 @@
@@ -66,19 +66,23 @@ index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..c340578e859989f537475bd0ddf2b4e4
  import java.util.Iterator;
  import java.util.List;
  import java.util.Map;
-@@ -196,6 +198,46 @@ public class WorldServer extends World {
+@@ -196,6 +198,56 @@ public class WorldServer extends World {
      }
      // Tuinity end - Optimize entity list iteration requiring entities be in loaded chunks
  
 +    // Tuinity start - execute chunk tasks mid tick
-+    static final long CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME = 50L * 1000L; // 50us
-+    static final long MAX_CHUNK_EXEC_TIME = 7L * 100L; // 0.7us
++    static final long CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME = 25L * 1000L; // 50us
++    static final long MAX_CHUNK_EXEC_TIME = 2L * 500L; // 5us
++    static final double MAX_PERCENT_USAGE_CHUNK_TASK = (double)MAX_CHUNK_EXEC_TIME/(double)CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME;
 +
-+    private long lastExecuteAllTime;
++    static final long TASK_EXECUTION_FAILURE_BACKOFF = 2L * 1000L; // 1us
++
++    private static long lastExecuteAllTime;
++    private static long lastExecuteAllFailure;
 +
 +    final void executeAllChunkTasks() {
 +        long startTime = System.nanoTime();
-+        if ((startTime - this.lastExecuteAllTime) <= CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME) {
++        if ((startTime - lastExecuteAllTime) <= CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME || (startTime - lastExecuteAllFailure) <= TASK_EXECUTION_FAILURE_BACKOFF) {
 +            // it's shown to be bad to constantly hit the queue (chunk loads slow to a crawl), even if no tasks are executed.
 +            // so, backoff to prevent this
 +            return;
@@ -88,19 +92,25 @@ index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..c340578e859989f537475bd0ddf2b4e4
 +        try {
 +            ChunkProviderServer chunkProviderServer = this.getChunkProvider();
 +            for (;;) {
++                boolean moreTasks = chunkProviderServer.runTasks();
 +                long currTime = System.nanoTime();
++                long diff = currTime - startTime;
 +
-+                if (!chunkProviderServer.runTasks()) {
-+                    // nothing left, need to backoff now
-+                    this.lastExecuteAllTime = currTime;
-+                    return;
-+                }
++                if (!moreTasks || diff >= MAX_CHUNK_EXEC_TIME) {
++                    if (!moreTasks) {
++                        lastExecuteAllFailure = currTime;
++                    }
 +
++                    // note: negative values reduce the time
++                    long overuse = diff - MAX_CHUNK_EXEC_TIME;
++                    if (overuse >= (10L * 1000L * 1000L * 1000L)) { // 10ms
++                        overuse = 10L * 1000L * 1000L * 1000L;
++                    }
 +
-+                if ((currTime - startTime) >= MAX_CHUNK_EXEC_TIME) {
-+                    // we ran out of time, so we don't need to worry about backoff here too much - but we do
-+                    // need to limit.
-+                    this.lastExecuteAllTime = currTime;
++                    double overuseCount = (double)overuse/(double)MAX_CHUNK_EXEC_TIME;
++                    long extraSleep = (long)Math.round(overuseCount*CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME);
++
++                    lastExecuteAllTime = currTime + extraSleep;
 +                    return;
 +                }
 +            }
@@ -113,7 +123,7 @@ index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..c340578e859989f537475bd0ddf2b4e4
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(worlddata, dimensionmanager, (world, worldprovider) -> {
-@@ -520,6 +562,7 @@ public class WorldServer extends World {
+@@ -520,6 +572,7 @@ public class WorldServer extends World {
                  gameprofilerfiller.enter("tick");
                  if (!entity1.dead && !(entity1 instanceof EntityComplexPart)) {
                      this.a(this::entityJoinedWorld, entity1);
