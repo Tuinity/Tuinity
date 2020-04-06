@@ -48,7 +48,7 @@ index 6d34f487eaaa022d3884ba44fe3a962cd914ecb4..b5a208945115d421c1e7a315ea43fdfb
  
              if (tileentity.isRemoved()) {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index cf84424a43444c595f39186bcdc97473e0dea339..01bdfea7b4feb9a48f29e1c5e1704f6f00e38277 100644
+index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..a6732445e8bacd2df9c5c7227ad8430573404fdf 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -1,5 +1,6 @@
@@ -66,11 +66,11 @@ index cf84424a43444c595f39186bcdc97473e0dea339..01bdfea7b4feb9a48f29e1c5e1704f6f
  import java.util.Iterator;
  import java.util.List;
  import java.util.Map;
-@@ -538,6 +540,47 @@ public class WorldServer extends World {
+@@ -196,6 +198,47 @@ public class WorldServer extends World {
      }
-     // Tuinity end
+     // Tuinity end - Optimize entity list iteration requiring entities be in loaded chunks
  
-+    // Tuinity start
++    // Tuinity start - execute chunk tasks mid tick
 +    static final long CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME = 2L * 1000L; // 2us
 +    static final long MAX_CHUNK_EXEC_TIME = 2L * 100L; // 0.2us
 +    // with these values, chunk processing during tick can go up to 20% of the tick.
@@ -109,12 +109,12 @@ index cf84424a43444c595f39186bcdc97473e0dea339..01bdfea7b4feb9a48f29e1c5e1704f6f
 +            MinecraftTimings.midTickChunkTasks.stopTiming();;
 +        }
 +    }
-+    // Tuinity end
++    // Tuinity end - execute chunk tasks mid tick
 +
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(worlddata, dimensionmanager, (world, worldprovider) -> {
-@@ -862,6 +905,7 @@ public class WorldServer extends World {
+@@ -520,6 +563,7 @@ public class WorldServer extends World {
                  gameprofilerfiller.enter("tick");
                  if (!entity1.dead && !(entity1 instanceof EntityComplexPart)) {
                      this.a(this::entityJoinedWorld, entity1);
