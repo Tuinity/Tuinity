@@ -1,0 +1,124 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 6 Apr 2020 04:20:44 -0700
+Subject: [PATCH] Execute chunk tasks mid-tick
+
+This will help the server load chunks if tick times are high.
+
+diff --git a/src/main/java/co/aikar/timings/MinecraftTimings.java b/src/main/java/co/aikar/timings/MinecraftTimings.java
+index 69e26a8267885fa0b0310a5386718bff1dfb2ecc..3586c164bdb6762572f8499057fcf5627c765d56 100644
+--- a/src/main/java/co/aikar/timings/MinecraftTimings.java
++++ b/src/main/java/co/aikar/timings/MinecraftTimings.java
+@@ -42,6 +42,8 @@ public final class MinecraftTimings {
+     public static final Timing antiXrayUpdateTimer = Timings.ofSafe("anti-xray - update");
+     public static final Timing antiXrayObfuscateTimer = Timings.ofSafe("anti-xray - obfuscate");
+ 
++    public static final Timing midTickChunkTasks = Timings.ofSafe("Mid-Tick Chunk Tasks");
++
+     private static final Map<Class<?>, String> taskNameCache = new MapMaker().weakKeys().makeMap();
+ 
+     private MinecraftTimings() {}
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index b48ecd349603cdd2b1b80934f5b3a65500d5fdc2..9a914e2acd2581122a7e72b303d345e6b4f297e5 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -810,6 +810,12 @@ public class ChunkProviderServer extends IChunkProvider {
+                         this.world.timings.chunkTicks.startTiming(); // Spigot // Paper
+                         this.world.a(chunk, k);
+                         this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
++
++                        // Tuinity start - exec chunk tasks during world tick
++                        if ((chunk.getPos().pair() & 7) <= 1) { // crude but good enough random check, don't want to run the below too many times...
++                            this.world.executeAllChunkTasks();
++                        }
++                        // Tuinity end - exec chunk tasks during world tick
+                     }
+                 }
+             }; // Tuinity
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 6d34f487eaaa022d3884ba44fe3a962cd914ecb4..b5a208945115d421c1e7a315ea43fdfb105261db 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -813,6 +813,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+                     }
+                     // Spigot end
+                 }
++                ((WorldServer)this).executeAllChunkTasks(); // Tuinity - exec chunk tasks during world tick
+             }
+ 
+             if (tileentity.isRemoved()) {
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index 2b6fbd42199ded9cc18fd8c80cceeef8f8bdde58..aa015dc2872ab28c24ffdb1c76e82835bbba5b54 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.server;
+ 
++import co.aikar.timings.MinecraftTimings;
+ import com.google.common.annotations.VisibleForTesting;
+ import co.aikar.timings.TimingHistory; // Paper
+ import co.aikar.timings.Timings; // Paper
+@@ -22,6 +23,7 @@ import java.io.BufferedWriter;
+ import java.io.IOException;
+ import java.io.Writer;
+ import java.nio.file.Files;
++import java.util.ArrayList;
+ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Map;
+@@ -538,6 +540,47 @@ public class WorldServer extends World {
+     }
+     // Tuinity end
+ 
++    // Tuinity start
++    static final long CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME = 2L * 1000L; // 2us
++    static final long MAX_CHUNK_EXEC_TIME = 2L * 100L; // 0.2us
++    // with these values, chunk processing during tick can go up to 20% of the tick.
++
++    private long lastExecuteAllTime;
++
++    final void executeAllChunkTasks() {
++        long startTime = System.nanoTime();
++        if ((startTime - this.lastExecuteAllTime) <= CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME) {
++            // it's shown to be bad to constantly hit the queue (chunk loads slow to a crawl), even if no tasks are executed.
++            // so, backoff to prevent this
++            return;
++        }
++
++        MinecraftTimings.midTickChunkTasks.startTiming();
++        try {
++            ChunkProviderServer chunkProviderServer = this.getChunkProvider();
++                for (;;) {
++                    long currTime = System.nanoTime();
++
++                    if (!chunkProviderServer.runTasks()) {
++                        // nothing left, need to backoff now
++                        this.lastExecuteAllTime = currTime;
++                        return;
++                    }
++
++
++                    if ((currTime - startTime) >= MAX_CHUNK_EXEC_TIME) {
++                        // we ran out of time, so we don't need to worry about backoff here too much - but we do
++                        // need to limit.
++                        this.lastExecuteAllTime = currTime - (CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME/2);
++                        return;
++                    }
++                }
++        } finally {
++            MinecraftTimings.midTickChunkTasks.stopTiming();;
++        }
++    }
++    // Tuinity end
++
+     // Add env and gen to constructor
+     public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
+         super(worlddata, dimensionmanager, (world, worldprovider) -> {
+@@ -862,6 +905,7 @@ public class WorldServer extends World {
+                 gameprofilerfiller.enter("tick");
+                 if (!entity1.dead && !(entity1 instanceof EntityComplexPart)) {
+                     this.a(this::entityJoinedWorld, entity1);
++                    this.executeAllChunkTasks(); // Tuinity - exec chunk tasks during world tick
+                 }
+ 
+                 gameprofilerfiller.exit();
