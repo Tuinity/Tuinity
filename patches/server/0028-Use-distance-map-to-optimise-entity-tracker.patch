@@ -41,7 +41,7 @@ index 3e5d6a9e151fb990b777c1ac48cabea653ea1c27..5269e45a810424c279c6b81cf9e15a05
          com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Tracker update"); // Tuinity
          List<Entity> list = this.tracker.getPassengers();
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494f9d304c1 100644
+index c32e8b6365f34826868b1152a06c3cf830931149..b136787d6c709f7d42795b30b594999b4b210b0f 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -145,6 +145,16 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -97,11 +97,7 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
          // Tuinity end - optimise PlayerChunkMap#isOutsideRange
 -    }
 -    // Tuinity end
-+        // Tuinity start - use distance map to optimise entity tracker
-+        for (int i = 0, len = TRACKING_RANGE_TYPES.length; i < len; ++i) {
-+            com.tuinity.tuinity.util.map.PlayerAreaMap trackMap = this.playerEntityTrackerTrackMaps[i];
-+            int trackRange = this.entityTrackerTrackRanges[i];
- 
+-
 -    // Paper start - Reduce entity tracker updates on move
 -    private double trackerUpdateDistanceSquared;
 -    private final Int2ObjectMap<Int2ObjectMap<PlayerChunkMap.EntityTracker>> playerTrackedEntities = new Int2ObjectOpenHashMap<>();
@@ -112,10 +108,12 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
 -        Int2ObjectMap<PlayerChunkMap.EntityTracker> entityMap = getPlayerTrackedEntityMap(entityplayer.getId());
 -        for (Integer id = removeQueue.poll(); id != null; id = removeQueue.poll()) {
 -            entityMap.remove(id);
-+            trackMap.update(player, chunkX, chunkZ, Math.min(trackRange, effectiveViewDistance));
-         }
+-        }
 -    }
-+        // Tuinity end - use distance map to optimise entity tracker
++        // Tuinity start - use distance map to optimise entity tracker
++        for (int i = 0, len = TRACKING_RANGE_TYPES.length; i < len; ++i) {
++            com.tuinity.tuinity.util.map.PlayerAreaMap trackMap = this.playerEntityTrackerTrackMaps[i];
++            int trackRange = this.entityTrackerTrackRanges[i];
  
 -    void flushRemoveQueues() {
 -        for (Int2ObjectMap.Entry<Queue<Integer>> entry : playerTrackedEntitiesRemoveQueue.int2ObjectEntrySet()) {
@@ -124,18 +122,20 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
 -            for (Integer id = removeQueue.poll(); id != null; id = removeQueue.poll()) {
 -                entityMap.remove(id);
 -            }
--        }
++            trackMap.update(player, chunkX, chunkZ, Math.min(trackRange, effectiveViewDistance));
+         }
 -    }
--
++        // Tuinity end - use distance map to optimise entity tracker
+ 
 -    Int2ObjectMap<EntityTracker> getPlayerTrackedEntityMap(int id) {
 -        return playerTrackedEntities.computeIfAbsent(id, i -> new Int2ObjectOpenHashMap<>());
+-    }
+-
+-    Queue<Integer> getPlayerTrackedEntityMapRemoveQueue(int id) {
+-        return playerTrackedEntitiesRemoveQueue.computeIfAbsent(id, i -> new java.util.ArrayDeque<>());
      }
 +    // Tuinity end
  
--    Queue<Integer> getPlayerTrackedEntityMapRemoveQueue(int id) {
--        return playerTrackedEntitiesRemoveQueue.computeIfAbsent(id, i -> new java.util.ArrayDeque<>());
--    }
--
 -    // Paper end
 +    // Tuinity - replace with better logic
  
@@ -192,7 +192,7 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
 +            this.playerEntityTrackerTrackMaps[ordinal] = new com.tuinity.tuinity.util.map.PlayerAreaMap(sets,
 +                    (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
 +                     com.tuinity.tuinity.util.map.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
-+                        Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfLoadedMainThreadNoCache(rangeX, rangeZ);
++                        Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfCachedImmediately(rangeX, rangeZ);
 +                        if (chunk == null) {
 +                            return;
 +                        }
@@ -258,7 +258,13 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
  
          int i = MathHelper.floor(entityplayer.locX()) >> 4;
          int j = MathHelper.floor(entityplayer.locZ()) >> 4;
-@@ -1938,15 +1990,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1933,20 +1985,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+                     entity.tracker = playerchunkmap_entitytracker; // Paper - Fast access to tracker
+                     this.trackedEntities.put(entity.getId(), playerchunkmap_entitytracker);
+-                    playerchunkmap_entitytracker.track(this.world.getPlayers());
++                    entity.playersInTrackRange = this.playerEntityTrackerTrackMaps[entity.trackingRangeType.ordinal()].getObjectsInRange(com.tuinity.tuinity.util.Util.getCoordinateKey(entity)); // Tuinity - optimise entity tracker
+                     if (entity instanceof EntityPlayer) {
                          EntityPlayer entityplayer = (EntityPlayer) entity;
  
                          this.a(entityplayer, true);
@@ -275,7 +281,7 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
                      }
  
                  }
-@@ -1967,26 +2011,58 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1967,26 +2011,59 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
                  playerchunkmap_entitytracker.clear(entityplayer);
              }
@@ -298,8 +304,9 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
 +            // Tuinity - replaced with better logic
          }
          entity.tracker = null; // Paper - We're no longer tracked
-     }
- 
++        entity.playersInTrackRange = null; // Tuinity - no longer tracked
++    }
++
 +    private final void processTrackQueue() {
 +        this.world.timings.tracker1.startTiming();
 +        try {
@@ -331,8 +338,8 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
 +        } finally {
 +            this.world.timings.tracker2.stopTiming();
 +        }
-+    }
-+
+     }
+ 
      protected void g() {
 +        // Tuinity start - optimized tracker
 +        if (true) {
@@ -343,7 +350,7 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
          List<EntityPlayer> list = Lists.newArrayList();
          List<EntityPlayer> list1 = this.world.getPlayers();
  
-@@ -2022,7 +2098,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2022,7 +2099,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              }
              world.timings.tracker2.stopTiming(); // Paper
          }
@@ -352,7 +359,7 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
  
      }
  
-@@ -2055,24 +2131,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2055,24 +2132,25 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          PacketDebug.a(this.world, chunk.getPos());
          List<Entity> list = Lists.newArrayList();
          List<Entity> list1 = Lists.newArrayList();
@@ -367,19 +374,33 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
 -                if (entity instanceof EntityInsentient && ((EntityInsentient) entity).getLeashHolder() != null) {
 -                    list.add(entity);
 -                }
--
++        // Tuinity start - optimise entity tracker
++        // use the chunk entity list, not the whole trackedEntities map...
++        Entity[] entities = chunk.entities.getRawData();
++        for (int i = 0, size = chunk.entities.size(); i < size; ++i) {
++            Entity entity = entities[i];
++            // double check that the entity is in the trackedEntities map
++            if (entity == entityplayer || this.trackedEntities.get(entity.getId()) == null) {
++                continue;
++            }
++            if (entity instanceof EntityInsentient && ((EntityInsentient) entity).getLeashHolder() != null) {
++                list.add(entity);
++            }
+ 
 -                if (!entity.getPassengers().isEmpty()) {
 -                    list1.add(entity);
 -                }
--            }
--        }
++            if (!entity.getPassengers().isEmpty()) {
++                list1.add(entity);
+             }
+         }
 -        flushRemoveQueue(entityplayer); // Paper
-+        // Tuinity - this can be delayed until tracker tick
-+        // Tuinity - replaced with better logic
++        // Tuinity end - optimise entity tracker
++
  
          Iterator iterator;
          Entity entity1;
-@@ -2110,7 +2170,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2110,7 +2188,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      public class EntityTracker {
  
@@ -388,7 +409,7 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
          private final Entity tracker;
          private final int trackingDistance;
          private SectionPosition e;
-@@ -2120,6 +2180,43 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2120,6 +2198,43 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          public java.util.Map<EntityPlayer, Boolean> trackedPlayerMap = new java.util.HashMap<>();
          public Set<EntityPlayer> trackedPlayers = trackedPlayerMap.keySet();
  
@@ -432,7 +453,7 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
          public EntityTracker(Entity entity, int i, int j, boolean flag) {
              this.trackerEntry = new EntityTrackerEntry(PlayerChunkMap.this.world, entity, j, flag, this::broadcast, trackedPlayerMap); // CraftBukkit // Paper
              this.tracker = entity;
-@@ -2169,7 +2266,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2169,7 +2284,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              org.spigotmc.AsyncCatcher.catchOp("player tracker clear"); // Spigot
              if (this.trackedPlayers.remove(entityplayer)) {
                  this.trackerEntry.a(entityplayer);
@@ -441,7 +462,7 @@ index ed50e1b03fd2d9882db3ec8a5a62e5133160b7ef..f586293f2aa3d6fb0844723bf5a9e494
              }
  
          }
-@@ -2206,11 +2303,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2206,11 +2321,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
                      if (flag1 && this.trackedPlayerMap.putIfAbsent(entityplayer, true) == null) { // Paper
                          this.trackerEntry.b(entityplayer);
