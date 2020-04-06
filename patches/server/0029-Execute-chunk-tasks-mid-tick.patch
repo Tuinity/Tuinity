@@ -48,7 +48,7 @@ index 6d34f487eaaa022d3884ba44fe3a962cd914ecb4..b5a208945115d421c1e7a315ea43fdfb
  
              if (tileentity.isRemoved()) {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..a6732445e8bacd2df9c5c7227ad8430573404fdf 100644
+index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..c340578e859989f537475bd0ddf2b4e4aece6443 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -1,5 +1,6 @@
@@ -66,14 +66,13 @@ index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..a6732445e8bacd2df9c5c7227ad84305
  import java.util.Iterator;
  import java.util.List;
  import java.util.Map;
-@@ -196,6 +198,47 @@ public class WorldServer extends World {
+@@ -196,6 +198,46 @@ public class WorldServer extends World {
      }
      // Tuinity end - Optimize entity list iteration requiring entities be in loaded chunks
  
 +    // Tuinity start - execute chunk tasks mid tick
-+    static final long CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME = 2L * 1000L; // 2us
-+    static final long MAX_CHUNK_EXEC_TIME = 2L * 100L; // 0.2us
-+    // with these values, chunk processing during tick can go up to 20% of the tick.
++    static final long CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME = 50L * 1000L; // 50us
++    static final long MAX_CHUNK_EXEC_TIME = 7L * 100L; // 0.7us
 +
 +    private long lastExecuteAllTime;
 +
@@ -88,23 +87,23 @@ index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..a6732445e8bacd2df9c5c7227ad84305
 +        MinecraftTimings.midTickChunkTasks.startTiming();
 +        try {
 +            ChunkProviderServer chunkProviderServer = this.getChunkProvider();
-+                for (;;) {
-+                    long currTime = System.nanoTime();
++            for (;;) {
++                long currTime = System.nanoTime();
 +
-+                    if (!chunkProviderServer.runTasks()) {
-+                        // nothing left, need to backoff now
-+                        this.lastExecuteAllTime = currTime;
-+                        return;
-+                    }
-+
-+
-+                    if ((currTime - startTime) >= MAX_CHUNK_EXEC_TIME) {
-+                        // we ran out of time, so we don't need to worry about backoff here too much - but we do
-+                        // need to limit.
-+                        this.lastExecuteAllTime = currTime - (CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME/2);
-+                        return;
-+                    }
++                if (!chunkProviderServer.runTasks()) {
++                    // nothing left, need to backoff now
++                    this.lastExecuteAllTime = currTime;
++                    return;
 +                }
++
++
++                if ((currTime - startTime) >= MAX_CHUNK_EXEC_TIME) {
++                    // we ran out of time, so we don't need to worry about backoff here too much - but we do
++                    // need to limit.
++                    this.lastExecuteAllTime = currTime;
++                    return;
++                }
++            }
 +        } finally {
 +            MinecraftTimings.midTickChunkTasks.stopTiming();;
 +        }
@@ -114,7 +113,7 @@ index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..a6732445e8bacd2df9c5c7227ad84305
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(worlddata, dimensionmanager, (world, worldprovider) -> {
-@@ -520,6 +563,7 @@ public class WorldServer extends World {
+@@ -520,6 +562,7 @@ public class WorldServer extends World {
                  gameprofilerfiller.enter("tick");
                  if (!entity1.dead && !(entity1 instanceof EntityComplexPart)) {
                      this.a(this::entityJoinedWorld, entity1);
