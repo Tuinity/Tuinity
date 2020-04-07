@@ -15,7 +15,7 @@ without tickets get unloaded immediately.
 Configurable under `delay-chunkunloads-by` in config.
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index a541e9e87f8d56a6fd228e0e806a633090f6fa11..986b5de125c54353669cf904319b43091a9b2f49 100644
+index bddd5652a95c57bfda488258fc6f1331d5e6a8e6..9a52acf00c2bcc2ec504f89efbbfc6f2f673addf 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -1,6 +1,7 @@
@@ -55,7 +55,7 @@ index 55f9f4e6e7fddb2fcdbc1877d1bdfe8d3c9eff6f..15f0f86a364618288e626c38191337a7
          this.a(ChunkCoordIntPair.a, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 1a237ede3c7e06cb1701f14ce9a8bad7eb09e097..12f25a89aafb3e265cd230c19f34d5e0049b1efd 100644
+index c494a51165b898e1d3cee045a11daf9c5dfcb088..deb97faab3332148110c25dd6c3be626726727bc 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
@@ -67,8 +67,8 @@ index 1a237ede3c7e06cb1701f14ce9a8bad7eb09e097..12f25a89aafb3e265cd230c19f34d5e0
      public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); // Tuinity - no longer used
      //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); // Tuinity - no longer used
      private final java.util.Queue<PlayerChunk> pendingChunkUpdates = new java.util.ArrayDeque<>(); // PAIL pendingChunkUpdates // Paper - use a queue // Tuinity - use a better queue
-@@ -105,6 +105,47 @@ public abstract class ChunkMapDistance {
-     }
+@@ -68,6 +68,47 @@ public abstract class ChunkMapDistance {
+     };
      // Tuinity end
  
 +    // Tuinity start - delay chunk unloads
@@ -115,7 +115,7 @@ index 1a237ede3c7e06cb1701f14ce9a8bad7eb09e097..12f25a89aafb3e265cd230c19f34d5e0
      protected ChunkMapDistance(Executor executor, Executor executor1) {
          executor1.getClass();
          Mailbox<Runnable> mailbox = Mailbox.a("player ticket throttler", executor1::execute);
-@@ -121,12 +162,30 @@ public abstract class ChunkMapDistance {
+@@ -84,12 +125,30 @@ public abstract class ChunkMapDistance {
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
@@ -147,7 +147,7 @@ index 1a237ede3c7e06cb1701f14ce9a8bad7eb09e097..12f25a89aafb3e265cd230c19f34d5e0
                  this.e.b(entry.getLongKey(), a((ArraySetSorted) entry.getValue()), false);
              }
  
-@@ -137,6 +196,7 @@ public abstract class ChunkMapDistance {
+@@ -100,6 +159,7 @@ public abstract class ChunkMapDistance {
  
      }
  
@@ -155,7 +155,7 @@ index 1a237ede3c7e06cb1701f14ce9a8bad7eb09e097..12f25a89aafb3e265cd230c19f34d5e0
      private static int a(ArraySetSorted<Ticket<?>> arraysetsorted) {
          return !arraysetsorted.isEmpty() ? ((Ticket) arraysetsorted.b()).b() : PlayerChunkMap.GOLDEN_TICKET + 1;
      }
-@@ -221,6 +281,11 @@ public abstract class ChunkMapDistance {
+@@ -184,6 +244,11 @@ public abstract class ChunkMapDistance {
          boolean removed = false; // CraftBukkit
          if (arraysetsorted.remove(ticket)) {
              removed = true; // CraftBukkit
@@ -205,7 +205,7 @@ index 4b87ca2ecb6d738908fba111f52e54be463cc809..141664b5545a11c7d382c4e6ea155693
      public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
          return new TicketType<>(s, comparator, 0L);
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 601ad8f5c12b3586ff3704b8321805d247e63a19..9d9686015090de0dfffd7b3a61db9b990aa5965d 100644
+index 1a30e71c2019e3ddae5601f1f13d6ab05658e275..62a54ea2f5d7a4fdcb9b63c9fd5b4eb571596bd9 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 @@ -463,6 +463,7 @@ public class CraftWorld implements World {
