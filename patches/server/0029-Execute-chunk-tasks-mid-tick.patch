@@ -48,25 +48,10 @@ index 6d34f487eaaa022d3884ba44fe3a962cd914ecb4..b5a208945115d421c1e7a315ea43fdfb
  
              if (tileentity.isRemoved()) {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..2cb38d36c7404a83a514ad413bc5709b56679fec 100644
+index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..0f010dce2c69b3e7250ac3890e2ce25b08c81aa2 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -1,5 +1,6 @@
- package net.minecraft.server;
- 
-+import co.aikar.timings.MinecraftTimings;
- import com.google.common.annotations.VisibleForTesting;
- import co.aikar.timings.TimingHistory; // Paper
- import co.aikar.timings.Timings; // Paper
-@@ -22,6 +23,7 @@ import java.io.BufferedWriter;
- import java.io.IOException;
- import java.io.Writer;
- import java.nio.file.Files;
-+import java.util.ArrayList;
- import java.util.Iterator;
- import java.util.List;
- import java.util.Map;
-@@ -196,6 +198,56 @@ public class WorldServer extends World {
+@@ -196,6 +196,56 @@ public class WorldServer extends World {
      }
      // Tuinity end - Optimize entity list iteration requiring entities be in loaded chunks
  
@@ -88,7 +73,7 @@ index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..2cb38d36c7404a83a514ad413bc5709b
 +            return;
 +        }
 +
-+        MinecraftTimings.midTickChunkTasks.startTiming();
++        co.aikar.timings.MinecraftTimings.midTickChunkTasks.startTiming();
 +        try {
 +            ChunkProviderServer chunkProviderServer = this.getChunkProvider();
 +            for (;;) {
@@ -115,7 +100,7 @@ index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..2cb38d36c7404a83a514ad413bc5709b
 +                }
 +            }
 +        } finally {
-+            MinecraftTimings.midTickChunkTasks.stopTiming();;
++            co.aikar.timings.MinecraftTimings.midTickChunkTasks.stopTiming();;
 +        }
 +    }
 +    // Tuinity end - execute chunk tasks mid tick
@@ -123,7 +108,7 @@ index d7f4199911ffb65d95fe0cb4671ea030c6eb9881..2cb38d36c7404a83a514ad413bc5709b
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(worlddata, dimensionmanager, (world, worldprovider) -> {
-@@ -520,6 +572,7 @@ public class WorldServer extends World {
+@@ -520,6 +570,7 @@ public class WorldServer extends World {
                  gameprofilerfiller.enter("tick");
                  if (!entity1.dead && !(entity1 instanceof EntityComplexPart)) {
                      this.a(this::entityJoinedWorld, entity1);
