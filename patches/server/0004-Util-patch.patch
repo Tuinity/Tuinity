@@ -1453,10 +1453,10 @@ index 0000000000000000000000000000000000000000..05b2af47d5e5e709500e4a886a67f40c
 \ No newline at end of file
 diff --git a/src/main/java/com/tuinity/tuinity/util/map/DistanceTrackingAreaMap.java b/src/main/java/com/tuinity/tuinity/util/map/DistanceTrackingAreaMap.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..e634e86ebdb90f92f4f92f71cad9bdb971869cce
+index 0000000000000000000000000000000000000000..91a74d8e33b7f71760314ee4f93199670f188b08
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/map/DistanceTrackingAreaMap.java
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,176 @@
 +package com.tuinity.tuinity.util.map;
 +
 +import ca.spottedleaf.concurrentutil.util.IntegerUtil;
@@ -1587,46 +1587,14 @@ index 0000000000000000000000000000000000000000..e634e86ebdb90f92f4f92f71cad9bdb9
 +        final int totalX = Math.abs(fromX - toX);
 +        final int totalZ = Math.abs(fromZ - toZ);
 +
++        if (fromX == toX && fromZ == toZ && newViewDistance == oldViewDistance) {
++            return;
++        }
++
 +        if (Math.max(totalX, totalZ) > (2 * Math.max(newViewDistance, oldViewDistance))) {
 +            // teleported?
 +            this.removeObjectCallback(object, fromX, fromZ, oldViewDistance);
 +            this.addObjectCallback(object, toX, toZ, newViewDistance);
-+            return;
-+        }
-+
-+        if (oldViewDistance != newViewDistance) {
-+            // remove loop
-+
-+            final int oldMaxX = fromX + oldViewDistance;
-+            final int oldMaxZ = fromZ + oldViewDistance;
-+            for (int currX = fromX - oldViewDistance; currX <= oldMaxX; ++currX) {
-+                for (int currZ = fromZ - oldViewDistance; currZ <= oldMaxZ; ++currZ) {
-+
-+                    // only remove if we're outside the new view distance...
-+                    if (Math.max(IntegerUtil.branchlessAbs(currX - toX), IntegerUtil.branchlessAbs(currZ - toZ)) > newViewDistance) {
-+                        this.recalculateDistance(currX, currZ);
-+                    }
-+                }
-+            }
-+
-+            // add loop
-+
-+            final int newMaxX = toX + newViewDistance;
-+            final int newMaxZ = toZ + newViewDistance;
-+            for (int currX = toX - newViewDistance; currX <= newMaxX; ++currX) {
-+                for (int currZ = toZ - newViewDistance; currZ <= newMaxZ; ++currZ) {
-+
-+                    // only add if we're outside the old view distance...
-+                    if (Math.max(IntegerUtil.branchlessAbs(currX - fromX), IntegerUtil.branchlessAbs(currZ - fromZ)) > oldViewDistance) {
-+                        this.recalculateDistance(currX, currZ);
-+                    }
-+                }
-+            }
-+
-+            return;
-+        }
-+
-+        if (fromX == toX && fromZ == toZ) {
 +            return;
 +        }
 +
