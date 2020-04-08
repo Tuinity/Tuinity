@@ -5,7 +5,7 @@ Subject: [PATCH] Log exceptions for async chunk load failures
 
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 99a6dad1713e221ab912ce4ce7cf6f79390ee10a..2b812afcb197537defaaf98743878b3d27bcdff5 100644
+index 99a6dad1713e221ab912ce4ce7cf6f79390ee10a..2e729cb99e4eb6d1682d25522c6b1aa5f2dd47bd 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -325,7 +325,10 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -20,7 +20,7 @@ index 99a6dad1713e221ab912ce4ce7cf6f79390ee10a..2b812afcb197537defaaf98743878b3d
              }
  
              this.removeTicketAtLevel(TicketType.ASYNC_LOAD, chunkPos, ticketLevel, identifier);
-@@ -335,7 +338,10 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -335,12 +338,19 @@ public class ChunkProviderServer extends IChunkProvider {
  
              if (failure.isPresent()) {
                  // failure
@@ -32,6 +32,16 @@ index 99a6dad1713e221ab912ce4ce7cf6f79390ee10a..2b812afcb197537defaaf98743878b3d
              }
  
              onComplete.accept(either.left().get());
+ 
+-        }, this.serverThreadQueue);
++        }, this.serverThreadQueue).exceptionally((throwable) -> {                 // Tuinity start - thank you once again completablefuture
++            MinecraftServer.LOGGER.fatal("Failed to asynchronously load chunk " + chunkPos);
++            return null;
++        });
++        // Tuinity end - thank you once again completablefuture
+     }
+ 
+     public <T> void addTicketAtLevel(TicketType<T> ticketType, ChunkCoordIntPair chunkPos, int ticketLevel, T identifier) {
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 index aa04a234fb32eab346e9b651f2a37da1fe48e460..10c31354f3e90e875193731d361f37395fb95af4 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
