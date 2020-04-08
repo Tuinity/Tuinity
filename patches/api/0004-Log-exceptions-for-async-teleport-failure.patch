@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Tue, 7 Apr 2020 18:49:22 -0700
+Subject: [PATCH] Log exceptions for async teleport failure
+
+
+diff --git a/src/main/java/org/bukkit/entity/Entity.java b/src/main/java/org/bukkit/entity/Entity.java
+index 5518ecd21435334d9148cd3e095ec06031bdd0a5..511348bdb729be14a51ae55419f15a313a32dd00 100644
+--- a/src/main/java/org/bukkit/entity/Entity.java
++++ b/src/main/java/org/bukkit/entity/Entity.java
+@@ -174,7 +174,12 @@ public interface Entity extends Metadatable, CommandSender, Nameable, Persistent
+     @NotNull
+     public default java.util.concurrent.CompletableFuture<Boolean> teleportAsync(@NotNull Location loc, @NotNull TeleportCause cause) {
+         java.util.concurrent.CompletableFuture<Boolean> future = new java.util.concurrent.CompletableFuture<>();
+-        loc.getWorld().getChunkAtAsync(loc).thenAccept((chunk) -> future.complete(teleport(loc, cause)));
++        // Tuinity start - log exceptions, thank you once again completablefuture
++        loc.getWorld().getChunkAtAsync(loc).thenAccept((chunk) -> future.complete(teleport(loc, cause))).exceptionally((throwable -> {
++            org.bukkit.Bukkit.getLogger().log(java.util.logging.Level.SEVERE, "Failed to teleport entity", throwable);
++            return null;
++        }));
++        // Tuinity end - log exceptions, thank you once again completablefuture
+         return future;
+     }
+     // Paper end
