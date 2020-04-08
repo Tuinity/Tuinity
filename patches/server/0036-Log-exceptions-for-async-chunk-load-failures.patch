@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Tue, 7 Apr 2020 18:55:27 -0700
+Subject: [PATCH] Log exceptions for async chunk load failures
+
+
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index 99a6dad1713e221ab912ce4ce7cf6f79390ee10a..2b812afcb197537defaaf98743878b3d27bcdff5 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -325,7 +325,10 @@ public class ChunkProviderServer extends IChunkProvider {
+             // either right -> failure
+ 
+             if (throwable != null) {
+-                throw new RuntimeException(throwable);
++                // Tuinity start - thank you once again completablefuture
++                MinecraftServer.LOGGER.fatal("Failed to asynchronously load chunk " + chunkPos, throwable);
++                return;
++                // Tuinity end - thank you once again completablefuture
+             }
+ 
+             this.removeTicketAtLevel(TicketType.ASYNC_LOAD, chunkPos, ticketLevel, identifier);
+@@ -335,7 +338,10 @@ public class ChunkProviderServer extends IChunkProvider {
+ 
+             if (failure.isPresent()) {
+                 // failure
+-                throw new IllegalStateException("Chunk failed to load: " + failure.get().toString());
++                // Tuinity start - thank you once again completablefuture
++                MinecraftServer.LOGGER.fatal("Failed to asynchronously load chunk " + chunkPos, new IllegalStateException("Chunk failed to load: " + failure.get().toString()));
++                return;
++                // Tuinity end - thank you once again completablefuture
+             }
+ 
+             onComplete.accept(either.left().get());
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+index aa04a234fb32eab346e9b651f2a37da1fe48e460..10c31354f3e90e875193731d361f37395fb95af4 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+@@ -2469,6 +2469,13 @@ public class CraftWorld implements World {
+             ret.complete(chunk == null ? null : chunk.bukkitChunk);
+         });
+ 
++        // Tuinity start - thank you once again completablefuture
++        ret.exceptionally((throwable) -> {
++            net.minecraft.server.MinecraftServer.LOGGER.fatal("Failed to asynchronously load chunk (" + x + "," + z + ")", throwable);
++            return null;
++        });
++        // Tuinity end - thank you once again completablefuture
++
+         return ret;
+     }
+     // Paper end
