@@ -29,7 +29,7 @@ index 1f92a5c9ddbe134a85e728131d132b73ea926042..b5046419e618c7f485ad9d1f5a104338
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 2ee9f09e77c15c0f2843bc70c12ac055e6bff592..3208989db4857cca020cf5304bbb6717072fa00b 100644
+index fc4976de76c1709679a20804e1ead965f3d75277..8aba71af9bdaf562e3ac14d8885450795b371d35 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -177,6 +177,25 @@ public class WorldServer extends World {
@@ -58,7 +58,7 @@ index 2ee9f09e77c15c0f2843bc70c12ac055e6bff592..3208989db4857cca020cf5304bbb6717
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(worlddata, dimensionmanager, (world, worldprovider) -> {
-@@ -465,14 +484,13 @@ public class WorldServer extends World {
+@@ -467,7 +486,7 @@ public class WorldServer extends World {
  
              gameprofilerfiller.exitEnter("regular");
              this.tickingEntities = true;
@@ -67,15 +67,17 @@ index 2ee9f09e77c15c0f2843bc70c12ac055e6bff592..3208989db4857cca020cf5304bbb6717
  
              org.spigotmc.ActivationRange.activateEntities(this); // Spigot
              timings.entityTick.startTiming(); // Spigot
-             TimingHistory.entityTicks += this.globalEntityList.size(); // Paper
+@@ -475,8 +494,7 @@ public class WorldServer extends World {
+             int entitiesTicked = 0; // Paper
              while (objectiterator.hasNext()) {
+                 if (entitiesTicked++ % 100 == 0) this.getMinecraftServer().midTickLoadChunks(); // Paper
 -                Entry<Entity> entry = (Entry) objectiterator.next();
 -                Entity entity1 = (Entity) entry.getValue();
 +                Entity entity1 = (Entity) objectiterator.next(); // Tuinity - use loaded entity list
                  Entity entity2 = entity1.getVehicle();
  
                  /* CraftBukkit start - We prevent spawning in general, so this butchering is not needed
-@@ -508,7 +526,7 @@ public class WorldServer extends World {
+@@ -512,7 +530,7 @@ public class WorldServer extends World {
                  gameprofilerfiller.enter("remove");
                  if (entity1.dead) {
                      this.removeEntityFromChunk(entity1);
@@ -84,7 +86,7 @@ index 2ee9f09e77c15c0f2843bc70c12ac055e6bff592..3208989db4857cca020cf5304bbb6717
                      this.unregisterEntity(entity1);
                  }
  
-@@ -1400,6 +1418,7 @@ public class WorldServer extends World {
+@@ -1407,6 +1425,7 @@ public class WorldServer extends World {
          if (entity instanceof EntityInsentient) {
              this.navigators.remove(((EntityInsentient) entity).getNavigation());
          }
@@ -92,7 +94,7 @@ index 2ee9f09e77c15c0f2843bc70c12ac055e6bff592..3208989db4857cca020cf5304bbb6717
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
          entity.valid = false; // CraftBukkit
      }
-@@ -1469,6 +1488,11 @@ public class WorldServer extends World {
+@@ -1476,6 +1495,11 @@ public class WorldServer extends World {
              }
              // Paper end
              entity.shouldBeRemoved = false; // Paper - shouldn't be removed after being re-added
@@ -105,10 +107,10 @@ index 2ee9f09e77c15c0f2843bc70c12ac055e6bff592..3208989db4857cca020cf5304bbb6717
          }
  
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 62a54ea2f5d7a4fdcb9b63c9fd5b4eb571596bd9..e6f8be59563b70d2fa11342054b70b18ffddc934 100644
+index d79fc0b2cef4c12976318d464e54a8c41aa0a167..c9b6eedead593cfe24574f98c79220e932bb5f53 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-@@ -1096,16 +1096,16 @@ public class CraftWorld implements World {
+@@ -1108,16 +1108,16 @@ public class CraftWorld implements World {
  
      @Override
      public List<Entity> getEntities() {
@@ -128,7 +130,7 @@ index 62a54ea2f5d7a4fdcb9b63c9fd5b4eb571596bd9..e6f8be59563b70d2fa11342054b70b18
                      list.add(bukkitEntity);
                  }
              }
-@@ -1116,16 +1116,16 @@ public class CraftWorld implements World {
+@@ -1128,16 +1128,16 @@ public class CraftWorld implements World {
  
      @Override
      public List<LivingEntity> getLivingEntities() {
@@ -148,7 +150,7 @@ index 62a54ea2f5d7a4fdcb9b63c9fd5b4eb571596bd9..e6f8be59563b70d2fa11342054b70b18
                      list.add((LivingEntity) bukkitEntity);
                  }
              }
-@@ -1146,7 +1146,7 @@ public class CraftWorld implements World {
+@@ -1158,7 +1158,7 @@ public class CraftWorld implements World {
      public <T extends Entity> Collection<T> getEntitiesByClass(Class<T> clazz) {
          Collection<T> list = new ArrayList<T>();
  
@@ -157,7 +159,7 @@ index 62a54ea2f5d7a4fdcb9b63c9fd5b4eb571596bd9..e6f8be59563b70d2fa11342054b70b18
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
-@@ -1157,7 +1157,7 @@ public class CraftWorld implements World {
+@@ -1169,7 +1169,7 @@ public class CraftWorld implements World {
  
                  Class<?> bukkitClass = bukkitEntity.getClass();
  
@@ -166,7 +168,7 @@ index 62a54ea2f5d7a4fdcb9b63c9fd5b4eb571596bd9..e6f8be59563b70d2fa11342054b70b18
                      list.add((T) bukkitEntity);
                  }
              }
-@@ -1170,7 +1170,7 @@ public class CraftWorld implements World {
+@@ -1182,7 +1182,7 @@ public class CraftWorld implements World {
      public Collection<Entity> getEntitiesByClasses(Class<?>... classes) {
          Collection<Entity> list = new ArrayList<Entity>();
  
@@ -175,7 +177,7 @@ index 62a54ea2f5d7a4fdcb9b63c9fd5b4eb571596bd9..e6f8be59563b70d2fa11342054b70b18
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
-@@ -1183,7 +1183,7 @@ public class CraftWorld implements World {
+@@ -1195,7 +1195,7 @@ public class CraftWorld implements World {
  
                  for (Class<?> clazz : classes) {
                      if (clazz.isAssignableFrom(bukkitClass)) {
