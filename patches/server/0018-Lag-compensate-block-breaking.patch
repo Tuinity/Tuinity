@@ -6,7 +6,7 @@ Subject: [PATCH] Lag compensate block breaking
 Use time instead of ticks if ticks fall behind
 
 diff --git a/src/main/java/net/minecraft/server/PlayerInteractManager.java b/src/main/java/net/minecraft/server/PlayerInteractManager.java
-index ce4340a47629d94b65bb3c424ec35afd8081bfed..1b60310bb01aa0c361005ccecccf3cdccd4aa72b 100644
+index ce66090b8dcd846db4507b99e3ef1a2d6104d19b..e5956a008894fb7e3318560ab71f05255ea7a5a1 100644
 --- a/src/main/java/net/minecraft/server/PlayerInteractManager.java
 +++ b/src/main/java/net/minecraft/server/PlayerInteractManager.java
 @@ -20,14 +20,29 @@ public class PlayerInteractManager {
@@ -111,8 +111,8 @@ index ce4340a47629d94b65bb3c424ec35afd8081bfed..1b60310bb01aa0c361005ccecccf3cdc
 +                this.player.playerConnection.sendPacket(new PacketPlayOutBlockChange(this.world, blockposition)); // Tuinity - this can cause clients on a lagging server to think they're not currently destroying a block
              } else if (packetplayinblockdig_enumplayerdigtype == PacketPlayInBlockDig.EnumPlayerDigType.ABORT_DESTROY_BLOCK) {
                  this.e = false;
-                 if (!Objects.equals(this.g, blockposition)) {
-@@ -260,7 +281,7 @@ public class PlayerInteractManager {
+                 if (!Objects.equals(this.g, blockposition) && !BlockPosition.ZERO.equals(this.g)) { // Paper
+@@ -262,7 +283,7 @@ public class PlayerInteractManager {
                  }
  
                  this.world.a(this.player.getId(), blockposition, -1);
@@ -121,7 +121,7 @@ index ce4340a47629d94b65bb3c424ec35afd8081bfed..1b60310bb01aa0c361005ccecccf3cdc
              }
  
          }
-@@ -270,7 +291,7 @@ public class PlayerInteractManager {
+@@ -272,7 +293,7 @@ public class PlayerInteractManager {
  
      public void a(BlockPosition blockposition, PacketPlayInBlockDig.EnumPlayerDigType packetplayinblockdig_enumplayerdigtype, String s) {
          if (this.breakBlock(blockposition)) {

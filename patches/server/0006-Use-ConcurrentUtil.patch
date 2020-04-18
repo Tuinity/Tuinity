@@ -5,7 +5,7 @@ Subject: [PATCH] Use ConcurrentUtil
 
 
 diff --git a/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java b/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java
-index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..8a789326885a8de7de595a9d4b13427f008d5bbf 100644
+index 97f2e433c483f1ebd7500ae142269e144ef5fda4..45ef8a94f82ec45a166538d6ba93f3bf8f4ecfde 100644
 --- a/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java
 +++ b/src/main/java/com/destroystokyo/paper/io/PrioritizedTaskQueue.java
 @@ -1,5 +1,6 @@
@@ -31,19 +31,22 @@ index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..8a789326885a8de7de595a9d4b13427f
          }
      }
  
-@@ -73,9 +74,8 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
-      */
-     public void add(final T task) throws IllegalStateException {
-         task.onQueue(this);
--        this.queues[task.getPriority()].add(task);
+@@ -75,11 +76,10 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
+         int priority = task.getPriority();
+         if (priority != COMPLETING_PRIORITY) {
+             task.setQueue(this);
+-            this.queues[priority].add(task);
+-        }
 -        if (this.shutdown.get()) {
 -            // note: we're not actually sure at this point if our task will go through
-+        if (!this.queues[task.getPriority()].add(task)) { // Tuinity - use concurrentutil
++            if(!this.queues[priority].add(task)) { // Tuinity - use concurrentutil
 +            // note: we're not actually sure at this point if our task will go through // Tuinity - we are certain now
              throw new IllegalStateException("Queue has shutdown, refusing to execute task " + IOUtil.genericToString(task));
++            }
          }
      }
-@@ -86,7 +86,7 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
+ 
+@@ -89,7 +89,7 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
      public T poll() {
          T task;
          for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
@@ -52,7 +55,7 @@ index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..8a789326885a8de7de595a9d4b13427f
  
              while ((task = queue.poll()) != null) {
                  final int prevPriority = task.tryComplete(i);
-@@ -109,7 +109,7 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
+@@ -112,7 +112,7 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
       */
      public boolean hasTasks() {
          for (int i = 0; i < TOTAL_PRIORITIES; ++i) {
@@ -61,7 +64,7 @@ index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..8a789326885a8de7de595a9d4b13427f
  
              if (queue.peek() != null) {
                  return true;
-@@ -130,6 +130,12 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
+@@ -133,6 +133,12 @@ public class PrioritizedTaskQueue<T extends PrioritizedTaskQueue.PrioritizedTask
       * @return {@code true} if the queue was shutdown, {@code false} if it has shut down already
       */
      public boolean shutdown() {
@@ -75,7 +78,7 @@ index 78bd238f4ce2a95de5b6bcd455e5e2578e2b8ed8..8a789326885a8de7de595a9d4b13427f
      }
  
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index eb5422dc4a33eeda62694bdab29c67c641659b6b..643c645538d5485832ffc32ab0c49916bcf4fe3e 100644
+index 7738213e7bd0bf37de4d8c7d373301492a77b3d4..76e86ec84373775c8eb854f9879267d1625aeea4 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
 @@ -44,7 +44,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
@@ -101,10 +104,10 @@ index cfe43e882e524b6ab3d9702e81269c97e6b75eba..e7a58989dd4842a07a3168dccc27788d
  
      protected IAsyncTaskHandler(String s) {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 916e42f371501b3e4f9af7b43e801dacd7448194..75495db34ad3f0846091d1ba727dac2bb95d8921 100644
+index 26737b8a590b3a4bfafe6c405a8e3f8d1aa7ceb8..527d34ad2750face9c17768d51b8cb3fbfa20cca 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -171,7 +171,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -172,7 +172,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
      public org.bukkit.command.RemoteConsoleCommandSender remoteConsole;
      //public ConsoleReader reader; // Paper
      public static int currentTick = 0; // Paper - Further improve tick loop
@@ -113,7 +116,7 @@ index 916e42f371501b3e4f9af7b43e801dacd7448194..75495db34ad3f0846091d1ba727dac2b
      public int autosavePeriod;
      public boolean serverAutoSave = false; // Paper
      public File bukkitDataPackFolder;
-@@ -1220,9 +1220,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1255,9 +1255,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          // CraftBukkit start
          // Run tasks that are waiting on processing
          MinecraftTimings.processQueueTimer.startTiming(); // Spigot

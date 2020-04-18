@@ -49,17 +49,17 @@ index fb21ae58c9bf2ccb364477c941e5627ba3ddc7da..b9d69efd0ed3cba9b7c9ae36e79e0387
  }
 \ No newline at end of file
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 41a4a2caa97a5ce2151ce6b56bd3be0dd3030d76..f148350e05cb8bec87acf3956f54ada2c72f074f 100644
+index 0c020a20f03094f41ea69bdfff03c09d6937d8c7..e94f24beace8ed719b74fe786a540e997ac4d824 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -1707,7 +1707,10 @@ public final class CraftServer implements Server {
  
      @Override
      public boolean isPrimaryThread() {
--        return Thread.currentThread().equals(console.serverThread); // Paper - Fix issues with detecting main thread properly
+-        return Thread.currentThread().equals(console.serverThread) || Thread.currentThread().equals(net.minecraft.server.MinecraftServer.getServer().shutdownThread); // Paper - Fix issues with detecting main thread properly, the only time Watchdog will be used is during a crash shutdown which is a "try our best" scenario
 +        // Tuinity start
 +        final Thread currThread = Thread.currentThread();
-+        return currThread == console.serverThread || currThread instanceof com.tuinity.tuinity.util.TickThread;
++        return currThread == console.serverThread || currThread instanceof com.tuinity.tuinity.util.TickThread || currThread.equals(net.minecraft.server.MinecraftServer.getServer().shutdownThread); // Paper - Fix issues with detecting main thread properly, the only time Watchdog will be used is during a crash shutdown which is a "try our best" scenario
 +        // Tuinity End
      }
  

@@ -6,10 +6,10 @@ Subject: [PATCH] Execute chunk tasks mid-tick
 This will help the server load chunks if tick times are high.
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index a28fc6249de73c1c75e66a4cac39194b277c64fe..8e77055615b22e767d16177950438bafba9eb491 100644
+index d9510c9cc64e9e4db24330de0c2b00579ed59108..4978dff9bf2fd7ddebe8b07368b8bc4bf5b7c819 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -614,7 +614,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -626,7 +626,7 @@ public class ChunkProviderServer extends IChunkProvider {
          this.world.getMethodProfiler().enter("purge");
          this.world.timings.doChunkMap.startTiming(); // Spigot
          this.chunkMapDistance.purgeTickets();
@@ -18,7 +18,7 @@ index a28fc6249de73c1c75e66a4cac39194b277c64fe..8e77055615b22e767d16177950438baf
          this.tickDistanceManager();
          this.world.timings.doChunkMap.stopTiming(); // Spigot
          // Tuinity start
-@@ -629,7 +629,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -641,7 +641,7 @@ public class ChunkProviderServer extends IChunkProvider {
          this.world.timings.doChunkUnload.startTiming(); // Spigot
          this.world.getMethodProfiler().exitEnter("unload");
          this.playerChunkMap.unloadChunks(booleansupplier);
@@ -27,7 +27,7 @@ index a28fc6249de73c1c75e66a4cac39194b277c64fe..8e77055615b22e767d16177950438baf
          this.world.timings.doChunkUnload.stopTiming(); // Spigot
          this.world.getMethodProfiler().exit();
          this.clearCache();
-@@ -806,7 +806,11 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -818,7 +818,11 @@ public class ChunkProviderServer extends IChunkProvider {
                          this.world.timings.chunkTicks.startTiming(); // Spigot // Paper
                          this.world.a(chunk, k);
                          this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
@@ -40,7 +40,7 @@ index a28fc6249de73c1c75e66a4cac39194b277c64fe..8e77055615b22e767d16177950438baf
                      }
                  }
              });
-@@ -948,37 +952,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -960,37 +964,7 @@ public class ChunkProviderServer extends IChunkProvider {
              super.executeTask(runnable);
          }
  
@@ -80,10 +80,10 @@ index a28fc6249de73c1c75e66a4cac39194b277c64fe..8e77055615b22e767d16177950438baf
          @Override
          protected boolean executeNext() {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 75495db34ad3f0846091d1ba727dac2bb95d8921..59fc0eb6bf4fc3391111c395af2bc2375ca0bd49 100644
+index 527d34ad2750face9c17768d51b8cb3fbfa20cca..b4baf1deac08de500bb2af86274ed3971fa7adc2 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -924,7 +924,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -942,7 +942,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
                          // Paper end
                          tickSection = curTime;
                      }
@@ -92,7 +92,7 @@ index 75495db34ad3f0846091d1ba727dac2bb95d8921..59fc0eb6bf4fc3391111c395af2bc237
                      // Spigot end
  
                      //MinecraftServer.currentTick = (int) (System.currentTimeMillis() / 50); // CraftBukkit // Paper - don't overwrite current tick time
-@@ -1023,19 +1023,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1048,19 +1048,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          });
      }
  
@@ -114,10 +114,10 @@ index 75495db34ad3f0846091d1ba727dac2bb95d8921..59fc0eb6bf4fc3391111c395af2bc237
      @Override
      protected TickTask postToMainThread(Runnable runnable) {
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index a8c8df85707d0d031ad62299be3de74c6f18b8e5..f26a3168b620158c32d4a7a37df7fec71d543ed0 100644
+index cde3cf35423ddbc332ae9bc2890d17971dff2a3f..0fadbc3d6f053959f92e9bec7f7860a22d125e3a 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -813,6 +813,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -814,6 +814,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
                      }
                      // Spigot end
                  }
@@ -126,10 +126,10 @@ index a8c8df85707d0d031ad62299be3de74c6f18b8e5..f26a3168b620158c32d4a7a37df7fec7
  
              if (tileentity.isRemoved()) {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index a3e37a060834c62a53d4340f3235c8664225cb1e..dd6101cba7e33624b6b3c5f9d4ddc2e2faa35c7d 100644
+index 953c28901f10ec5fb083c60ac4dfdb1f8193eac2..bddc21787e9e729027f702030f77a58793c8bd35 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -196,6 +196,56 @@ public class WorldServer extends World {
+@@ -206,6 +206,56 @@ public class WorldServer extends World {
      }
      // Tuinity end - Optimize entity list iteration requiring entities be in loaded chunks
  
@@ -186,7 +186,7 @@ index a3e37a060834c62a53d4340f3235c8664225cb1e..dd6101cba7e33624b6b3c5f9d4ddc2e2
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(worlddata, dimensionmanager, (world, worldprovider) -> {
-@@ -439,7 +489,7 @@ public class WorldServer extends World {
+@@ -449,7 +499,7 @@ public class WorldServer extends World {
          }
          timings.scheduledBlocks.stopTiming(); // Spigot
  
@@ -195,7 +195,7 @@ index a3e37a060834c62a53d4340f3235c8664225cb1e..dd6101cba7e33624b6b3c5f9d4ddc2e2
          gameprofilerfiller.exitEnter("raid");
          this.timings.raids.startTiming(); // Paper - timings
          this.persistentRaid.a();
-@@ -452,7 +502,7 @@ public class WorldServer extends World {
+@@ -462,7 +512,7 @@ public class WorldServer extends World {
          timings.doSounds.startTiming(); // Spigot
          this.ad();
          timings.doSounds.stopTiming(); // Spigot
@@ -204,16 +204,7 @@ index a3e37a060834c62a53d4340f3235c8664225cb1e..dd6101cba7e33624b6b3c5f9d4ddc2e2
          this.ticking = false;
          gameprofilerfiller.exitEnter("entities");
          boolean flag3 = true || !this.players.isEmpty() || !this.getForceLoadedChunks().isEmpty(); // CraftBukkit - this prevents entity cleanup, other issues on servers with no players
-@@ -493,7 +543,7 @@ public class WorldServer extends World {
-             TimingHistory.entityTicks += this.globalEntityList.size(); // Paper
-             int entitiesTicked = 0; // Paper
-             while (objectiterator.hasNext()) {
--                if (entitiesTicked++ % 100 == 0) this.getMinecraftServer().midTickLoadChunks(); // Paper
-+                // Tuinity - replace logic
-                 Entity entity1 = (Entity) objectiterator.next(); // Tuinity - use loaded entity list
-                 Entity entity2 = entity1.getVehicle();
- 
-@@ -524,6 +574,7 @@ public class WorldServer extends World {
+@@ -532,6 +582,7 @@ public class WorldServer extends World {
                  gameprofilerfiller.enter("tick");
                  if (!entity1.dead && !(entity1 instanceof EntityComplexPart)) {
                      this.a(this::entityJoinedWorld, entity1);
@@ -221,16 +212,16 @@ index a3e37a060834c62a53d4340f3235c8664225cb1e..dd6101cba7e33624b6b3c5f9d4ddc2e2
                  }
  
                  gameprofilerfiller.exit();
-@@ -539,7 +590,7 @@ public class WorldServer extends World {
-             timings.entityTick.stopTiming(); // Spigot
- 
-             this.tickingEntities = false;
+@@ -557,7 +608,7 @@ public class WorldServer extends World {
+             }
+             this.afterEntityTickingTasks.clear();
+             // Paper end
 -            this.getMinecraftServer().midTickLoadChunks(); // Paper
 +            // Tuinity - replace logic
  
              try (co.aikar.timings.Timing ignored = this.timings.newEntities.startTiming()) { // Paper - timings
              while ((entity = (Entity) this.entitiesToAdd.poll()) != null) {
-@@ -550,9 +601,9 @@ public class WorldServer extends World {
+@@ -568,9 +619,9 @@ public class WorldServer extends World {
  
              gameprofilerfiller.exit();
              timings.tickEntities.stopTiming(); // Spigot

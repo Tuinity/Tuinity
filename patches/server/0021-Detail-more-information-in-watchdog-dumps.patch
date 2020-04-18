@@ -7,7 +7,7 @@ Subject: [PATCH] Detail more information in watchdog dumps
 - Dump player name, player uuid, position, and world for packet handling
 
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 0c942ccd7d01261b028fed8f898c766f6f47dedf..6f526a1086b0c5f7de7596cd1a290af3ff4b8b76 100644
+index 96a47dd1c2d3c89b4061fe96210e768c12b73ca0..d0656835435c67e2f1f2f642bcbc2c0c57c8135c 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -584,7 +584,40 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -51,7 +51,7 @@ index 0c942ccd7d01261b028fed8f898c766f6f47dedf..6f526a1086b0c5f7de7596cd1a290af3
          if (this.noclip) {
              this.a(this.getBoundingBox().b(vec3d));
              this.recalcPosition();
-@@ -743,6 +776,13 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -744,6 +777,13 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
  
              this.world.getMethodProfiler().exit();
          }
@@ -65,7 +65,7 @@ index 0c942ccd7d01261b028fed8f898c766f6f47dedf..6f526a1086b0c5f7de7596cd1a290af3
      }
  
      protected BlockPosition ag() {
-@@ -3356,12 +3396,16 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -3357,12 +3397,16 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return new Vec3D(this.locX, this.locY, this.locZ);
      }
  
@@ -82,7 +82,7 @@ index 0c942ccd7d01261b028fed8f898c766f6f47dedf..6f526a1086b0c5f7de7596cd1a290af3
      }
  
      public void setMot(double d0, double d1, double d2) {
-@@ -3409,9 +3453,11 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -3410,9 +3454,11 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
  
      public void setPositionRaw(double d0, double d1, double d2) {
@@ -143,10 +143,10 @@ index eb3269e0ea3ce33d08e9eee3bca7cf434921e991..d9c9d01aef9e546fc2cb66e69ff0e563
              });
              throw CancelledPacketHandleException.INSTANCE;
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 8aba71af9bdaf562e3ac14d8885450795b371d35..8a3171f70e189eaf0c67530c62114a540cc53eca 100644
+index eb15b8f26564e81855f727819b1871c284988304..40def90571c8b04e99de891d85f74f6b128b97db 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -766,7 +766,26 @@ public class WorldServer extends World {
+@@ -784,7 +784,26 @@ public class WorldServer extends World {
  
      }
  
@@ -173,7 +173,7 @@ index 8aba71af9bdaf562e3ac14d8885450795b371d35..8a3171f70e189eaf0c67530c62114a54
          if (entity instanceof EntityHuman || this.getChunkProvider().a(entity)) {
              ++TimingHistory.entityTicks; // Paper - timings
              // Spigot start
-@@ -811,6 +830,11 @@ public class WorldServer extends World {
+@@ -829,6 +848,11 @@ public class WorldServer extends World {
              } // Paper - timings
  
          }
@@ -186,7 +186,7 @@ index 8aba71af9bdaf562e3ac14d8885450795b371d35..8a3171f70e189eaf0c67530c62114a54
  
      public void a(Entity entity, Entity entity1) {
 diff --git a/src/main/java/org/spigotmc/WatchdogThread.java b/src/main/java/org/spigotmc/WatchdogThread.java
-index 5bdcdcf9e85b73086722783bff26321d03382bb9..4fde822c2d9e37414cda4edf5b90535ea8ed0308 100644
+index acc880c7c78d87b5fb53dbbc4c167cf5a65afedc..85e931e00ea867063c0323a77b8de832c2143698 100644
 --- a/src/main/java/org/spigotmc/WatchdogThread.java
 +++ b/src/main/java/org/spigotmc/WatchdogThread.java
 @@ -59,6 +59,88 @@ public class WatchdogThread extends Thread
@@ -278,11 +278,11 @@ index 5bdcdcf9e85b73086722783bff26321d03382bb9..4fde822c2d9e37414cda4edf5b90535e
      @Override
      public void run()
      {
-@@ -114,6 +196,7 @@ public class WatchdogThread extends Thread
+@@ -115,6 +197,7 @@ public class WatchdogThread extends Thread
                  log.log( Level.SEVERE, "------------------------------" );
                  log.log( Level.SEVERE, "Server thread dump (Look for plugins here before reporting to Paper!):" ); // Paper
                  ChunkTaskManager.dumpAllChunkLoadInfo(); // Paper
 +                this.dumpTickingInfo(); // Tuinity - log detailed tick information
-                 dumpThread( ManagementFactory.getThreadMXBean().getThreadInfo( MinecraftServer.getServer().serverThread.getId(), Integer.MAX_VALUE ), log );
+                 dumpThread( ManagementFactory.getThreadMXBean().getThreadInfo( server.serverThread.getId(), Integer.MAX_VALUE ), log );
                  log.log( Level.SEVERE, "------------------------------" );
                  //

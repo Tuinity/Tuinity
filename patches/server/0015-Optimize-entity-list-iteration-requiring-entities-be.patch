@@ -7,37 +7,37 @@ Subject: [PATCH] Optimize entity list iteration requiring entities be in
 We retain a list of loaded entities specifically for this usage
 
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 1f92a5c9ddbe134a85e728131d132b73ea926042..b5046419e618c7f485ad9d1f5a104338b0e8a085 100644
+index beb4ea1e20816cda674a9c5678a2cf7d9bdf1acd..da7759605bf7f56b561570afb82cb65468dfb46c 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -767,6 +767,8 @@ public class Chunk implements IChunkAccess {
+@@ -803,6 +803,8 @@ public class Chunk implements IChunkAccess {
          this.setNeighbourLoaded(0, 0, this);
          this.loadedTicketLevel = true;
-         // Tuinity end - neighbour cache
+         // Paper end - neighbour cache
 +
 +        ((WorldServer)this.world).onChunkLoad(this); // Tuinity - optimise entity list iteration
          org.bukkit.Server server = this.world.getServer();
          ((WorldServer)this.world).getChunkProvider().addLoadedChunk(this); // Paper
          if (server != null) {
-@@ -825,6 +827,8 @@ public class Chunk implements IChunkAccess {
+@@ -861,6 +863,8 @@ public class Chunk implements IChunkAccess {
          this.loadedTicketLevel = false;
          this.resetNeighbours();
-         // Tuinity end - neighbour cache
+         // Paper end
 +
 +        ((WorldServer)this.world).onChunkUnload(this); // Tuinity - optimise entity list iteration
      }
      // CraftBukkit end
  
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index fc4976de76c1709679a20804e1ead965f3d75277..8aba71af9bdaf562e3ac14d8885450795b371d35 100644
+index f5b8cb645d722eba33c77c48c64693c43d00e74a..eb15b8f26564e81855f727819b1871c284988304 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -177,6 +177,25 @@ public class WorldServer extends World {
+@@ -187,6 +187,25 @@ public class WorldServer extends World {
      }
      // Paper end - rewrite ticklistserver
  
 +    // Tuinity start - Optimize entity list iteration requiring entities be in loaded chunks
-+    public final com.tuinity.tuinity.util.EntityList loadedEntities = new com.tuinity.tuinity.util.EntityList();
++    public final com.destroystokyo.paper.util.maplist.EntityList loadedEntities = new com.destroystokyo.paper.util.maplist.EntityList();
 +    void onChunkLoad(final Chunk chunk) {
 +        final com.destroystokyo.paper.util.maplist.EntityList list = chunk.entities;
 +        final Entity[] entities = list.getRawData();
@@ -58,7 +58,7 @@ index fc4976de76c1709679a20804e1ead965f3d75277..8aba71af9bdaf562e3ac14d888545079
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(worlddata, dimensionmanager, (world, worldprovider) -> {
-@@ -467,7 +486,7 @@ public class WorldServer extends World {
+@@ -477,14 +496,13 @@ public class WorldServer extends World {
  
              gameprofilerfiller.exitEnter("regular");
              this.tickingEntities = true;
@@ -67,17 +67,15 @@ index fc4976de76c1709679a20804e1ead965f3d75277..8aba71af9bdaf562e3ac14d888545079
  
              org.spigotmc.ActivationRange.activateEntities(this); // Spigot
              timings.entityTick.startTiming(); // Spigot
-@@ -475,8 +494,7 @@ public class WorldServer extends World {
-             int entitiesTicked = 0; // Paper
+             TimingHistory.entityTicks += this.globalEntityList.size(); // Paper
              while (objectiterator.hasNext()) {
-                 if (entitiesTicked++ % 100 == 0) this.getMinecraftServer().midTickLoadChunks(); // Paper
 -                Entry<Entity> entry = (Entry) objectiterator.next();
 -                Entity entity1 = (Entity) entry.getValue();
 +                Entity entity1 = (Entity) objectiterator.next(); // Tuinity - use loaded entity list
                  Entity entity2 = entity1.getVehicle();
  
                  /* CraftBukkit start - We prevent spawning in general, so this butchering is not needed
-@@ -512,7 +530,7 @@ public class WorldServer extends World {
+@@ -520,7 +538,7 @@ public class WorldServer extends World {
                  gameprofilerfiller.enter("remove");
                  if (entity1.dead) {
                      this.removeEntityFromChunk(entity1);
@@ -86,7 +84,7 @@ index fc4976de76c1709679a20804e1ead965f3d75277..8aba71af9bdaf562e3ac14d888545079
                      this.unregisterEntity(entity1);
                  }
  
-@@ -1407,6 +1425,7 @@ public class WorldServer extends World {
+@@ -1440,6 +1458,7 @@ public class WorldServer extends World {
          if (entity instanceof EntityInsentient) {
              this.navigators.remove(((EntityInsentient) entity).getNavigation());
          }
@@ -94,12 +92,12 @@ index fc4976de76c1709679a20804e1ead965f3d75277..8aba71af9bdaf562e3ac14d888545079
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
          entity.valid = false; // CraftBukkit
      }
-@@ -1476,6 +1495,11 @@ public class WorldServer extends World {
+@@ -1509,6 +1528,11 @@ public class WorldServer extends World {
              }
              // Paper end
              entity.shouldBeRemoved = false; // Paper - shouldn't be removed after being re-added
 +            // Tuinity start - loaded entity list
-+            if (this.isChunkLoaded(com.tuinity.tuinity.util.Util.getChunkCoordinate(entity.locX()), com.tuinity.tuinity.util.Util.getChunkCoordinate(entity.locZ()))) {
++            if (this.isChunkLoaded(net.minecraft.server.MCUtil.getChunkCoordinate(entity.locX()), net.minecraft.server.MCUtil.getChunkCoordinate(entity.locZ()))) {
 +                this.loadedEntities.add(entity);
 +            }
 +            // Tuinity end - loaded entity list
@@ -107,7 +105,7 @@ index fc4976de76c1709679a20804e1ead965f3d75277..8aba71af9bdaf562e3ac14d888545079
          }
  
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index d79fc0b2cef4c12976318d464e54a8c41aa0a167..c9b6eedead593cfe24574f98c79220e932bb5f53 100644
+index 9983f528ce4410a73a92b7f4b06883360813bcab..cd5bb1e678e37548da2fd43407019c049b6dfaa7 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 @@ -1108,16 +1108,16 @@ public class CraftWorld implements World {

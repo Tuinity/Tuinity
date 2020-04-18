@@ -20,10 +20,10 @@ index dfe92780ad288dd12f961ccad3e9f6f12b24287e..8452a44268ecd377da0d7dd7a15875bc
                      continue;
                  }
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 8e77055615b22e767d16177950438bafba9eb491..5b1d3b8e8d7dc41e63df12dc0046e77de2c5e874 100644
+index 4978dff9bf2fd7ddebe8b07368b8bc4bf5b7c819..8e4b47a3042de36313ce666520ce6bcf180533a8 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -635,6 +635,16 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -647,6 +647,16 @@ public class ChunkProviderServer extends IChunkProvider {
          this.clearCache();
      }
  
@@ -32,7 +32,7 @@ index 8e77055615b22e767d16177950438bafba9eb491..5b1d3b8e8d7dc41e63df12dc0046e77d
 +    // the iterator safety of the visible map - meaning the only way for us to still
 +    // iterate is to use a copy. Not acceptable at all, so here we hack in an iterable safe
 +    // chunk map that will give the same behaviour as previous - without COW.
-+    final com.tuinity.tuinity.util.ChunkList entityTickingChunks = new com.tuinity.tuinity.util.ChunkList();
++    final com.destroystokyo.paper.util.maplist.ChunkList entityTickingChunks = new com.destroystokyo.paper.util.maplist.ChunkList();
 +    boolean isTickingChunks;
 +    final it.unimi.dsi.fastutil.objects.Object2BooleanLinkedOpenHashMap<Chunk> pendingEntityTickingChunkChanges = new it.unimi.dsi.fastutil.objects.Object2BooleanLinkedOpenHashMap<>(16, 0.8f);
 +    // Tuinity end
@@ -40,7 +40,7 @@ index 8e77055615b22e767d16177950438bafba9eb491..5b1d3b8e8d7dc41e63df12dc0046e77d
      private void tickChunks() {
          long i = this.world.getTime();
          long j = i - this.lastTickTime;
-@@ -709,11 +719,12 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -721,11 +731,12 @@ public class ChunkProviderServer extends IChunkProvider {
              this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
              this.world.getMethodProfiler().exit();
              // Tuinity - optimize isOutisdeRange - already done above
@@ -58,7 +58,7 @@ index 8e77055615b22e767d16177950438bafba9eb491..5b1d3b8e8d7dc41e63df12dc0046e77d
  
                      this.world.getMethodProfiler().enter("broadcast");
                      this.world.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
-@@ -813,7 +824,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -825,7 +836,23 @@ public class ChunkProviderServer extends IChunkProvider {
                          // Tuinity end - exec chunk tasks during world tick
                      }
                  }
@@ -84,10 +84,10 @@ index 8e77055615b22e767d16177950438bafba9eb491..5b1d3b8e8d7dc41e63df12dc0046e77d
              if (flag1) {
                  try (co.aikar.timings.Timing ignored = this.world.timings.miscMobSpawning.startTiming()) { // Paper - timings
 diff --git a/src/main/java/net/minecraft/server/MCUtil.java b/src/main/java/net/minecraft/server/MCUtil.java
-index 9980e4c277bb392b3d4b2b909d00065a49315f27..810a5d92920230e035e012b826207e9dfd3b5dd3 100644
+index ffaf496ee721da7756ff76da02099bc85579a2eb..1251fa28566a388a6c8e72489dc3621fed7b2fb0 100644
 --- a/src/main/java/net/minecraft/server/MCUtil.java
 +++ b/src/main/java/net/minecraft/server/MCUtil.java
-@@ -500,7 +500,7 @@ public final class MCUtil {
+@@ -506,7 +506,7 @@ public final class MCUtil {
  
              WorldServer world = ((org.bukkit.craftbukkit.CraftWorld)bukkitWorld).getHandle();
              PlayerChunkMap chunkMap = world.getChunkProvider().playerChunkMap;
@@ -97,10 +97,10 @@ index 9980e4c277bb392b3d4b2b909d00065a49315f27..810a5d92920230e035e012b826207e9d
              List<PlayerChunk> allChunks = new ArrayList<>(visibleChunks.values());
              List<EntityPlayer> players = world.players;
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 999f4ce4189f7035892239152ab03caa3a61bc6a..f6cec0543db52f3c6cfc3bd483a3a23d32e30e96 100644
+index 2ac4d5ee6ba6165b26e666d55e661b320bbd208c..fbd34ce9f428252035fd39bace1f2fb36a0d2999 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -572,6 +572,14 @@ public class PlayerChunk {
+@@ -683,6 +683,14 @@ public class PlayerChunk {
                      // Tuinity start - per player view distance implementation
                      PlayerChunk.this.chunkMap.getChunkMapDistanceManager().playerTickViewDistanceHandler.onChunkLoad(this.location.x, this.location.z);
                      // Tuinity end - per player view distance implementation
@@ -115,7 +115,7 @@ index 999f4ce4189f7035892239152ab03caa3a61bc6a..f6cec0543db52f3c6cfc3bd483a3a23d
                  }
              });
              // Paper end
-@@ -580,6 +588,17 @@ public class PlayerChunk {
+@@ -691,6 +699,17 @@ public class PlayerChunk {
  
          if (flag6 && !flag7) {
              this.entityTickingFuture.complete(PlayerChunk.UNLOADED_CHUNK); this.isEntityTickingReady = false; // Paper - cache chunk ticking stage
@@ -134,7 +134,7 @@ index 999f4ce4189f7035892239152ab03caa3a61bc6a..f6cec0543db52f3c6cfc3bd483a3a23d
          }
  
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea563204c7f1 100644
+index 177a1265deb33c75beda04c4098e8fee8c3bd380..4257cdd0ead66ed3febdbbc43bccb405afa1ecd7 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -55,10 +55,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -145,7 +145,7 @@ index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea56
 -    public final com.destroystokyo.paper.util.map.Long2ObjectLinkedOpenHashMapFastCopy<PlayerChunk> visibleChunks = new com.destroystokyo.paper.util.map.Long2ObjectLinkedOpenHashMapFastCopy<>(); // Paper - faster copying
 -    public final com.destroystokyo.paper.util.map.Long2ObjectLinkedOpenHashMapFastCopy<PlayerChunk> pendingVisibleChunks = new com.destroystokyo.paper.util.map.Long2ObjectLinkedOpenHashMapFastCopy<>(); // Paper - this is used if the visible chunks is updated while iterating only
 -    public transient Long2ObjectLinkedOpenHashMap<PlayerChunk> visibleChunksClone; // Paper - used for async access of visible chunks, clone and cache only when needed
-+    public final com.tuinity.tuinity.chunk.QueuedChangesMapLong2Object<PlayerChunk> chunkMap = new com.tuinity.tuinity.chunk.QueuedChangesMapLong2Object<>(8192, 0.7f); // Tuinity - replace chunk map
++    public final com.destroystokyo.paper.util.map.QueuedChangesMapLong2Object<PlayerChunk> chunkMap = new com.destroystokyo.paper.util.map.QueuedChangesMapLong2Object<>(8192, 0.7f); // Tuinity - replace chunk map
      private final Long2ObjectLinkedOpenHashMap<PlayerChunk> pendingUnload;
      final LongSet loadedChunks; // Paper - private -> package
      public final WorldServer world;
@@ -221,7 +221,7 @@ index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea56
      }
  
      protected IntSupplier c(long i) {
-@@ -990,7 +951,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -992,7 +953,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.p, this);
                  }
  
@@ -230,7 +230,7 @@ index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea56
                  this.updatingChunksModified = true;
              }
  
-@@ -1069,9 +1030,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1071,9 +1032,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      // Paper end
  
      protected void save(boolean flag) {
@@ -242,7 +242,7 @@ index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea56
              MutableBoolean mutableboolean = new MutableBoolean();
  
              do {
-@@ -1099,7 +1060,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1101,7 +1062,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  //            this.i(); // Paper - nuke IOWorker
              PlayerChunkMap.LOGGER.info("ThreadedAnvilChunkStorage ({}): All chunks are saved", this.w.getName());
          } else {
@@ -251,7 +251,7 @@ index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea56
                  IChunkAccess ichunkaccess = (IChunkAccess) playerchunk.getChunkSave().getNow(null); // CraftBukkit - decompile error
  
                  if (ichunkaccess instanceof ProtoChunkExtension || ichunkaccess instanceof Chunk) {
-@@ -1141,7 +1102,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1143,7 +1104,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          while (longiterator.hasNext()) { // Spigot
              long j = longiterator.nextLong();
              longiterator.remove(); // Spigot
@@ -260,7 +260,7 @@ index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea56
  
              if (playerchunk != null) {
                  this.pendingUnload.put(j, playerchunk);
-@@ -1269,20 +1230,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1271,20 +1232,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          if (!this.updatingChunksModified) {
              return false;
          } else {
@@ -285,7 +285,7 @@ index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea56
              this.updatingChunksModified = false;
              return true;
          }
-@@ -1738,7 +1690,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1750,7 +1702,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public int d() {
@@ -294,7 +294,7 @@ index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea56
      }
  
      protected PlayerChunkMap.a e() {
-@@ -1746,12 +1698,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1758,12 +1710,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      protected Iterable<PlayerChunk> f() {
@@ -310,7 +310,7 @@ index 9ab0a8bf332b9181bbd576a814c1b5ec7fefaca2..12fb570266414459b33cae816300ea56
          while (objectbidirectionaliterator.hasNext()) {
              Entry<PlayerChunk> entry = (Entry) objectbidirectionaliterator.next();
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 7951b274138b1c136fbedaeede5f7e84885dbe9f..3580a781e43e0ab425840dc80d3f666ff4246396 100644
+index 7e40e2f9cb20ef45efa3f800a6a840df9903b1e0..45142eaeea53dbb256f4fc260f8063ec2d853a3c 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 @@ -294,7 +294,7 @@ public class CraftWorld implements World {
