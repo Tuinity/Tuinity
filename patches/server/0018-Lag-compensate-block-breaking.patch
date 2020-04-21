@@ -5,8 +5,25 @@ Subject: [PATCH] Lag compensate block breaking
 
 Use time instead of ticks if ticks fall behind
 
+diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+index 9a52acf00c2bcc2ec504f89efbbfc6f2f673addf..7cca85ec2ffdaf8bf1807ec6b8990174400b3aad 100644
+--- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
++++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+@@ -167,6 +167,12 @@ public final class TuinityConfig {
+         }
+     }
+ 
++    public static boolean lagCompensateBlockBreaking;
++
++    private static void lagCompensateBlockBreaking() {
++        lagCompensateBlockBreaking = TuinityConfig.getBoolean("lag-compensate-block-breaking", true);
++    }
++
+     public static final class WorldConfig {
+ 
+         public final String worldName;
 diff --git a/src/main/java/net/minecraft/server/PlayerInteractManager.java b/src/main/java/net/minecraft/server/PlayerInteractManager.java
-index ce66090b8dcd846db4507b99e3ef1a2d6104d19b..e5956a008894fb7e3318560ab71f05255ea7a5a1 100644
+index ce66090b8dcd846db4507b99e3ef1a2d6104d19b..35003b3eeccc6fb29e16caf2077950bd0650c69c 100644
 --- a/src/main/java/net/minecraft/server/PlayerInteractManager.java
 +++ b/src/main/java/net/minecraft/server/PlayerInteractManager.java
 @@ -20,14 +20,29 @@ public class PlayerInteractManager {
@@ -29,13 +46,13 @@ index ce66090b8dcd846db4507b99e3ef1a2d6104d19b..e5956a008894fb7e3318560ab71f0525
 +    private int getTimeDiggingLagCompensate() {
 +        int lagCompensated = (int)((System.nanoTime() - this.lastDigTime) / (50L * 1000L * 1000L));
 +        int tickDiff = this.currentTick - this.lastDigTick;
-+        return lagCompensated > (tickDiff + 1) ? lagCompensated : tickDiff; // add one to ensure we don't lag compensate unless we need to
++        return (com.tuinity.tuinity.config.TuinityConfig.lagCompensateBlockBreaking && lagCompensated > (tickDiff + 1)) ? lagCompensated : tickDiff; // add one to ensure we don't lag compensate unless we need to
 +    }
 +
 +    private int getTimeDiggingTooFastLagCompensate() {
 +        int lagCompensated = (int)((System.nanoTime() - this.hasDestroyedTooFastStartTime) / (50L * 1000L * 1000L));
 +        int tickDiff = this.currentTick - this.getHasDestroyedTooFastStartTick();
-+        return lagCompensated > (tickDiff + 1) ? lagCompensated : tickDiff; // add one to ensure we don't lag compensate unless we need to
++        return (com.tuinity.tuinity.config.TuinityConfig.lagCompensateBlockBreaking && lagCompensated > (tickDiff + 1)) ? lagCompensated : tickDiff; // add one to ensure we don't lag compensate unless we need to
 +    }
 +    // Tuinity end
 +
