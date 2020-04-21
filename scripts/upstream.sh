@@ -10,10 +10,6 @@ done
 
 git submodule update --init --recursive
 
-cd "$basedir/ConcurrentUtil"
-mvn clean install
-cd ../
-
 if [[ "$1" == up* ]]; then
     (
         cd "$basedir/Paper/"
