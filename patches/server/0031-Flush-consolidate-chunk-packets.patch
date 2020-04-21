@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 20 Apr 2020 21:45:32 -0700
+Subject: [PATCH] Flush consolidate chunk packets
+
+Chunk packets themselves don't really need to be flushed
+consolidate, but if we hit the TE limit we send a lot more
+packets.
+
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index d661620219ec405802d558e3e16b4a2fc5255c84..d9fa8c2521728b2f3cf6070c416aaeaf0515f22a 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -721,7 +721,25 @@ public class ChunkProviderServer extends IChunkProvider {
+         // Tuinity start
+         this.playerChunkMap.chunkLoadScheduler.queueMaxLoads();
+         this.playerChunkMap.getChunkMapDistanceManager().playerTickViewDistanceHandler.tick();
++        // Tuinity start - controlled flush for chunk packets
++        List<NetworkManager> disabledFlushes = new java.util.ArrayList<>(this.world.getPlayers().size());
++        for (EntityPlayer player : this.world.getPlayers()) {
++            PlayerConnection connection = player.playerConnection;
++            if (connection != null) {
++                connection.networkManager.disableAutomaticFlush();
++                disabledFlushes.add(connection.networkManager);
++            }
++        }
++        try {
++        // Tuinity end - controlled flush for entity tracker packets
+         this.playerChunkMap.chunkSendThrottler.tick();
++        // Tuinity start - controlled flush for entity tracker packets
++        } finally {
++            for (NetworkManager networkManager : disabledFlushes) {
++                networkManager.enableAutomaticFlush();
++            }
++        }
++        // Tuinity end - controlled flush for chunk packets
+         // Tuinity end
+         this.world.getMethodProfiler().exitEnter("chunks");
+         this.world.timings.chunks.startTiming(); // Paper - timings
