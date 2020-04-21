@@ -5,10 +5,10 @@ Subject: [PATCH] Util patch
 
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index ba6bdc40a73e4d3221cc08e947a6d629a126c5ee..dbb307d8f8d64865dca55d94735e5c751ff01c1c 100644
+index fd84807a5b09bf45a97f1871a4a240491ad5cfe9..11767a551b5dc99ebebce65af41d6e44c967dba7 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -669,11 +669,10 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -748,11 +748,10 @@ public class ChunkProviderServer extends IChunkProvider {
              EnumCreatureType[] aenumcreaturetype = EnumCreatureType.values();
              // Paper start - per player mob spawning
              int[] worldMobCount;
@@ -23,7 +23,7 @@ index ba6bdc40a73e4d3221cc08e947a6d629a126c5ee..dbb307d8f8d64865dca55d94735e5c75
                  // re-set mob counts
                  for (EntityPlayer player : this.world.players) {
                      Arrays.fill(player.mobCounts, 0);
-@@ -756,9 +755,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -835,9 +834,23 @@ public class ChunkProviderServer extends IChunkProvider {
  
                                      if (this.world.paperConfig.perPlayerMobSpawns) {
                                          int minDiff = Integer.MAX_VALUE;
@@ -49,10 +49,10 @@ index ba6bdc40a73e4d3221cc08e947a6d629a126c5ee..dbb307d8f8d64865dca55d94735e5c75
                                      }
  
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index 202068314eca435abecc25b2870350c530e0fac5..3276c625af2ccca269a481688cc544a0e3dbc629 100644
+index 75543ee6dc38aead3ad55caf6b78690a3e9f4282..8c80136bf05717c2af4736becc7b5a11bcd11193 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
 +++ b/src/main/java/net/minecraft/server/EntityPlayer.java
-@@ -110,6 +110,10 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+@@ -111,6 +111,10 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
  
      public final com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> cachedSingleHashSet; // Paper
  
@@ -63,7 +63,7 @@ index 202068314eca435abecc25b2870350c530e0fac5..3276c625af2ccca269a481688cc544a0
      public EntityPlayer(MinecraftServer minecraftserver, WorldServer worldserver, GameProfile gameprofile, PlayerInteractManager playerinteractmanager) {
          super((World) worldserver, gameprofile);
          playerinteractmanager.player = this;
-@@ -128,6 +132,9 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+@@ -129,6 +133,9 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
          this.canPickUpLoot = true;
          this.maxHealthCache = this.getMaxHealth();
          this.cachedSingleMobDistanceMap = new com.destroystokyo.paper.util.PooledHashSets.PooledObjectLinkedOpenHashSet<>(this); // Paper
@@ -86,7 +86,7 @@ index 8a272ae1b800e31aab6431b647e5b349430b2634..aa73396100adbf741ed52f457284a78c
          return this.a(c(i, j));
      }
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 12639dfb94599233e24a0a8b77bc88de81b65e9b..3f1be2e02b8634369b6c91ee7b0b98927dc65dd2 100644
+index 8b2eed1051215f864bf9a37be852579b21c929cf..dfb500d858a14ec68194a9dd3f99c75a3139e245 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -81,7 +81,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -98,7 +98,7 @@ index 12639dfb94599233e24a0a8b77bc88de81b65e9b..3f1be2e02b8634369b6c91ee7b0b9892
  
      // CraftBukkit start - recursion-safe executor for Chunk loadCallback() and unloadCallback()
      public final CallbackExecutor callbackExecutor = new CallbackExecutor();
-@@ -136,6 +136,29 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -139,6 +139,29 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
  
      // Paper end
@@ -128,7 +128,7 @@ index 12639dfb94599233e24a0a8b77bc88de81b65e9b..3f1be2e02b8634369b6c91ee7b0b9892
  
      // Paper start - Reduce entity tracker updates on move
      private double trackerUpdateDistanceSquared;
-@@ -201,8 +224,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -204,8 +227,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.l = supplier;
          this.m = new VillagePlace(new File(this.w, "poi"), datafixer, this.world); // Paper
          this.setViewDistance(i);
@@ -142,7 +142,7 @@ index 12639dfb94599233e24a0a8b77bc88de81b65e9b..3f1be2e02b8634369b6c91ee7b0b9892
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -213,9 +240,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -216,9 +243,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          int chunkZ = (int)Math.floor(entity.locZ()) >> 4;
          int index = entity.getEntityType().getEnumCreatureType().ordinal();
  
@@ -167,7 +167,7 @@ index 12639dfb94599233e24a0a8b77bc88de81b65e9b..3f1be2e02b8634369b6c91ee7b0b9892
      }
  
      public int getMobCountNear(EntityPlayer entityPlayer, EnumCreatureType enumCreatureType) {
-@@ -1541,7 +1582,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1544,7 +1585,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          }
  
          this.updateMaps(entityplayer); // Paper - distance maps
@@ -220,7 +220,7 @@ index 09b03afffa496b7090454682495ca35147c2f8a9..3eb49d00dfb049b02eb2ecd8b0c5ae2f
                  if (chunk != null) {
                      chunk.a(oclass, axisalignedbb, list, predicate);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index a0db38b5880c849514b89f8b47648de0e5b1273f..f5b8cb645d722eba33c77c48c64693c43d00e74a 100644
+index 9e9a1b2a8767cad27928826cd9e9551110cc2d07..4cbdf0c455c317bb96e3364719633b914c0daf24 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -1215,6 +1215,7 @@ public class WorldServer extends World {

@@ -18,10 +18,10 @@ index 2dfda90acfab087f4b7c25130c14e23b9debb9e7..a08bfb4b3b02e998d3a6f519107e522f
                      // re-schedule eventually
                      toTick.tickState = STATE_SCHEDULED;
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index d9510c9cc64e9e4db24330de0c2b00579ed59108..e5a9935d6112697746ecaa3ed99b4d8ced546497 100644
+index 70fa3de50755caa66d69df98ce728a512fab894f..73f3de66b2fc13ca8603290e8ac325823ebec8cc 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -626,7 +626,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -705,7 +705,7 @@ public class ChunkProviderServer extends IChunkProvider {
          this.world.getMethodProfiler().enter("purge");
          this.world.timings.doChunkMap.startTiming(); // Spigot
          this.chunkMapDistance.purgeTickets();
@@ -30,7 +30,7 @@ index d9510c9cc64e9e4db24330de0c2b00579ed59108..e5a9935d6112697746ecaa3ed99b4d8c
          this.tickDistanceManager();
          this.world.timings.doChunkMap.stopTiming(); // Spigot
          // Tuinity start
-@@ -641,7 +641,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -720,7 +720,7 @@ public class ChunkProviderServer extends IChunkProvider {
          this.world.timings.doChunkUnload.startTiming(); // Spigot
          this.world.getMethodProfiler().exitEnter("unload");
          this.playerChunkMap.unloadChunks(booleansupplier);
@@ -39,7 +39,7 @@ index d9510c9cc64e9e4db24330de0c2b00579ed59108..e5a9935d6112697746ecaa3ed99b4d8c
          this.world.timings.doChunkUnload.stopTiming(); // Spigot
          this.world.getMethodProfiler().exit();
          this.clearCache();
-@@ -818,7 +818,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -897,7 +897,7 @@ public class ChunkProviderServer extends IChunkProvider {
                          this.world.timings.chunkTicks.startTiming(); // Spigot // Paper
                          this.world.a(chunk, k);
                          this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
@@ -48,7 +48,7 @@ index d9510c9cc64e9e4db24330de0c2b00579ed59108..e5a9935d6112697746ecaa3ed99b4d8c
                      }
                  }
              });
-@@ -960,37 +960,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1039,38 +1039,7 @@ public class ChunkProviderServer extends IChunkProvider {
              super.executeTask(runnable);
          }
  
@@ -70,6 +70,7 @@ index d9510c9cc64e9e4db24330de0c2b00579ed59108..e5a9935d6112697746ecaa3ed99b4d8c
 -                        // we do not want to use this.executeNext as that also processes chunk loads and might count against task counter.
 -                        // We also have already ticked the distance manager above too.
 -                        if (server.chunksTasksRan < 200 && now - lastChunkTask > 100000 && super.executeNext()) {
+-                            ChunkProviderServer.this.playerChunkMap.chunkLoadConversionCallbackExecutor.run(); // run immediately after a task is potentially queued
 -                            ChunkProviderServer.this.lightEngine.queueUpdate();
 -                            server.chunksTasksRan++;
 -                            lastChunkTask = now;
@@ -88,10 +89,10 @@ index d9510c9cc64e9e4db24330de0c2b00579ed59108..e5a9935d6112697746ecaa3ed99b4d8c
          @Override
          protected boolean executeNext() {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 527d34ad2750face9c17768d51b8cb3fbfa20cca..c672723d7d00e6158f9ad1b66ad25a651d0b8f94 100644
+index ae046dd422c25599d4c9e58516e5aef193dfadea..705f6c95e706be4bf94ef46745de8242e55ec984 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -942,7 +942,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -930,7 +930,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
                          // Paper end
                          tickSection = curTime;
                      }
@@ -100,7 +101,7 @@ index 527d34ad2750face9c17768d51b8cb3fbfa20cca..c672723d7d00e6158f9ad1b66ad25a65
                      // Spigot end
  
                      //MinecraftServer.currentTick = (int) (System.currentTimeMillis() / 50); // CraftBukkit // Paper - don't overwrite current tick time
-@@ -1035,6 +1035,78 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1023,6 +1023,78 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
      }
      // Paper end
  
@@ -179,7 +180,7 @@ index 527d34ad2750face9c17768d51b8cb3fbfa20cca..c672723d7d00e6158f9ad1b66ad25a65
      private void executeModerately() {
          this.executeAll();
          java.util.concurrent.locks.LockSupport.parkNanos("executing tasks", 1000L);
-@@ -1048,19 +1120,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1036,19 +1108,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          });
      }
  
@@ -200,7 +201,7 @@ index 527d34ad2750face9c17768d51b8cb3fbfa20cca..c672723d7d00e6158f9ad1b66ad25a65
  
      @Override
      protected TickTask postToMainThread(Runnable runnable) {
-@@ -1087,6 +1147,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1075,6 +1135,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
  
      private boolean ba() {
          if (super.executeNext()) {
@@ -209,7 +210,7 @@ index 527d34ad2750face9c17768d51b8cb3fbfa20cca..c672723d7d00e6158f9ad1b66ad25a65
          } else {
              if (this.canSleepForTick()) {
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 953c28901f10ec5fb083c60ac4dfdb1f8193eac2..e7adaf430cf7d6da45275956a67a68e1f014dc8f 100644
+index defb6c4411631ddf836bb5cc007a12b9b30bce6e..ab2a5afbb0f3bd921466abba05958845e3f7ab3a 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -206,6 +206,10 @@ public class WorldServer extends World {
