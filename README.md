@@ -7,8 +7,6 @@ Fork of [Paper](https://github.com/PaperMC/Paper) aimed at improving server perf
 [IRC](http://irc.spi.gt/iris/?channels=tuinity) | [Discord](https://discord.gg/CgDPu27)
 
 ## How To (Server Admins)
-**NOTE:** Tuinity requires Java 11 or higher.
-
 Tuinity uses the same paperclip jar system that Paper uses.
 
 You can download the latest build of Tuinity by going [here](https://ci.codemc.io/job/Spottedleaf/job/Tuinity/).
@@ -48,7 +46,7 @@ Requirements:
 - You need `git` installed, with a configured user name and email. 
    On windows you need to run from git bash.
 - You need `maven` installed
-- You need `jdk` 11+ installed to compile (and `jre` 11 to run)
+- You need `jdk` 8+ installed to compile (and `jre` 8+ to run)
 - Anything else that `paper` requires to build
 
 If all you want is a paperclip server jar, just run `./tuinity jar`

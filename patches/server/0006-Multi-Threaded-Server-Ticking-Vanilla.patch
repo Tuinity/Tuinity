@@ -9,13 +9,12 @@ Currently a placeholder patch.
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/ChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/ChunkRegionManager.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..2b4cfdcba27f1ce30a3d88c214aaf211928f2423
+index 0000000000000000000000000000000000000000..4ef350060045a91ce723bddec31eab2bcdeb23df
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/ChunkRegionManager.java
-@@ -0,0 +1,165 @@
+@@ -0,0 +1,162 @@
 +package com.tuinity.tuinity.chunk;
 +
-+import com.tuinity.tuinity.util.TickSynchronizationPoint;
 +import com.tuinity.tuinity.util.TickThread;
 +import net.minecraft.server.MCUtil;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
@@ -30,13 +29,11 @@ index 0000000000000000000000000000000000000000..2b4cfdcba27f1ce30a3d88c214aaf211
 +
 +    public final Long2ObjectOpenHashMap<ChunkRegionHolder> regions = new Long2ObjectOpenHashMap<>(8192, 0.25f);
 +    public final World world;
-+    public final TickSynchronizationPoint synchronizationPoint;
 +
 +    private final TickThread[] threads;
 +
-+    public ChunkRegionManager(final World world, final TickSynchronizationPoint synchronizationPoint, final TickThread[] threads) {
++    public ChunkRegionManager(final World world, final TickThread[] threads) {
 +        this.world = world;
-+        this.synchronizationPoint = synchronizationPoint;
 +        this.threads = threads;
 +    }
 +
@@ -176,53 +173,6 @@ index 0000000000000000000000000000000000000000..2b4cfdcba27f1ce30a3d88c214aaf211
 +
 +            return true;
 +        }
-+    }
-+}
-\ No newline at end of file
-diff --git a/src/main/java/com/tuinity/tuinity/util/TickSynchronizationPoint.java b/src/main/java/com/tuinity/tuinity/util/TickSynchronizationPoint.java
-new file mode 100644
-index 0000000000000000000000000000000000000000..37adae90072b3817c98620905029baac9faf88bb
---- /dev/null
-+++ b/src/main/java/com/tuinity/tuinity/util/TickSynchronizationPoint.java
-@@ -0,0 +1,40 @@
-+package com.tuinity.tuinity.util;
-+
-+import ca.spottedleaf.concurrentutil.misc.SynchronizationPoint;
-+
-+public final class TickSynchronizationPoint {
-+
-+    private final SynchronizationPoint lock;
-+
-+    public TickSynchronizationPoint(final TickThread[] threads) {
-+        this.lock = new SynchronizationPoint(threads);
-+    }
-+
-+    private static int getIdForCurrentThread() {
-+        return ((TickThread)Thread.currentThread()).id;
-+    }
-+
-+    public void start() {
-+        this.lock.start(getIdForCurrentThread());
-+    }
-+
-+    public void end() {
-+        this.lock.end(getIdForCurrentThread());
-+    }
-+
-+    public void enter() {
-+        this.lock.enter(getIdForCurrentThread());
-+    }
-+
-+    public void weakEnter() {
-+        this.lock.weakEnter(getIdForCurrentThread());
-+    }
-+
-+    public void enterAlone() {
-+        this.lock.enterAlone(getIdForCurrentThread());
-+    }
-+
-+    public void endAloneExecution() {
-+        this.lock.endAloneExecution(getIdForCurrentThread());
 +    }
 +}
 \ No newline at end of file

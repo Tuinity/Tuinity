@@ -7,7 +7,7 @@ Subject: [PATCH] Detail more information in watchdog dumps
 - Dump player name, player uuid, position, and world for packet handling
 
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 46e631d4664eb3be786792bf1b7deb8d874bc5b7..f7b02bacf7aeb9796f9b3005dda32b9acbf7b0e8 100644
+index 46e631d4664eb3be786792bf1b7deb8d874bc5b7..bdbe74fb1d47a90d614bc2b0eb4ca084e98f8066 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -584,7 +584,40 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -40,12 +40,12 @@ index 46e631d4664eb3be786792bf1b7deb8d874bc5b7..f7b02bacf7aeb9796f9b3005dda32b9a
      public void move(EnumMoveType enummovetype, Vec3D vec3d) {
 +        // Tuinity start - detailed watchdog information
 +        com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot move an entity off-main");
-+        this.posSeqLock.acquireWrite();
-+        this.moveStartX = this.locX();
-+        this.moveStartY = this.locY();
-+        this.moveStartZ = this.locZ();
-+        this.moveVector = vec3d;
-+        this.posSeqLock.releaseWrite();
++        synchronized (this.posLock) {
++            this.moveStartX = this.locX();
++            this.moveStartY = this.locY();
++            this.moveStartZ = this.locZ();
++            this.moveVector = vec3d;
++        }
 +        try {
 +        // Tuinity end - detailed watchdog information
          if (this.noclip) {
@@ -57,9 +57,9 @@ index 46e631d4664eb3be786792bf1b7deb8d874bc5b7..f7b02bacf7aeb9796f9b3005dda32b9a
          }
 +        // Tuinity start - detailed watchdog information
 +        } finally {
-+            this.posSeqLock.acquireWrite();
-+            this.moveVector = null;
-+            this.posSeqLock.releaseWrite();
++            synchronized (this.posLock) { // Tuinity
++                this.moveVector = null;
++            } // Tuinity
 +        }
 +        // Tuinity end - detailed watchdog information
      }
@@ -69,16 +69,16 @@ index 46e631d4664eb3be786792bf1b7deb8d874bc5b7..f7b02bacf7aeb9796f9b3005dda32b9a
          return new Vec3D(this.locX, this.locY, this.locZ);
      }
  
-+    public final ca.spottedleaf.concurrentutil.lock.VolatileSeqLock posSeqLock = new ca.spottedleaf.concurrentutil.lock.VolatileSeqLock(); // Tuinity - log detailed entity tick information
++    public final Object posLock = new Object(); // Tuinity - log detailed entity tick information
 +
      public Vec3D getMot() {
          return this.mot;
      }
  
      public void setMot(Vec3D vec3d) {
-+        this.posSeqLock.acquireWrite(); // Tuinity
++        synchronized (this.posLock) { // Tuinity
          this.mot = vec3d;
-+        this.posSeqLock.releaseWrite(); // Tuinity
++        } // Tuinity
      }
  
      public void setMot(double d0, double d1, double d2) {
@@ -86,11 +86,11 @@ index 46e631d4664eb3be786792bf1b7deb8d874bc5b7..f7b02bacf7aeb9796f9b3005dda32b9a
      }
  
      public void setPositionRaw(double d0, double d1, double d2) {
-+        this.posSeqLock.acquireWrite(); // Tuinity
++        synchronized (this.posLock) { // Tuinity
          this.locX = d0;
          this.locY = d1;
          this.locZ = d2;
-+        this.posSeqLock.releaseWrite(); // Tuinity
++        } // Tuinity
      }
  
      public void checkDespawn() {}
@@ -186,10 +186,10 @@ index b62813a8175425b90c60d8e6b944470f0adf0c19..e69190657f0d88896cbff9b5bb518bf8
  
      public void a(Entity entity, Entity entity1) {
 diff --git a/src/main/java/org/spigotmc/WatchdogThread.java b/src/main/java/org/spigotmc/WatchdogThread.java
-index acc880c7c78d87b5fb53dbbc4c167cf5a65afedc..85e931e00ea867063c0323a77b8de832c2143698 100644
+index acc880c7c78d87b5fb53dbbc4c167cf5a65afedc..97283b23e7c2ca8b825d23ffed7652b427a70a22 100644
 --- a/src/main/java/org/spigotmc/WatchdogThread.java
 +++ b/src/main/java/org/spigotmc/WatchdogThread.java
-@@ -59,6 +59,88 @@ public class WatchdogThread extends Thread
+@@ -59,6 +59,84 @@ public class WatchdogThread extends Thread
          }
      }
  
@@ -203,9 +203,7 @@ index acc880c7c78d87b5fb53dbbc4c167cf5a65afedc..85e931e00ea867063c0323a77b8de832
 +            net.minecraft.server.Vec3D mot;
 +            double moveStartX, moveStartY, moveStartZ;
 +            net.minecraft.server.Vec3D moveVec;
-+            int lock;
-+            do {
-+                lock = entity.posSeqLock.acquireRead();
++            synchronized (entity.posLock) {
 +                posX = entity.locX();
 +                posY = entity.locY();
 +                posZ = entity.locZ();
@@ -214,7 +212,7 @@ index acc880c7c78d87b5fb53dbbc4c167cf5a65afedc..85e931e00ea867063c0323a77b8de832
 +                moveStartY = entity.getMoveStartY();
 +                moveStartZ = entity.getMoveStartZ();
 +                moveVec = entity.getMoveVector();
-+            } while (!entity.posSeqLock.tryReleaseRead(lock));
++            }
 +
 +            String entityType = entity.getMinecraftKey().toString();
 +            java.util.UUID entityUUID = entity.getUniqueID();
@@ -244,9 +242,7 @@ index acc880c7c78d87b5fb53dbbc4c167cf5a65afedc..85e931e00ea867063c0323a77b8de832
 +                    double posX, posY, posZ;
 +                    double moveStartX, moveStartY, moveStartZ;
 +                    net.minecraft.server.Vec3D moveVec;
-+                    int lock;
-+                    do {
-+                        lock = player.posSeqLock.acquireRead();
++                    synchronized (player.posLock) {
 +                        posX = player.locX();
 +                        posY = player.locY();
 +                        posZ = player.locZ();
@@ -254,7 +250,7 @@ index acc880c7c78d87b5fb53dbbc4c167cf5a65afedc..85e931e00ea867063c0323a77b8de832
 +                        moveStartY = player.getMoveStartY();
 +                        moveStartZ = player.getMoveStartZ();
 +                        moveVec = player.getMoveVector();
-+                    } while (!player.posSeqLock.tryReleaseRead(lock));
++                    }
 +
 +                    java.util.UUID entityUUID = player.getUniqueID();
 +                    net.minecraft.server.World world = player.getWorld();
@@ -278,7 +274,7 @@ index acc880c7c78d87b5fb53dbbc4c167cf5a65afedc..85e931e00ea867063c0323a77b8de832
      @Override
      public void run()
      {
-@@ -115,6 +197,7 @@ public class WatchdogThread extends Thread
+@@ -115,6 +193,7 @@ public class WatchdogThread extends Thread
                  log.log( Level.SEVERE, "------------------------------" );
                  log.log( Level.SEVERE, "Server thread dump (Look for plugins here before reporting to Paper!):" ); // Paper
                  ChunkTaskManager.dumpAllChunkLoadInfo(); // Paper
