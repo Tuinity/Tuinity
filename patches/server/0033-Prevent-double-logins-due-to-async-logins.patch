@@ -34,7 +34,7 @@ index 905d14b895a89077e92951203cca08af1790c6f1..5b468de444d4c180906e844e545e1a54
          this.h = enumprotocoldirection;
      }
 diff --git a/src/main/java/net/minecraft/server/PlayerList.java b/src/main/java/net/minecraft/server/PlayerList.java
-index cf56a821cea0481d2b8312299ed80061d226f090..08ec4d4b4e892f1304bdc2891d1d61e2817dae38 100644
+index cf56a821cea0481d2b8312299ed80061d226f090..96a84a891ee8cdc03b0dab2e89da958330872ab7 100644
 --- a/src/main/java/net/minecraft/server/PlayerList.java
 +++ b/src/main/java/net/minecraft/server/PlayerList.java
 @@ -93,7 +93,16 @@ public abstract class PlayerList {
@@ -54,11 +54,12 @@ index cf56a821cea0481d2b8312299ed80061d226f090..08ec4d4b4e892f1304bdc2891d1d61e2
          entityplayer.loginTime = System.currentTimeMillis(); // Paper
          GameProfile gameprofile = entityplayer.getProfile();
          UserCache usercache = this.server.getUserCache();
-@@ -184,6 +193,7 @@ public abstract class PlayerList {
-         this.players.add(entityplayer);
-         this.playersByName.put(entityplayer.getName().toLowerCase(java.util.Locale.ROOT), entityplayer); // Spigot
-         this.j.put(entityplayer.getUniqueID(), entityplayer);
-+        this.pendingLogins.remove(entityplayer.getUniqueID()); // Tuinity - remove only after adding to players
-         // this.sendAll(new PacketPlayOutPlayerInfo(PacketPlayOutPlayerInfo.EnumPlayerInfoAction.ADD_PLAYER, new EntityPlayer[]{entityplayer})); // CraftBukkit - replaced with loop below
- 
-         // Paper start - correctly register player BEFORE PlayerJoinEvent, so the entity is valid and doesn't require tick delay hacks
+@@ -136,7 +145,7 @@ public abstract class PlayerList {
+         // Paper start - async load spawn in chunk
+         WorldServer finalWorldserver = worldserver;
+         worldserver.getChunkProvider().getTickingChunkAsync(loc.getBlockX() >> 4, loc.getBlockZ() >> 4, (chunk -> { // use ticking - as it has at least 1 neighbours loaded
+-            if (networkmanager.isConnected()) {
++            if (this.pendingLogins.remove(entityplayer.getUniqueID(), networkmanager) && networkmanager.isConnected()) { // Tuinity - prevent double logins due to async login
+                 postChunkLoadJoin(entityplayer, finalWorldserver, nbttagcompound, networkmanager, lastKnownName, networkmanager.getSocketAddress().toString());
+             }
+         }));
