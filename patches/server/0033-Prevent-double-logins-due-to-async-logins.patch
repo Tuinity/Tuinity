@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Tue, 21 Apr 2020 22:01:08 -0700
+Subject: [PATCH] Prevent double logins due to async logins
+
+Since the player was not added to the player list, the
+kick logic for duplicate logins would not kick in.
+
+Fix this by using a list of pending logins.
+
+diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
+index 905d14b895a89077e92951203cca08af1790c6f1..5b468de444d4c180906e844e545e1a54948ececd 100644
+--- a/src/main/java/net/minecraft/server/NetworkManager.java
++++ b/src/main/java/net/minecraft/server/NetworkManager.java
+@@ -66,6 +66,20 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+     private static boolean enableExplicitFlush = Boolean.getBoolean("paper.explicit-flush");
+     // Paper end
+ 
++    // Tuinity start - prevent double login due to async login
++    // This should ONLY be used to bypass the packet listener (thanks plugins) DURING LOGIN. ANY OTHER USE IS INVALID.
++    final void disconnectDuringLoginBypass(com.mojang.authlib.GameProfile profile, IChatBaseComponent message) {
++        // copied from LoginListener
++        try {
++            MinecraftServer.LOGGER.info("Disconnecting {}: {}", profile + " (" + this.getSocketAddress() + ")", message.getString());
++            this.sendPacket(new PacketPlayOutKickDisconnect(message));
++            this.close(message);
++        } catch (Exception exception) {
++            MinecraftServer.LOGGER.error("Error whilst disconnecting player", exception);
++        }
++    }
++    // Tuinity end - prevent double login due to async login
++
+     public NetworkManager(EnumProtocolDirection enumprotocoldirection) {
+         this.h = enumprotocoldirection;
+     }
+diff --git a/src/main/java/net/minecraft/server/PlayerList.java b/src/main/java/net/minecraft/server/PlayerList.java
+index cf56a821cea0481d2b8312299ed80061d226f090..08ec4d4b4e892f1304bdc2891d1d61e2817dae38 100644
+--- a/src/main/java/net/minecraft/server/PlayerList.java
++++ b/src/main/java/net/minecraft/server/PlayerList.java
+@@ -93,7 +93,16 @@ public abstract class PlayerList {
+         this.getIPBans().a(true);
+     }
+ 
++    final Map<UUID, NetworkManager> pendingLogins = new java.util.HashMap<>(); // Tuinity - fix double logins due to async login
++
+     public void a(NetworkManager networkmanager, EntityPlayer entityplayer) {
++        // Tuinity start - fix double logins due to async login
++        // All of the logic has to be here thanks to plugins overriding LoginListener...
++        NetworkManager duplicateLogin = this.pendingLogins.put(entityplayer.getUniqueID(), networkmanager);
++        if (duplicateLogin != null) {
++            duplicateLogin.disconnectDuringLoginBypass(entityplayer.getProfile(), new ChatMessage("multiplayer.disconnect.duplicate_login", new Object[0]));
++        }
++        // Tuinity end - fix double logins due to async login
+         entityplayer.loginTime = System.currentTimeMillis(); // Paper
+         GameProfile gameprofile = entityplayer.getProfile();
+         UserCache usercache = this.server.getUserCache();
+@@ -184,6 +193,7 @@ public abstract class PlayerList {
+         this.players.add(entityplayer);
+         this.playersByName.put(entityplayer.getName().toLowerCase(java.util.Locale.ROOT), entityplayer); // Spigot
+         this.j.put(entityplayer.getUniqueID(), entityplayer);
++        this.pendingLogins.remove(entityplayer.getUniqueID()); // Tuinity - remove only after adding to players
+         // this.sendAll(new PacketPlayOutPlayerInfo(PacketPlayOutPlayerInfo.EnumPlayerInfoAction.ADD_PLAYER, new EntityPlayer[]{entityplayer})); // CraftBukkit - replaced with loop below
+ 
+         // Paper start - correctly register player BEFORE PlayerJoinEvent, so the entity is valid and doesn't require tick delay hacks
