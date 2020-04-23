@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jeffry1829 <jeffry1829@gmail.com>
+Date: Fri, 24 Apr 2020 00:41:42 +0800
+Subject: [PATCH] Do not proceed hopper which has solid block above
+
+
+diff --git a/src/main/java/net/minecraft/server/TileEntityHopper.java b/src/main/java/net/minecraft/server/TileEntityHopper.java
+index 4afd33a4916788305ab2e5810db00936a582c95f..d93c560556cf3a8584f27e419b937727bf542680 100644
+--- a/src/main/java/net/minecraft/server/TileEntityHopper.java
++++ b/src/main/java/net/minecraft/server/TileEntityHopper.java
+@@ -393,8 +393,36 @@ public class TileEntityHopper extends TileEntityLootable implements IHopper, ITi
+             return iinventory.getItem(i).isEmpty();
+         });
+     }
+-
++    // Tuinity - start Don't proceed hopper which has solid block above
++    public static boolean dontSuckByHopperBelow(Block b){ //newly defined
++        if(b==Blocks.DIRT||b==Blocks.STONE||b==Blocks.COBBLESTONE||b==Blocks.ANDESITE||b==Blocks.GRANITE||
++                b==Blocks.DIORITE||b==Blocks.SAND||b==Blocks.ACACIA_LEAVES||b==Blocks.BIRCH_LEAVES||
++                b==Blocks.DARK_OAK_LEAVES||b==Blocks.JUNGLE_LEAVES||b==Blocks.OAK_LEAVES||b==Blocks.SPRUCE_LEAVES||
++                b==Blocks.ACACIA_LOG||b==Blocks.BIRCH_LOG||b==Blocks.DARK_OAK_LOG||b==Blocks.JUNGLE_LOG||
++                b==Blocks.OAK_LOG||b==Blocks.SPRUCE_LOG||b==Blocks.STRIPPED_ACACIA_LOG||b==Blocks.STRIPPED_BIRCH_LOG||
++                b==Blocks.STRIPPED_DARK_OAK_LOG||b==Blocks.STRIPPED_JUNGLE_LOG||b==Blocks.STRIPPED_OAK_LOG||
++                b==Blocks.STRIPPED_SPRUCE_LOG||b==Blocks.BEDROCK||b==Blocks.BEEHIVE||b==Blocks.GLASS||
++                b==Blocks.QUARTZ_BLOCK||b==Blocks.POLISHED_ANDESITE||b==Blocks.POLISHED_DIORITE||
++                b==Blocks.POLISHED_GRANITE||b==Blocks.GRASS_BLOCK||b==Blocks.COARSE_DIRT||b==Blocks.PODZOL||
++                b==Blocks.RED_SAND||b==Blocks.RED_SANDSTONE||b==Blocks.GRAVEL||b==Blocks.GOLD_ORE||b==Blocks.COAL_ORE||
++                b==Blocks.DIAMOND_ORE||b==Blocks.EMERALD_ORE||b==Blocks.IRON_ORE||b==Blocks.LAPIS_ORE||b==Blocks.NETHER_QUARTZ_ORE||
++                b==Blocks.REDSTONE_ORE){
++            // not a full list yet, may be better to use a faster check method, or lower the checked block type
++            return true;
++        }
++        return false;
++    }
+     public static boolean a(IHopper ihopper) {
++        boolean solid=false;
++        World world=ihopper.getWorld(); double d0=ihopper.z(); double d1=ihopper.A()+1.0D; double d2=ihopper.B();
++        BlockPosition blockposition = new BlockPosition(d0, d1, d2);
++        if (world.isLoaded(blockposition)){
++            IBlockData iblockdata = world.getType(blockposition);
++            Block block=iblockdata.getBlock();
++            if(dontSuckByHopperBelow(block)) solid=true;
++        }
++        if(solid) return false; // same as inventory holder has no item
++        // Tuinity - end Don't proceed hopper which has solid block above
+         IInventory iinventory = b(ihopper);
+ 
+         if (iinventory != null) {
