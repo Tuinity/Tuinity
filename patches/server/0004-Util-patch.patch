@@ -4,6 +4,69 @@ Date: Sat, 18 May 2019 12:25:19 -0700
 Subject: [PATCH] Util patch
 
 
+diff --git a/src/main/java/com/destroystokyo/paper/util/misc/AreaMap.java b/src/main/java/com/destroystokyo/paper/util/misc/AreaMap.java
+index f625da9f0968b6f41e302b628c4439198eb4ed64..6fae6d0dbb2256b9c15b69872fe41e7f7a9d525c 100644
+--- a/src/main/java/com/destroystokyo/paper/util/misc/AreaMap.java
++++ b/src/main/java/com/destroystokyo/paper/util/misc/AreaMap.java
+@@ -77,26 +77,54 @@ public abstract class AreaMap<E> {
+         return this.areaMap.size();
+     }
+ 
+-    public final void update(final E object, final int chunkX, final int chunkZ, final int viewDistance) {
++    public final void addOrUpdate(final E object, final int chunkX, final int chunkZ, final int viewDistance) {
+         final int oldViewDistance = this.objectToViewDistance.put(object, viewDistance);
+         final long newPos = MCUtil.getCoordinateKey(chunkX, chunkZ);
++        final long oldPos = this.objectToLastCoordinate.put(object, newPos);
++
+         if (oldViewDistance == -1) {
+-            this.objectToLastCoordinate.put(object, newPos);
+             this.addObject(object, chunkX, chunkZ, Integer.MIN_VALUE, Integer.MIN_VALUE, viewDistance);
+             this.addObjectCallback(object, chunkX, chunkZ, viewDistance);
+         } else {
++            this.updateObject(object, oldPos, newPos, oldViewDistance, viewDistance);
++            this.updateObjectCallback(object, oldPos, newPos, oldViewDistance, viewDistance);
++        }
++        //this.validate(object, viewDistance);
++    }
++
++    public final boolean update(final E object, final int chunkX, final int chunkZ, final int viewDistance) {
++        final int oldViewDistance = this.objectToViewDistance.replace(object, viewDistance);
++        if (oldViewDistance == -1) {
++            return false;
++        } else {
++            final long newPos = MCUtil.getCoordinateKey(chunkX, chunkZ);
+             final long oldPos = this.objectToLastCoordinate.put(object, newPos);
+             this.updateObject(object, oldPos, newPos, oldViewDistance, viewDistance);
+             this.updateObjectCallback(object, oldPos, newPos, oldViewDistance, viewDistance);
+         }
+         //this.validate(object, viewDistance);
++        return true;
+     }
+ 
+     // called after the distance map updates
+-    protected void addObjectCallback(final E object, final int chunkX, final int chunkZ, final int viewDistance) {}
++    protected void updateObjectCallback(final E Object, final long oldPosition, final long newPosition, final int oldViewDistance, final int newViewDistance) {}
++
++    public final boolean add(final E object, final int chunkX, final int chunkZ, final int viewDistance) {
++        final int oldViewDistance = this.objectToViewDistance.putIfAbsent(object, viewDistance);
++        if (oldViewDistance != -1) {
++            return false;
++        }
++
++        final long newPos = MCUtil.getCoordinateKey(chunkX, chunkZ);
++        this.objectToLastCoordinate.put(object, newPos);
++        this.addObject(object, chunkX, chunkZ, Integer.MIN_VALUE, Integer.MIN_VALUE, viewDistance);
++        this.addObjectCallback(object, chunkX, chunkZ, viewDistance);
++
++        return true;
++    }
+ 
+     // called after the distance map updates
+-    protected void updateObjectCallback(final E Object, final long oldPosition, final long newPosition, final int oldViewDistance, final int newViewDistance) {}
++    protected void addObjectCallback(final E object, final int chunkX, final int chunkZ, final int viewDistance) {}
+ 
+     public final boolean remove(final E object) {
+         final long position = this.objectToLastCoordinate.removeLong(object);
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 index fd84807a5b09bf45a97f1871a4a240491ad5cfe9..11767a551b5dc99ebebce65af41d6e44c967dba7 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
@@ -86,7 +149,7 @@ index 8a272ae1b800e31aab6431b647e5b349430b2634..aa73396100adbf741ed52f457284a78c
          return this.a(c(i, j));
      }
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 8b2eed1051215f864bf9a37be852579b21c929cf..dfb500d858a14ec68194a9dd3f99c75a3139e245 100644
+index 8b2eed1051215f864bf9a37be852579b21c929cf..175fc9e2d4be595153ed04d72f43469f15f4863e 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -81,7 +81,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -98,37 +161,49 @@ index 8b2eed1051215f864bf9a37be852579b21c929cf..dfb500d858a14ec68194a9dd3f99c75a
  
      // CraftBukkit start - recursion-safe executor for Chunk loadCallback() and unloadCallback()
      public final CallbackExecutor callbackExecutor = new CallbackExecutor();
-@@ -139,6 +139,29 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -114,15 +114,27 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     // Paper start - distance maps
+     private final com.destroystokyo.paper.util.misc.PooledLinkedHashSets<EntityPlayer> pooledLinkedPlayerHashSets = new com.destroystokyo.paper.util.misc.PooledLinkedHashSets<>();
  
- 
-     // Paper end
 +    // Tuinity start - distance maps
-+    final com.destroystokyo.paper.util.misc.PooledLinkedHashSets<EntityPlayer> pooledEntityPlayerSets = new com.destroystokyo.paper.util.misc.PooledLinkedHashSets<>();
 +    public final com.destroystokyo.paper.util.misc.PlayerAreaMap playerViewDistanceMap;
++    // Tuinity end - distance maps
 +
-+    void addPlayerToDistanceMapsTuinity(EntityPlayer player) {
-+        this.updateMapsTuinity(player);
-+    }
+     void addPlayerToDistanceMaps(EntityPlayer player) {
+-        this.updateMaps(player);
++        // Tuinity - we need to add players explicitly now
++        // Tuinity start - distance maps
++        int chunkX = MCUtil.getChunkCoordinate(player.locX());
++        int chunkZ = MCUtil.getChunkCoordinate(player.locZ());
 +
-+    void removePlayerFromDistanceMapsTuinity(EntityPlayer player) {
-+        this.playerViewDistanceMap.remove(player);
-+    }
-+
-+    void updateDistanceMapsTuinity(EntityPlayer player) {
-+        this.updateMapsTuinity(player);
-+    }
-+
-+    private void updateMapsTuinity(EntityPlayer player) {
-+        int chunkX = net.minecraft.server.MCUtil.getChunkCoordinate(player.locX());
-+        int chunkZ = net.minecraft.server.MCUtil.getChunkCoordinate(player.locZ());
-+
-+        this.playerViewDistanceMap.update(player, chunkX, chunkZ, this.viewDistance);
-+    }
-+    // Tuinity end
++        this.playerViewDistanceMap.add(player, chunkX, chunkZ, this.viewDistance);
++        // Tuinity end - distance maps
  
-     // Paper start - Reduce entity tracker updates on move
-     private double trackerUpdateDistanceSquared;
-@@ -204,8 +227,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+ 
+     }
+ 
+     void removePlayerFromDistanceMaps(EntityPlayer player) {
+-
++        // Tuinity start - distance maps
++        this.playerViewDistanceMap.remove(player);
++        // Tuinity end - distance maps
+ 
+ 
+ 
+@@ -131,8 +143,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     void updateMaps(EntityPlayer player) {
+         int chunkX = MCUtil.getChunkCoordinate(player.locX());
+         int chunkZ = MCUtil.getChunkCoordinate(player.locZ());
+-
+-
++        // Tuinity start - distance maps
++        this.playerViewDistanceMap.update(player, chunkX, chunkZ, this.viewDistance);
++        // Tuinity end - distance maps
+ 
+ 
+     }
+@@ -204,8 +217,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          this.l = supplier;
          this.m = new VillagePlace(new File(this.w, "poi"), datafixer, this.world); // Paper
          this.setViewDistance(i);
@@ -136,13 +211,13 @@ index 8b2eed1051215f864bf9a37be852579b21c929cf..dfb500d858a14ec68194a9dd3f99c75a
 +        //this.playerMobDistanceMap = this.world.paperConfig.perPlayerMobSpawns ? new com.destroystokyo.paper.util.PlayerMobDistanceMap() : null; // Paper // Tuinity - distance maps
          this.trackerUpdateDistanceSquared = Math.pow(this.world.paperConfig.trackerUpdateDistance, 2); // Paper
 +        // Tuinity start - distance maps
-+        com.destroystokyo.paper.util.misc.PooledLinkedHashSets<EntityPlayer> sets = this.pooledEntityPlayerSets;
++        com.destroystokyo.paper.util.misc.PooledLinkedHashSets<EntityPlayer> sets = this.pooledLinkedPlayerHashSets;
 +        this.playerViewDistanceMap = new com.destroystokyo.paper.util.misc.PlayerAreaMap(sets);
 +        // Tuinity end - distance maps
      }
  
      public void updatePlayerMobTypeMap(Entity entity) {
-@@ -216,9 +243,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -216,9 +233,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          int chunkZ = (int)Math.floor(entity.locZ()) >> 4;
          int index = entity.getEntityType().getEnumCreatureType().ordinal();
  
@@ -167,12 +242,27 @@ index 8b2eed1051215f864bf9a37be852579b21c929cf..dfb500d858a14ec68194a9dd3f99c75a
      }
  
      public int getMobCountNear(EntityPlayer entityPlayer, EnumCreatureType enumCreatureType) {
-@@ -1544,7 +1585,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1414,6 +1445,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             if (!flag1) {
+                 this.chunkDistanceManager.a(SectionPosition.a((Entity) entityplayer), entityplayer);
+             }
++            this.addPlayerToDistanceMaps(entityplayer); // Tuinity - hook distance map better
+         } else {
+             SectionPosition sectionposition = entityplayer.K();
+ 
+@@ -1421,6 +1453,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             if (!flag2) {
+                 this.chunkDistanceManager.b(sectionposition, entityplayer);
+             }
++            this.removePlayerFromDistanceMaps(entityplayer); // Tuinity - hook distance map better
+         }
+ 
+         for (int k = i - this.viewDistance; k <= i + this.viewDistance; ++k) {
+@@ -1544,7 +1577,6 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          }
  
          this.updateMaps(entityplayer); // Paper - distance maps
 -
-+        this.updateDistanceMapsTuinity(entityplayer); // Tuinity - distance maps
      }
  
      @Override
@@ -220,22 +310,24 @@ index 09b03afffa496b7090454682495ca35147c2f8a9..3eb49d00dfb049b02eb2ecd8b0c5ae2f
                  if (chunk != null) {
                      chunk.a(oclass, axisalignedbb, list, predicate);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 9e9a1b2a8767cad27928826cd9e9551110cc2d07..4cbdf0c455c317bb96e3364719633b914c0daf24 100644
+index 9e9a1b2a8767cad27928826cd9e9551110cc2d07..d9f468707a83ea424847531eee525d3dc4e186a0 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -1215,6 +1215,7 @@ public class WorldServer extends World {
+@@ -1214,7 +1214,7 @@ public class WorldServer extends World {
+         }
  
          this.registerEntity(entityplayer);
-         this.getChunkProvider().playerChunkMap.addPlayerToDistanceMaps(entityplayer); // Paper - distance maps
-+        this.getChunkProvider().playerChunkMap.addPlayerToDistanceMapsTuinity(entityplayer); // Tuinity - distance maps
+-        this.getChunkProvider().playerChunkMap.addPlayerToDistanceMaps(entityplayer); // Paper - distance maps
++        // Tuinity - hook distance map better - delay this until PlayerChunkMap#addEntity
      }
  
      // CraftBukkit start
-@@ -1426,6 +1427,7 @@ public class WorldServer extends World {
+@@ -1425,7 +1425,7 @@ public class WorldServer extends World {
+             EntityPlayer entityplayer = (EntityPlayer) entity;
  
              this.players.remove(entityplayer);
-             this.getChunkProvider().playerChunkMap.removePlayerFromDistanceMaps(entityplayer); // Paper - distance maps
-+            this.getChunkProvider().playerChunkMap.removePlayerFromDistanceMapsTuinity(entityplayer); // Tuinity - distance maps
+-            this.getChunkProvider().playerChunkMap.removePlayerFromDistanceMaps(entityplayer); // Paper - distance maps
++             // Tuinity - hook distance map better - delay until PlayerChunkMap#removeEntity
          }
  
          this.getScoreboard().a(entity);
