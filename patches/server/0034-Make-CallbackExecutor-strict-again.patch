@@ -1,0 +1,72 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Fri, 24 Apr 2020 09:06:15 -0700
+Subject: [PATCH] Make CallbackExecutor strict again
+
+The correct fix for double scheduling is to avoid it. The reason
+this class is used is because double scheduling causes issues
+elsewhere, and it acts as an explicit detector of what double
+schedules. Effectively, use the callback executor as a tool of
+finding issues rather than hiding these issues.
+
+This patch also reverts incorrect use(s) of the class by paper.
+
+- getChunkFutureAsynchronously
+  There is no risk at all of recursion. The future is executed on
+  the chunk provider's thread queue, the same place general plugin
+  load callbacks are executed on. Forcing the task execution into
+  the callback executor also prevents the future from catching
+  any exception thrown from it.
+
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index 03d67762f134826bf9c01ed4809ad10d32113084..3ff0827e43a695ebcfa346c58b1057ce32083d8c 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -180,9 +180,9 @@ public class ChunkProviderServer extends IChunkProvider {
+ 
+                 try {
+                     if (onLoad != null) {
+-                        playerChunkMap.callbackExecutor.execute(() -> {
++                        // Tuinity - revert incorrect use of callback executor
+                             onLoad.accept(either == null ? null : either.left().orElse(null)); // indicate failure to the callback.
+-                        });
++                        // Tuinity - revert incorrect use of callback executor
+                     }
+                 } catch (Throwable thr) {
+                     if (thr instanceof ThreadDeath) {
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index f84da15eac6de386d53940122f797a11f94ebfaa..f2f099d6d6e3ee4b217a18f09cfce073123f6882 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -84,18 +84,26 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     public final CallbackExecutor callbackExecutor = new CallbackExecutor();
+     public static final class CallbackExecutor implements java.util.concurrent.Executor, Runnable {
+ 
+-        // Paper start - replace impl with Deque - possible multiple is needed in single pass
+-        private java.util.Deque<Runnable> queued = new java.util.ArrayDeque<>();
++        private Runnable queued; // Tuinity - revert paper's change
+ 
+         @Override
+         public void execute(Runnable runnable) {
+-            queued.add(runnable); // Paper
++            // Tuinity start - revert paper's change
++            if (queued != null) {
++                MinecraftServer.LOGGER.fatal("Failed to schedule runnable", new IllegalStateException("Already queued")); // Paper - make sure this is printed
++                throw new IllegalStateException("Already queued");
++            }
++            queued = runnable;
++            // Tuinity end - revert paper's change
+         }
+ 
+         @Override
+         public void run() {
+-            Runnable task;
+-            while ((task = queued.pollFirst()) != null) {
++            // Tuinity start - revert paper's change
++            Runnable task = queued;
++            queued = null;
++            if (task != null) {
++                // Tuinity end - revert paper's change
+                 task.run();
+             }
+         }

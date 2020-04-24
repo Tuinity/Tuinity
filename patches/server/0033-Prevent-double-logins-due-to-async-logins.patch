@@ -3,11 +3,67 @@ From: Spottedleaf <spottedleaf@spottedleaf.dev>
 Date: Tue, 21 Apr 2020 22:01:08 -0700
 Subject: [PATCH] Prevent double logins due to async logins
 
+This patch reverts paper's new logic, where they add
+to the playerlist before doing the async load.
+Obviously this means that plugin logic (as well
+as other join logic) is not ran for these players
+immediately, which causes a lot of issues (paper
+needs to hack around in disconnect to not fire
+player quit, playerconnection to not tick,
+savePlayer to abort...). All of these issues,
+and the issues around plugins expecting players in
+the list to have player join fired, can be fixed
+by using the old logic.
+
 Since the player was not added to the player list, the
 kick logic for duplicate logins would not kick in.
 
 Fix this by using a list of pending logins.
 
+diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
+index ae35dfa53dccd5d4a7050b6bc98bc1079183f589..e6ed3b2467232ede2ad6e6bd4d534005195cf0bf 100644
+--- a/src/main/java/net/minecraft/server/EntityPlayer.java
++++ b/src/main/java/net/minecraft/server/EntityPlayer.java
+@@ -43,7 +43,7 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+     private static final Logger LOGGER = LogManager.getLogger();
+     public String locale = null; // CraftBukkit - lowercase // Paper - default to null
+     public PlayerConnection playerConnection;
+-    public NetworkManager networkManager; // Paper
++    //public NetworkManager networkManager; // Paper // Tuinity - revert, compile fail on change
+     public final MinecraftServer server;
+     public final PlayerInteractManager playerInteractManager;
+     public final Deque<Integer> removeQueue = new ArrayDeque<>(); // Paper
+@@ -106,7 +106,7 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+     public boolean joining = true;
+     public boolean sentListPacket = false;
+     public boolean supressTrackerForLogin = false; // Paper
+-    public boolean didPlayerJoinEvent = false; // Paper
++    //public boolean didPlayerJoinEvent = false; // Paper // Tuinity - revert, compile fail on change
+     public Integer clientViewDistance;
+     // CraftBukkit end
+     public PlayerNaturallySpawnCreaturesEvent playerNaturallySpawnedEvent; // Paper
+diff --git a/src/main/java/net/minecraft/server/LoginListener.java b/src/main/java/net/minecraft/server/LoginListener.java
+index 28f48f22522ef8c3c66381abcf017f0859b45290..4439ec9b93130b2bc737fa3a4be5471ac8017a2d 100644
+--- a/src/main/java/net/minecraft/server/LoginListener.java
++++ b/src/main/java/net/minecraft/server/LoginListener.java
+@@ -66,7 +66,7 @@ public class LoginListener implements PacketLoginInListener {
+             }
+             // Paper end
+         } else if (this.g == LoginListener.EnumProtocolState.DELAY_ACCEPT) {
+-            EntityPlayer entityplayer = this.server.getPlayerList().getActivePlayer(this.i.getId()); // Paper
++            EntityPlayer entityplayer = this.server.getPlayerList().a(this.i.getId()); // Paper // Tuinity - revert, compile fail on change
+ 
+             if (entityplayer == null) {
+                 this.g = LoginListener.EnumProtocolState.READY_TO_ACCEPT;
+@@ -165,7 +165,7 @@ public class LoginListener implements PacketLoginInListener {
+             }
+ 
+             this.networkManager.sendPacket(new PacketLoginOutSuccess(this.i));
+-            EntityPlayer entityplayer = this.server.getPlayerList().getActivePlayer(this.i.getId()); // Paper
++            EntityPlayer entityplayer = this.server.getPlayerList().a(this.i.getId()); // Paper // Tuinity - revert
+ 
+             if (entityplayer != null) {
+                 this.g = LoginListener.EnumProtocolState.DELAY_ACCEPT;
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
 index 905d14b895a89077e92951203cca08af1790c6f1..5b468de444d4c180906e844e545e1a54948ececd 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
@@ -34,18 +90,39 @@ index 905d14b895a89077e92951203cca08af1790c6f1..5b468de444d4c180906e844e545e1a54
          this.h = enumprotocoldirection;
      }
 diff --git a/src/main/java/net/minecraft/server/PlayerList.java b/src/main/java/net/minecraft/server/PlayerList.java
-index cf56a821cea0481d2b8312299ed80061d226f090..96a84a891ee8cdc03b0dab2e89da958330872ab7 100644
+index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd56be138e 100644
 --- a/src/main/java/net/minecraft/server/PlayerList.java
 +++ b/src/main/java/net/minecraft/server/PlayerList.java
-@@ -93,7 +93,16 @@ public abstract class PlayerList {
+@@ -57,7 +57,7 @@ public abstract class PlayerList {
+     private final IpBanList l;
+     private final OpList operators;
+     private final WhiteList whitelist;
+-    private final Map<UUID, EntityPlayer> pendingPlayers = Maps.newHashMap(); // Paper
++    //private final Map<UUID, EntityPlayer> pendingPlayers = Maps.newHashMap(); // Paper // Tuinity - revert, compile fail on change
+     // CraftBukkit start
+     // private final Map<UUID, ServerStatisticManager> o;
+     // private final Map<UUID, AdvancementDataPlayer> p;
+@@ -94,12 +94,23 @@ public abstract class PlayerList {
          this.getIPBans().a(true);
      }
  
 +    final Map<UUID, NetworkManager> pendingLogins = new java.util.HashMap<>(); // Tuinity - fix double logins due to async login
 +
      public void a(NetworkManager networkmanager, EntityPlayer entityplayer) {
+-        EntityPlayer prev = pendingPlayers.put(entityplayer.getUniqueID(), entityplayer);// Paper
+-        if (prev != null) {
+-            disconnectPendingPlayer(prev);
+-        }
+-        entityplayer.networkManager = networkmanager; // Paper
++        // Tuinity - revert
 +        // Tuinity start - fix double logins due to async login
 +        // All of the logic has to be here thanks to plugins overriding LoginListener...
++        // replace paper's new logic as it adds players to the player list, which we shouldn't do unless we also
++        // fire join event immediately
++        // this diff is required to be before the playerconnection creation so we can avoid all of the issues
++        // with making the player "half" in the world
++        // paper has to make all sorts of hacks around this issue, where the clear solution is to just never
++        // get into the half-state.
 +        NetworkManager duplicateLogin = this.pendingLogins.put(entityplayer.getUniqueID(), networkmanager);
 +        if (duplicateLogin != null) {
 +            duplicateLogin.disconnectDuringLoginBypass(entityplayer.getProfile(), new ChatMessage("multiplayer.disconnect.duplicate_login", new Object[0]));
@@ -54,12 +131,141 @@ index cf56a821cea0481d2b8312299ed80061d226f090..96a84a891ee8cdc03b0dab2e89da9583
          entityplayer.loginTime = System.currentTimeMillis(); // Paper
          GameProfile gameprofile = entityplayer.getProfile();
          UserCache usercache = this.server.getUserCache();
-@@ -136,7 +145,7 @@ public abstract class PlayerList {
-         // Paper start - async load spawn in chunk
-         WorldServer finalWorldserver = worldserver;
-         worldserver.getChunkProvider().getTickingChunkAsync(loc.getBlockX() >> 4, loc.getBlockZ() >> 4, (chunk -> { // use ticking - as it has at least 1 neighbours loaded
--            if (networkmanager.isConnected()) {
+@@ -137,7 +148,31 @@ public abstract class PlayerList {
+         entityplayer.setPositionRaw(loc.getX(), loc.getY(), loc.getZ()); // Paper - set raw so we aren't fully joined to the world (not added to chunk or world)
+         entityplayer.setYawPitch(loc.getYaw(), loc.getPitch());
+         // Spigot end
+-
++        // Tuinity start - keep paper's old diff
++        // This prevents us from adding to the player list before calling the join event
++        // Paper start - async load spawn in chunk
++        WorldServer finalWorldserver = worldserver;
++        int chunkX = loc.getBlockX() >> 4;
++        int chunkZ = loc.getBlockZ() >> 4;
++        worldserver.getChunkProvider().getTickingChunkAsync(chunkX, chunkZ, (chunk -> { // use ticking - as it has at least 1 neighbours loaded
 +            if (this.pendingLogins.remove(entityplayer.getUniqueID(), networkmanager) && networkmanager.isConnected()) { // Tuinity - prevent double logins due to async login
-                 postChunkLoadJoin(entityplayer, finalWorldserver, nbttagcompound, networkmanager, lastKnownName, networkmanager.getSocketAddress().toString());
++                postChunkLoadJoin(entityplayer, finalWorldserver, nbttagcompound, networkmanager, lastKnownName, networkmanager.getSocketAddress().toString());
++            }
++        }));
++        // boost the priorities
++        worldserver.asyncChunkTaskManager.raisePriority(chunkX, chunkZ, com.destroystokyo.paper.io.PrioritizedTaskQueue.HIGHEST_PRIORITY);
++        for (int cx = -1; cx <= 1; cx++) {
++            for (int cz = -1; cz <= 1; cz++) {
++                if (cx == 0 && cz == 0) continue;
++                // we have to directly request it otherwise the task won't be started yet to boost priority
++                worldserver.getChunkProvider().getFullChunkAsync(chunkX + cx, chunkZ + cz, null);
++                worldserver.asyncChunkTaskManager.raisePriority(chunkX + cx, chunkZ + cz, com.destroystokyo.paper.io.PrioritizedTaskQueue.HIGHEST_PRIORITY);
++            }
++        }
++    }
++    private void postChunkLoadJoin(EntityPlayer entityplayer, WorldServer worldserver, NBTTagCompound nbttagcompound, NetworkManager networkmanager, String s, String s1) {
++        // Paper end
++        // Tuinity end - keep paper's old diff
+         // CraftBukkit - Moved message to after join
+         // PlayerList.LOGGER.info("{}[{}] logged in with entity id {} at ({}, {}, {})", entityplayer.getDisplayName().getString(), s1, entityplayer.getId(), entityplayer.locX(), entityplayer.locY(), entityplayer.locZ());
+         WorldData worlddata = worldserver.getWorldData();
+@@ -164,46 +199,7 @@ public abstract class PlayerList {
+         entityplayer.B().a(entityplayer);
+         this.sendScoreboard(worldserver.getScoreboard(), entityplayer);
+         this.server.invalidatePingSample();
+-        // Paper start - async load spawn in chunk
+-        WorldServer finalWorldserver = worldserver;
+-        int chunkX = loc.getBlockX() >> 4;
+-        int chunkZ = loc.getBlockZ() >> 4;
+-        worldserver.getChunkProvider().getTickingChunkAsync(chunkX, chunkZ, (chunk -> { // use ticking - as it has at least 1 neighbours loaded
+-            postChunkLoadJoin(entityplayer, finalWorldserver, networkmanager, playerconnection, nbttagcompound, networkmanager.getSocketAddress().toString(),
+-                lastKnownName);
+-        }));
+-        // boost the priorities
+-        worldserver.asyncChunkTaskManager.raisePriority(chunkX, chunkZ, com.destroystokyo.paper.io.PrioritizedTaskQueue.HIGHEST_PRIORITY);
+-        for (int cx = -1; cx <= 1; cx++) {
+-            for (int cz = -1; cz <= 1; cz++) {
+-                if (cx == 0 && cz == 0) continue;
+-                // we have to directly request it otherwise the task won't be started yet to boost priority
+-                worldserver.getChunkProvider().getFullChunkAsync(chunkX + cx, chunkZ + cz, null);
+-                worldserver.asyncChunkTaskManager.raisePriority(chunkX + cx, chunkZ + cz, com.destroystokyo.paper.io.PrioritizedTaskQueue.HIGHEST_PRIORITY);
+-            }
+-        }
+-    }
+-
+-    EntityPlayer getActivePlayer(UUID uuid) {
+-        EntityPlayer player = this.getUUIDMap().get(uuid);
+-        return player != null ? player : pendingPlayers.get(uuid);
+-    }
+-
+-    void disconnectPendingPlayer(EntityPlayer entityplayer) {
+-        ChatMessage msg = new ChatMessage("multiplayer.disconnect.duplicate_login", new Object[0]);
+-        entityplayer.networkManager.sendPacket(new PacketPlayOutKickDisconnect(msg), (future) -> {
+-            entityplayer.networkManager.close(msg);
+-            entityplayer.networkManager = null;
+-        });
+-    }
+-
+-    private void postChunkLoadJoin(EntityPlayer entityplayer, WorldServer worldserver, NetworkManager networkmanager, PlayerConnection playerconnection, NBTTagCompound nbttagcompound, String s1, String s) {
+-        pendingPlayers.remove(entityplayer.getUniqueID(), entityplayer);
+-        if (!networkmanager.isConnected()) {
+-            return;
+-        }
+-        entityplayer.didPlayerJoinEvent = true;
+-        // Paper end
++        // Tuinity - revert, old logic is better
+         ChatMessage chatmessage;
+ 
+         if (entityplayer.getProfile().getName().equalsIgnoreCase(s)) {
+@@ -434,7 +430,7 @@ public abstract class PlayerList {
+ 
+     protected void savePlayerFile(EntityPlayer entityplayer) {
+         if (!entityplayer.getBukkitEntity().isPersistent()) return; // CraftBukkit
+-        if (!entityplayer.didPlayerJoinEvent) return; // Paper - If we never fired PJE, we disconnected during login. Data has not changed, and additionally, our saved vehicle is not loaded! If we save now, we will lose our vehicle (CraftBukkit bug)
++        // Tuinity - revert, not a concern with how the logic is now handled
+         this.playerFileData.save(entityplayer);
+         ServerStatisticManager serverstatisticmanager = (ServerStatisticManager) entityplayer.getStatisticManager(); // CraftBukkit
+ 
+@@ -459,7 +455,7 @@ public abstract class PlayerList {
+         org.bukkit.craftbukkit.event.CraftEventFactory.handleInventoryCloseEvent(entityplayer, org.bukkit.event.inventory.InventoryCloseEvent.Reason.DISCONNECT); // Paper
+ 
+         PlayerQuitEvent playerQuitEvent = new PlayerQuitEvent(cserver.getPlayer(entityplayer), "\u00A7e" + entityplayer.getName() + " left the game");
+-        if (entityplayer.didPlayerJoinEvent) cserver.getPluginManager().callEvent(playerQuitEvent); // Paper - if we disconnected before join ever fired, don't fire quit
++        // Tuinity - revert, not a concern with how the logic is now handled
+         entityplayer.getBukkitEntity().disconnect(playerQuitEvent.getQuitMessage());
+ 
+         if (server.isMainThread()) entityplayer.playerTick();// SPIGOT-924 // Paper - don't tick during emergency shutdowns (Watchdog)
+@@ -511,13 +507,7 @@ public abstract class PlayerList {
+             // this.p.remove(uuid);
+             // CraftBukkit end
+         }
+-        // Paper start
+-        entityplayer1 = pendingPlayers.get(uuid);
+-        if (entityplayer1 == entityplayer) {
+-            pendingPlayers.remove(uuid);
+-        }
+-        entityplayer.networkManager = null;
+-        // Paper end
++        // Tuinity - revert
+ 
+         // CraftBukkit start
+         //  this.sendAll(new PacketPlayOutPlayerInfo(EnumPlayerInfoAction.REMOVE_PLAYER, new EntityPlayer[]{entityplayer}));
+@@ -535,7 +525,7 @@ public abstract class PlayerList {
+         cserver.getScoreboardManager().removePlayer(entityplayer.getBukkitEntity());
+         // CraftBukkit end
+ 
+-        return entityplayer.didPlayerJoinEvent ? playerQuitEvent.getQuitMessage() : null; // CraftBukkit // Paper - don't print quit if we never printed join
++        return playerQuitEvent.getQuitMessage(); // Paper - don't print quit if we never printed join // Tuinity - revert, not a concern with how the logic is now handled
+     }
+ 
+     // CraftBukkit start - Whole method, SocketAddress to LoginListener, added hostname to signature, return EntityPlayer
+@@ -554,13 +544,7 @@ public abstract class PlayerList {
+                 list.add(entityplayer);
              }
-         }));
+         }
+-        // Paper start - check pending players too
+-        entityplayer = pendingPlayers.get(uuid);
+-        if (entityplayer != null) {
+-            this.pendingPlayers.remove(uuid);
+-            disconnectPendingPlayer(entityplayer);
+-        }
+-        // Paper end
++        // Tuinity - revert, not a concern with how the logic is now handled
+ 
+         Iterator iterator = list.iterator();
+ 
