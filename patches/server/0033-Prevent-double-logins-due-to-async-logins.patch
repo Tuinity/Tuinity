@@ -20,6 +20,9 @@ kick logic for duplicate logins would not kick in.
 
 Fix this by using a list of pending logins.
 
+This patch also prevents sync loads during the post load logic
+causing recursive player logins.
+
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
 index ae35dfa53dccd5d4a7050b6bc98bc1079183f589..e6ed3b2467232ede2ad6e6bd4d534005195cf0bf 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
@@ -90,7 +93,7 @@ index 905d14b895a89077e92951203cca08af1790c6f1..5b468de444d4c180906e844e545e1a54
          this.h = enumprotocoldirection;
      }
 diff --git a/src/main/java/net/minecraft/server/PlayerList.java b/src/main/java/net/minecraft/server/PlayerList.java
-index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd56be138e 100644
+index 17ddf9a5c34790024f56a563e65f97ed55eda594..7d98764632ccc50022e88fe15c4a1236db62e054 100644
 --- a/src/main/java/net/minecraft/server/PlayerList.java
 +++ b/src/main/java/net/minecraft/server/PlayerList.java
 @@ -57,7 +57,7 @@ public abstract class PlayerList {
@@ -131,7 +134,7 @@ index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd
          entityplayer.loginTime = System.currentTimeMillis(); // Paper
          GameProfile gameprofile = entityplayer.getProfile();
          UserCache usercache = this.server.getUserCache();
-@@ -137,7 +148,31 @@ public abstract class PlayerList {
+@@ -137,7 +148,33 @@ public abstract class PlayerList {
          entityplayer.setPositionRaw(loc.getX(), loc.getY(), loc.getZ()); // Paper - set raw so we aren't fully joined to the world (not added to chunk or world)
          entityplayer.setYawPitch(loc.getYaw(), loc.getPitch());
          // Spigot end
@@ -143,9 +146,11 @@ index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd
 +        int chunkX = loc.getBlockX() >> 4;
 +        int chunkZ = loc.getBlockZ() >> 4;
 +        worldserver.getChunkProvider().getTickingChunkAsync(chunkX, chunkZ, (chunk -> { // use ticking - as it has at least 1 neighbours loaded
++            MinecraftServer.getServer().processQueue.add(() -> { // Tuinity - prevent recursive joins
 +            if (this.pendingLogins.remove(entityplayer.getUniqueID(), networkmanager) && networkmanager.isConnected()) { // Tuinity - prevent double logins due to async login
 +                postChunkLoadJoin(entityplayer, finalWorldserver, nbttagcompound, networkmanager, lastKnownName, networkmanager.getSocketAddress().toString());
 +            }
++            }); // Tuinity - prevent recursive joins
 +        }));
 +        // boost the priorities
 +        worldserver.asyncChunkTaskManager.raisePriority(chunkX, chunkZ, com.destroystokyo.paper.io.PrioritizedTaskQueue.HIGHEST_PRIORITY);
@@ -164,7 +169,7 @@ index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd
          // CraftBukkit - Moved message to after join
          // PlayerList.LOGGER.info("{}[{}] logged in with entity id {} at ({}, {}, {})", entityplayer.getDisplayName().getString(), s1, entityplayer.getId(), entityplayer.locX(), entityplayer.locY(), entityplayer.locZ());
          WorldData worlddata = worldserver.getWorldData();
-@@ -164,46 +199,7 @@ public abstract class PlayerList {
+@@ -164,46 +201,7 @@ public abstract class PlayerList {
          entityplayer.B().a(entityplayer);
          this.sendScoreboard(worldserver.getScoreboard(), entityplayer);
          this.server.invalidatePingSample();
@@ -212,7 +217,7 @@ index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd
          ChatMessage chatmessage;
  
          if (entityplayer.getProfile().getName().equalsIgnoreCase(s)) {
-@@ -434,7 +430,7 @@ public abstract class PlayerList {
+@@ -434,7 +432,7 @@ public abstract class PlayerList {
  
      protected void savePlayerFile(EntityPlayer entityplayer) {
          if (!entityplayer.getBukkitEntity().isPersistent()) return; // CraftBukkit
@@ -221,7 +226,7 @@ index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd
          this.playerFileData.save(entityplayer);
          ServerStatisticManager serverstatisticmanager = (ServerStatisticManager) entityplayer.getStatisticManager(); // CraftBukkit
  
-@@ -459,7 +455,7 @@ public abstract class PlayerList {
+@@ -459,7 +457,7 @@ public abstract class PlayerList {
          org.bukkit.craftbukkit.event.CraftEventFactory.handleInventoryCloseEvent(entityplayer, org.bukkit.event.inventory.InventoryCloseEvent.Reason.DISCONNECT); // Paper
  
          PlayerQuitEvent playerQuitEvent = new PlayerQuitEvent(cserver.getPlayer(entityplayer), "\u00A7e" + entityplayer.getName() + " left the game");
@@ -230,7 +235,7 @@ index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd
          entityplayer.getBukkitEntity().disconnect(playerQuitEvent.getQuitMessage());
  
          if (server.isMainThread()) entityplayer.playerTick();// SPIGOT-924 // Paper - don't tick during emergency shutdowns (Watchdog)
-@@ -511,13 +507,7 @@ public abstract class PlayerList {
+@@ -511,13 +509,7 @@ public abstract class PlayerList {
              // this.p.remove(uuid);
              // CraftBukkit end
          }
@@ -245,7 +250,7 @@ index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd
  
          // CraftBukkit start
          //  this.sendAll(new PacketPlayOutPlayerInfo(EnumPlayerInfoAction.REMOVE_PLAYER, new EntityPlayer[]{entityplayer}));
-@@ -535,7 +525,7 @@ public abstract class PlayerList {
+@@ -535,7 +527,7 @@ public abstract class PlayerList {
          cserver.getScoreboardManager().removePlayer(entityplayer.getBukkitEntity());
          // CraftBukkit end
  
@@ -254,7 +259,7 @@ index 17ddf9a5c34790024f56a563e65f97ed55eda594..1bf9cb6b54111009741f5571953788fd
      }
  
      // CraftBukkit start - Whole method, SocketAddress to LoginListener, added hostname to signature, return EntityPlayer
-@@ -554,13 +544,7 @@ public abstract class PlayerList {
+@@ -554,13 +546,7 @@ public abstract class PlayerList {
                  list.add(entityplayer);
              }
          }
