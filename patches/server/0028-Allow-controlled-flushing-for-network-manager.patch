@@ -9,7 +9,7 @@ This patch will be used to optimise out flush calls in later
 patches.
 
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..905d14b895a89077e92951203cca08af1790c6f1 100644
+index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..d213a92db35cb5288ebb86250e0aa96d2cb13953 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -166,7 +166,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -54,7 +54,7 @@ index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..905d14b895a89077e92951203cca08af
  
                  if (genericfuturelistener != null) {
                      channelfuture1.addListener(genericfuturelistener);
-@@ -216,16 +224,50 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -216,16 +224,51 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
          java.util.List<Packet> extraPackets = packet.getExtraPackets();
          if (extraPackets != null && !extraPackets.isEmpty()) {
              for (Packet extraPacket : extraPackets) {
@@ -102,22 +102,23 @@ index 96a785af27e1924b0cc1959254d4ae3cdd0385a1..905d14b895a89077e92951203cca08af
      // Paper start - Async-Anti-Xray - Stop dispatching further packets and return false if the peeked packet is a chunk packet which is not ready
      private boolean sendPacketQueue() { return this.o(); } // OBFHELPER // void -> boolean
      private boolean o() { // void -> boolean
-+        final boolean needsFlush = this.canFlush; // make only one flush call per sendPacketQueue() call
++        final boolean needsFlush = this.canFlush; // Tuinity - make only one flush call per sendPacketQueue() call
++        boolean wrotePacket = false; // Tuinity - make only one flush call per sendPacketQueue() call
          if (this.channel != null && this.channel.isOpen()) {
              Queue queue = this.packetQueue;
  
-@@ -238,11 +280,17 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -238,11 +281,17 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                              return false; // Return false if the peeked packet is a chunk packet which is not ready
                          } else {
                              this.getPacketQueue().poll(); // poll here
 -                            this.dispatchPacket(networkmanager_queuedpacket.getPacket(), networkmanager_queuedpacket.getGenericFutureListener()); // dispatch the packet
-+                            this.writePacket(networkmanager_queuedpacket.getPacket(), networkmanager_queuedpacket.getGenericFutureListener(), Boolean.FALSE); // dispatch the packet // Tuinity - only make one flush call per sendPacketQueue() call
++                            this.writePacket(networkmanager_queuedpacket.getPacket(), networkmanager_queuedpacket.getGenericFutureListener(), Boolean.FALSE); wrotePacket = true; // dispatch the packet // Tuinity - only make one flush call per sendPacketQueue() call
                          }
                      }
                  }
  
 +                // Tuinity start - only make one flush call per sendPacketQueue() call
-+                if (needsFlush || this.canFlush) {
++                if (wrotePacket && (needsFlush || this.canFlush)) {
 +                    this.flush();
 +                }
 +                // Tuinity end - only make one flush call per sendPacketQueue() call
