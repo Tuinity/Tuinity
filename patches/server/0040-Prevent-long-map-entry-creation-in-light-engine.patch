@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 27 Apr 2020 03:01:42 -0700
+Subject: [PATCH] Prevent long map entry creation in light engine
+
+Use fastiterator to prevent it
+
+diff --git a/src/main/java/net/minecraft/server/LightEngineStorage.java b/src/main/java/net/minecraft/server/LightEngineStorage.java
+index a3f919816eb2a742ed09b553995e6508684e5ea5..03548bc50ab4cc2438ffcf8104a39a887114c3c3 100644
+--- a/src/main/java/net/minecraft/server/LightEngineStorage.java
++++ b/src/main/java/net/minecraft/server/LightEngineStorage.java
+@@ -23,7 +23,8 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+     protected final M f;
+     protected final LongSet g = new LongOpenHashSet();
+     protected final LongSet h = new LongOpenHashSet();
+-    protected final Long2ObjectMap<NibbleArray> i = Long2ObjectMaps.synchronize(new Long2ObjectOpenHashMap());
++    protected final Long2ObjectOpenHashMap<NibbleArray> i_synchronized_map_real = new Long2ObjectOpenHashMap<>(); // Tuinity - store wrapped map, we need fastIterator
++    protected final Long2ObjectMap<NibbleArray> i = Long2ObjectMaps.synchronize(this.i_synchronized_map_real); // Tuinity - store wrapped map, we need fastIterator
+     private final LongSet n = new LongOpenHashSet();
+     private final LongSet o = new LongOpenHashSet();
+     protected volatile boolean j;
+@@ -178,7 +179,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+             NibbleArray nibblearray;
+ 
+             while (longiterator.hasNext()) {
+-                i = (Long) longiterator.next();
++                i = longiterator.nextLong(); // Tuinity - use nextLong
+                 this.a(lightenginelayer, i);
+                 NibbleArray nibblearray1 = (NibbleArray) this.i.remove(i);
+ 
+@@ -196,13 +197,13 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+             longiterator = this.o.iterator();
+ 
+             while (longiterator.hasNext()) {
+-                i = (Long) longiterator.next();
++                i = longiterator.nextLong(); // Tuinity - use nextLong
+                 this.l(i);
+             }
+ 
+             this.o.clear();
+             this.j = false;
+-            ObjectIterator objectiterator = this.i.long2ObjectEntrySet().iterator();
++            ObjectIterator objectiterator = this.i_synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to reduce entry creation
+ 
+             Entry entry;
+             long j;
+@@ -225,7 +226,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+                 longiterator = this.i.keySet().iterator();
+ 
+                 while (longiterator.hasNext()) {
+-                    i = (Long) longiterator.next();
++                    i = longiterator.nextLong(); // Tuinity - use nextLong
+                     if (this.g(i)) {
+                         int k = SectionPosition.c(SectionPosition.b(i));
+                         int l = SectionPosition.c(SectionPosition.c(i));
+@@ -279,7 +280,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+                 }
+             }
+ 
+-            objectiterator = this.i.long2ObjectEntrySet().iterator();
++            objectiterator = this.i_synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to avoid entry creation
+ 
+             while (objectiterator.hasNext()) {
+                 entry = (Entry) objectiterator.next();
