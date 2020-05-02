@@ -322,6 +322,83 @@ index 2d07d350d2b73197b6ea73cf90ff59679da7e0e7..59d3dc7e810d2497a69ba4180ead9a2e
          public static BlockPosition.PooledBlockPosition r() {
              return f(0, 0, 0);
          }
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index 32c342d313600a40178ef196b0ecb7ca50f140fa..1312ecdd3cf8be5f4ee9a7275ed5eea7298e2979 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -222,27 +222,44 @@ public class Chunk implements IChunkAccess {
+         if (chunk == null) {
+             throw new IllegalArgumentException("Chunk must be non-null, neighbour: (" + relativeX + "," + relativeZ + "), chunk: " + this.loc);
+         }
++        final long before = this.neighbourChunksLoadedBitset; // Tuinity
+         final int index = getNeighbourIndex(relativeX, relativeZ);
+         this.loadedNeighbourChunks[index] = chunk;
+         this.neighbourChunksLoadedBitset |= (1L << index);
++        this.onNeighbourChange(before, this.neighbourChunksLoadedBitset); // Tuinity
+     }
+ 
+     public final void setNeighbourUnloaded(final int relativeX, final int relativeZ) {
++        final long before = this.neighbourChunksLoadedBitset; // Tuinity
+         final int index = getNeighbourIndex(relativeX, relativeZ);
+         this.loadedNeighbourChunks[index] = null;
+         this.neighbourChunksLoadedBitset &= ~(1L << index);
++        this.onNeighbourChange(before, this.neighbourChunksLoadedBitset); // Tuinity
+     }
+ 
+     public final void resetNeighbours() {
++        final long before = this.neighbourChunksLoadedBitset; // Tuinity
+         this.neighbourChunksLoadedBitset = 0L;
+         java.util.Arrays.fill(this.loadedNeighbourChunks, null);
++        this.onNeighbourChange(before, 0L); // Tuinity
+     }
+ 
++    // Tuinity start
++    protected void onNeighbourChange(final long bitsetBefore, final long bitsetAfter) {
++
++    }
++    // Tuinity end
++
+     public final boolean areNeighboursLoaded(final int radius) {
++        // Tuinity start
++        return areNeighboursLoaded(this.neighbourChunksLoadedBitset, radius);
++    }
++    public static final boolean areNeighboursLoaded(final long bitset, final int radius) {
++        // Tuinity end
+         // index = relativeX + (relativeZ * (NEIGHBOUR_CACHE_RADIUS * 2 + 1)) + (NEIGHBOUR_CACHE_RADIUS + NEIGHBOUR_CACHE_RADIUS * ((NEIGHBOUR_CACHE_RADIUS * 2 + 1)))
+         switch (radius) {
+             case 0: {
+-                return this.loadedTicketLevel;
++                return (bitset & (1L << getNeighbourIndex(0, 0))) != 0; // Tuinity
+             }
+             case 1: {
+                 long mask = 0L;
+@@ -251,7 +268,7 @@ public class Chunk implements IChunkAccess {
+                         mask |= (1L << getNeighbourIndex(dx, dz));
+                     }
+                 }
+-                return (this.neighbourChunksLoadedBitset & mask) == mask;
++                return (bitset & mask) == mask;
+             }
+             case 2: {
+                 long mask = 0L;
+@@ -260,7 +277,7 @@ public class Chunk implements IChunkAccess {
+                         mask |= (1L << getNeighbourIndex(dx, dz));
+                     }
+                 }
+-                return (this.neighbourChunksLoadedBitset & mask) == mask;
++                return (bitset & mask) == mask;
+             }
+             case 3: {
+                 long mask = 0L;
+@@ -269,7 +286,7 @@ public class Chunk implements IChunkAccess {
+                         mask |= (1L << getNeighbourIndex(dx, dz));
+                     }
+                 }
+-                return (this.neighbourChunksLoadedBitset & mask) == mask;
++                return (bitset & mask) == mask;
+             }
+ 
+             default:
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 index 2d4d7250f2ea5db0e522371659541fe03bd6c197..486eb06d9fe511fe67d9ce9e06bfa2cbb910327f 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java

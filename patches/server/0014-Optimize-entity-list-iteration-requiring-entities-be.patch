@@ -7,10 +7,10 @@ Subject: [PATCH] Optimize entity list iteration requiring entities be in
 We retain a list of loaded entities specifically for this usage
 
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 6cd7dd3b855fd07890ebb3c1b123fbaddfe92d98..3ae0c7c18dc950ff3400b9d9d05d587062bf07a9 100644
+index 9ccb5531575980a19105ed6aaad3123bd1620b45..71e23c10e9335d663fcaccea6af55bdc773adbc7 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -789,6 +789,8 @@ public class Chunk implements IChunkAccess {
+@@ -850,6 +850,8 @@ public class Chunk implements IChunkAccess {
          this.setNeighbourLoaded(0, 0, this);
          this.loadedTicketLevel = true;
          // Paper end - neighbour cache
@@ -19,7 +19,7 @@ index 6cd7dd3b855fd07890ebb3c1b123fbaddfe92d98..3ae0c7c18dc950ff3400b9d9d05d5870
          org.bukkit.Server server = this.world.getServer();
          ((WorldServer)this.world).getChunkProvider().addLoadedChunk(this); // Paper
          if (server != null) {
-@@ -847,6 +849,8 @@ public class Chunk implements IChunkAccess {
+@@ -908,6 +910,8 @@ public class Chunk implements IChunkAccess {
          this.loadedTicketLevel = false;
          this.resetNeighbours();
          // Paper end
@@ -105,10 +105,10 @@ index 778e165c998d20335e2d07fad6b9473f6271cfb3..e9d87029d3669e0437e8f14a22402d8f
          }
  
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 7e234bb91ae52fd9fe09bdae7aa118a6489d0c59..9cc5ab4f8389dea3372119bea5c3672b8ecc45b4 100644
+index 3ce27c5d7ebe9e4443ce778d2d78633aaa2faf4d..b421553d653cc99241b149e340c8d20078d1e693 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-@@ -1108,16 +1108,16 @@ public class CraftWorld implements World {
+@@ -1107,16 +1107,16 @@ public class CraftWorld implements World {
  
      @Override
      public List<Entity> getEntities() {
@@ -128,7 +128,7 @@ index 7e234bb91ae52fd9fe09bdae7aa118a6489d0c59..9cc5ab4f8389dea3372119bea5c3672b
                      list.add(bukkitEntity);
                  }
              }
-@@ -1128,16 +1128,16 @@ public class CraftWorld implements World {
+@@ -1127,16 +1127,16 @@ public class CraftWorld implements World {
  
      @Override
      public List<LivingEntity> getLivingEntities() {
@@ -148,7 +148,7 @@ index 7e234bb91ae52fd9fe09bdae7aa118a6489d0c59..9cc5ab4f8389dea3372119bea5c3672b
                      list.add((LivingEntity) bukkitEntity);
                  }
              }
-@@ -1158,7 +1158,7 @@ public class CraftWorld implements World {
+@@ -1157,7 +1157,7 @@ public class CraftWorld implements World {
      public <T extends Entity> Collection<T> getEntitiesByClass(Class<T> clazz) {
          Collection<T> list = new ArrayList<T>();
  
@@ -157,7 +157,7 @@ index 7e234bb91ae52fd9fe09bdae7aa118a6489d0c59..9cc5ab4f8389dea3372119bea5c3672b
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
-@@ -1169,7 +1169,7 @@ public class CraftWorld implements World {
+@@ -1168,7 +1168,7 @@ public class CraftWorld implements World {
  
                  Class<?> bukkitClass = bukkitEntity.getClass();
  
@@ -166,7 +166,7 @@ index 7e234bb91ae52fd9fe09bdae7aa118a6489d0c59..9cc5ab4f8389dea3372119bea5c3672b
                      list.add((T) bukkitEntity);
                  }
              }
-@@ -1182,7 +1182,7 @@ public class CraftWorld implements World {
+@@ -1181,7 +1181,7 @@ public class CraftWorld implements World {
      public Collection<Entity> getEntitiesByClasses(Class<?>... classes) {
          Collection<Entity> list = new ArrayList<Entity>();
  
@@ -175,7 +175,7 @@ index 7e234bb91ae52fd9fe09bdae7aa118a6489d0c59..9cc5ab4f8389dea3372119bea5c3672b
              if (entity instanceof net.minecraft.server.Entity) {
                  if (((net.minecraft.server.Entity) entity).shouldBeRemoved) continue; // Paper
                  Entity bukkitEntity = ((net.minecraft.server.Entity) entity).getBukkitEntity();
-@@ -1195,7 +1195,7 @@ public class CraftWorld implements World {
+@@ -1194,7 +1194,7 @@ public class CraftWorld implements World {
  
                  for (Class<?> clazz : classes) {
                      if (clazz.isAssignableFrom(bukkitClass)) {
