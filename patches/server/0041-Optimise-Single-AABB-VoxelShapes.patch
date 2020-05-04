@@ -1,0 +1,387 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 4 May 2020 10:06:24 -0700
+Subject: [PATCH] Optimise Single AABB VoxelShapes
+
+
+diff --git a/src/main/java/net/minecraft/server/AABBVoxelShape.java b/src/main/java/net/minecraft/server/AABBVoxelShape.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda1ac7d11f
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/AABBVoxelShape.java
+@@ -0,0 +1,226 @@
++package net.minecraft.server;
++
++import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
++import it.unimi.dsi.fastutil.doubles.DoubleList;
++import java.util.ArrayList;
++import java.util.List;
++
++public final class AABBVoxelShape extends VoxelShape {
++
++    public final AxisAlignedBB aabb;
++    private boolean isEmpty;
++
++    public AABBVoxelShape(final AxisAlignedBB aabb) {
++        super(VoxelShapes.getFullCube().getShape());
++        this.aabb = aabb;
++        this.isEmpty = (fuzzyEquals(aabb.minX, aabb.maxX) && fuzzyEquals(aabb.minY, aabb.maxY) && fuzzyEquals(aabb.minZ, aabb.maxZ));
++    }
++
++    static boolean fuzzyEquals(double d0, double d1) {
++        return Math.abs(d0 - d1) <= 1.0e-7;
++    }
++
++    @Override
++    public boolean isEmpty() {
++        return this.isEmpty;
++    }
++
++    @Override
++    public double b(EnumDirection.EnumAxis enumdirection_enumaxis) {
++        switch (enumdirection_enumaxis.ordinal()) {
++            case 0:
++                return this.aabb.minX;
++            case 1:
++                return this.aabb.minY;
++            case 2:
++                return this.aabb.minZ;
++            default:
++                return 0.0;
++        }
++    }
++
++    @Override
++    public double c(EnumDirection.EnumAxis enumdirection_enumaxis) {
++        switch (enumdirection_enumaxis.ordinal()) {
++            case 0:
++                return this.aabb.maxX;
++            case 1:
++                return this.aabb.maxY;
++            case 2:
++                return this.aabb.maxZ;
++            default:
++                return 0.0;
++        }
++    }
++
++    @Override
++    public AxisAlignedBB getBoundingBox() {
++        return this.aabb;
++    }
++
++    // enum direction axis is from 0 -> 2, so we keep the lower bits for direction axis.
++    protected double a(EnumDirection.EnumAxis enumdirection_enumaxis, int i) {
++        switch (enumdirection_enumaxis.ordinal() | (i << 2)) {
++            case (0 | (0 << 2)):
++                return this.aabb.minX;
++            case (1 | (0 << 2)):
++                return this.aabb.minY;
++            case (2 | (0 << 2)):
++                return this.aabb.minZ;
++            case (0 | (1 << 2)):
++                return this.aabb.maxX;
++            case (1 | (1 << 2)):
++                return this.aabb.maxY;
++            case (2 | (1 << 2)):
++                return this.aabb.maxZ;
++            default:
++                return 0.0;
++        }
++    }
++
++    private DoubleList cachedListX;
++    private DoubleList cachedListY;
++    private DoubleList cachedListZ;
++
++    @Override
++    protected DoubleList a(EnumDirection.EnumAxis enumdirection_enumaxis) {
++        switch (enumdirection_enumaxis.ordinal()) {
++            case 0:
++                return this.cachedListX == null ? this.cachedListX = DoubleArrayList.wrap(new double[] { this.aabb.minX, this.aabb.maxX }) : this.cachedListX;
++            case 1:
++                return this.cachedListY == null ? this.cachedListY = DoubleArrayList.wrap(new double[] { this.aabb.minY, this.aabb.maxY }) : this.cachedListY;
++            case 2:
++                return this.cachedListZ == null ? this.cachedListZ = DoubleArrayList.wrap(new double[] { this.aabb.minZ, this.aabb.maxZ }) : this.cachedListZ;
++            default:
++                return null;
++        }
++    }
++
++    public VoxelShape a(double d0, double d1, double d2) {
++        return new AABBVoxelShape(this.aabb.offset(d0, d1, d2));
++    }
++
++    @Override
++    public VoxelShape c() {
++        return this;
++    }
++
++    public void b(VoxelShapes.a voxelshapes_a) {
++        voxelshapes_a.consume(this.aabb.minX, this.aabb.minY, this.aabb.minZ, this.aabb.maxX, this.aabb.maxY, this.aabb.maxX);
++    }
++
++    @Override
++    public List<AxisAlignedBB> d() {
++        List<AxisAlignedBB> ret = new ArrayList<>(1);
++        ret.add(this.aabb);
++        return ret;
++    }
++
++    protected int a(EnumDirection.EnumAxis enumdirection_enumaxis, double d0) {
++        switch (enumdirection_enumaxis.ordinal()) { // TODO verify
++            case 0:
++                return d0 < this.aabb.maxX ? (d0 < this.aabb.minX ? -1 : 0) : 1;
++            case 1:
++                return d0 < this.aabb.maxY ? (d0 < this.aabb.minY ? -1 : 0) : 1;
++            case 2:
++                return d0 < this.aabb.maxZ ? (d0 < this.aabb.minZ ? -1 : 0) : 1;
++            default:
++                return -1;
++        }
++    }
++
++    protected boolean b(double d0, double d1, double d2) {
++        return this.aabb.contains(d0, d1, d2);
++    }
++
++    public VoxelShape a(EnumDirection enumdirection) {
++        return this; // TODO check this
++    }
++
++    public double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb, double d0) {
++        if (this.isEmpty) {
++            return d0;
++        }
++        if (Math.abs(d0) < 1.0e-7) {
++            return 0.0;
++        }
++        switch (enumdirection_enumaxis.ordinal()) {
++            case 0:
++                return this.collideX(axisalignedbb, d0);
++            case 1:
++                return this.collideY(axisalignedbb, d0);
++            case 2:
++                return this.collideZ(axisalignedbb, d0);
++            default:
++                return 0.0;
++        }
++    }
++    public double collideX(AxisAlignedBB axisalignedbb, double d0) {
++        if (axisalignedbb.maxY > this.aabb.minY && axisalignedbb.minY < this.aabb.maxY
++                && axisalignedbb.maxZ > this.aabb.minZ && axisalignedbb.minZ < this.aabb.maxZ) {
++            double d1;
++
++            if (d0 > 0.0D && axisalignedbb.maxX <= this.aabb.minX) {
++                d1 = this.aabb.minX - axisalignedbb.maxX;
++                if (d1 < d0) {
++                    d0 = d1;
++                }
++            } else if (d0 < 0.0D && axisalignedbb.minX >= this.aabb.maxX) {
++                d1 = this.aabb.maxX - axisalignedbb.minX;
++                if (d1 > d0) {
++                    d0 = d1;
++                }
++            }
++
++            return d0;
++        } else {
++            return d0;
++        }
++    }
++
++    public double collideY(AxisAlignedBB axisalignedbb, double d0) {
++        if (axisalignedbb.maxX > this.aabb.minX && axisalignedbb.minX < this.aabb.maxX
++                && axisalignedbb.maxZ > this.aabb.minZ && axisalignedbb.minZ < this.aabb.maxZ) {
++            double d1;
++
++            if (d0 > 0.0D && axisalignedbb.maxY <= this.aabb.minY) {
++                d1 = this.aabb.minY - axisalignedbb.maxY;
++                if (d1 < d0) {
++                    d0 = d1;
++                }
++            } else if (d0 < 0.0D && axisalignedbb.minY >= this.aabb.maxY) {
++                d1 = this.aabb.maxY - axisalignedbb.minY;
++                if (d1 > d0) {
++                    d0 = d1;
++                }
++            }
++
++            return d0;
++        } else {
++            return d0;
++        }
++    }
++
++    public double collideZ(AxisAlignedBB axisalignedbb, double d0) {
++        if (axisalignedbb.maxX > this.aabb.minX && axisalignedbb.minX < this.aabb.maxX
++                && axisalignedbb.maxY > this.aabb.minY && axisalignedbb.minY < this.aabb.maxY) {
++            double d1;
++
++            if (d0 > 0.0D && axisalignedbb.maxZ <= this.aabb.minZ) {
++                d1 = this.aabb.minZ - axisalignedbb.maxZ;
++                if (d1 < d0) {
++                    d0 = d1;
++                }
++            } else if (d0 < 0.0D && axisalignedbb.minZ >= this.aabb.maxZ) {
++                d1 = this.aabb.maxZ - axisalignedbb.minZ;
++                if (d1 > d0) {
++                    d0 = d1;
++                }
++            }
++
++            return d0;
++        } else {
++            return d0;
++        }
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/AxisAlignedBB.java b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+index 3fdb52007a2cf53b3319e4decf84d99876e830d0..b3739f46964001193093f432271868444188b0c6 100644
+--- a/src/main/java/net/minecraft/server/AxisAlignedBB.java
++++ b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+@@ -181,6 +181,7 @@ public class AxisAlignedBB {
+         return new AxisAlignedBB(d0, d1, d2, d3, d4, d5);
+     }
+ 
++    public final AxisAlignedBB offset(double d0, double d1, double d2) { return this.d(d0, d1, d2); } // Tuinity - OBFHELPER
+     public AxisAlignedBB d(double d0, double d1, double d2) {
+         return new AxisAlignedBB(this.minX + d0, this.minY + d1, this.minZ + d2, this.maxX + d0, this.maxY + d1, this.maxZ + d2);
+     }
+@@ -207,6 +208,7 @@ public class AxisAlignedBB {
+         return this.e(vec3d.x, vec3d.y, vec3d.z);
+     }
+ 
++    public final boolean contains(double d0, double d1, double d2) { return this.e(d0, d1, d2); } // Tuinity - OBFHELPER
+     public boolean e(double d0, double d1, double d2) {
+         return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
+     }
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index cf3c329f848ca57280b04633e03180c4c2bea045..5b026a3d8b31715d5b75fd15e2af56a3ce4cf670 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -882,8 +882,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+     private Vec3D e(Vec3D vec3d) {
+         AxisAlignedBB axisalignedbb = this.getBoundingBox();
+         VoxelShapeCollision voxelshapecollision = VoxelShapeCollision.a(this);
+-        VoxelShape voxelshape = this.world.getWorldBorder().a();
+-        Stream<VoxelShape> stream = VoxelShapes.c(voxelshape, VoxelShapes.a(axisalignedbb.shrink(1.0E-7D)), OperatorBoolean.AND) ? Stream.empty() : Stream.of(voxelshape);
++        Stream<VoxelShape> stream = this.world.getWorldBorder().isInBounds(axisalignedbb) ? Stream.empty() : Stream.of(this.world.getWorldBorder().a()); // Tuinity - optimise voxelshapes
+         Stream<VoxelShape> stream1 = this.world.b(this, axisalignedbb.a(vec3d), (Set) ImmutableSet.of());
+         StreamAccumulator<VoxelShape> streamaccumulator = new StreamAccumulator<>(Stream.concat(stream1, stream));
+         Vec3D vec3d1 = vec3d.g() == 0.0D ? vec3d : a(this, vec3d, axisalignedbb, this.world, voxelshapecollision, streamaccumulator);
+diff --git a/src/main/java/net/minecraft/server/ICollisionAccess.java b/src/main/java/net/minecraft/server/ICollisionAccess.java
+index d154487294b89d5a316929ed665c75d4dd3cfc6b..4b957a19e537283b7966d1797d76ebf4a2427aea 100644
+--- a/src/main/java/net/minecraft/server/ICollisionAccess.java
++++ b/src/main/java/net/minecraft/server/ICollisionAccess.java
+@@ -72,12 +72,12 @@ public interface ICollisionAccess extends IBlockAccess {
+             public boolean tryAdvance(Consumer<? super VoxelShape> consumer) {
+                 if (!this.a) {
+                     this.a = true;
+-                    VoxelShape voxelshape1 = ICollisionAccess.this.getWorldBorder().a();
+-                    boolean flag = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().shrink(1.0E-7D)), OperatorBoolean.AND);
+-                    boolean flag1 = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().g(1.0E-7D)), OperatorBoolean.AND);
++                    // Tuinity - moved down
++                    boolean flag = ICollisionAccess.this.getWorldBorder().isInBounds(entity.getBoundingBox().shrink(1.0E-7D)); // Tuinity - optimise voxelshapes
++                    boolean flag1 = ICollisionAccess.this.getWorldBorder().isInBounds(entity.getBoundingBox().g(1.0E-7D)); // Tuinity - optimise voxelshapes
+ 
+                     if (!flag && flag1) {
+-                        consumer.accept(voxelshape1);
++                        consumer.accept(ICollisionAccess.this.getWorldBorder().a()); // Tuinity - moved down
+                         return true;
+                     }
+                 }
+@@ -103,12 +103,14 @@ public interface ICollisionAccess extends IBlockAccess {
+ 
+                             if ((j2 != 1 || iblockdata.f()) && (j2 != 2 || iblockdata.getBlock() == Blocks.MOVING_PISTON)) {
+                                 VoxelShape voxelshape2 = iblockdata.b((IBlockAccess) ICollisionAccess.this, blockposition_mutableblockposition, voxelshapecollision);
++                                if (!VoxelShapes.isEmpty(voxelshape2)) { // Tuinity - optimise voxelshapes - don't bother doing this logic if empty, also allow branch prediction to help
+                                 VoxelShape voxelshape3 = voxelshape2.a((double) k1, (double) l1, (double) i2);
+ 
+                                 if (VoxelShapes.c(voxelshape, voxelshape3, OperatorBoolean.AND)) {
+                                     consumer.accept(voxelshape3);
+                                     return true;
+                                 }
++                                } // Tuinity - optimise voxelshapes
+                             }
+                         }
+                     }
+diff --git a/src/main/java/net/minecraft/server/VoxelShape.java b/src/main/java/net/minecraft/server/VoxelShape.java
+index 0f95bcbccb96f9d525583f6bb6c0c0ed7fb7561b..80690ae6bec015bb550096487b65c31fbeef1a01 100644
+--- a/src/main/java/net/minecraft/server/VoxelShape.java
++++ b/src/main/java/net/minecraft/server/VoxelShape.java
+@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
+ 
+ public abstract class VoxelShape {
+ 
+-    protected final VoxelShapeDiscrete a;
++    protected final VoxelShapeDiscrete a; protected final VoxelShapeDiscrete getShape() { return this.a; } // Tuinity - OBFHELPER
+     @Nullable
+     private VoxelShape[] b;
+ 
+diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
+index 08c83c62dfe875600162a46a0ca4b835b0bfe199..97c7919ea86a6d06bc2bb1807e02a1adbeee1c4a 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapes.java
++++ b/src/main/java/net/minecraft/server/VoxelShapes.java
+@@ -17,16 +17,25 @@ public final class VoxelShapes {
+ 
+         voxelshapebitset.a(0, 0, 0, true, true);
+         return new VoxelShapeCube(voxelshapebitset);
+-    });
++    }); static final VoxelShape getFullCube() { return VoxelShapes.b; } // Tuinity - OBFHELPER
+     public static final VoxelShape a = create(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+-    private static final VoxelShape c = new VoxelShapeArray(new VoxelShapeBitSet(0, 0, 0), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}));
++    private static final VoxelShape c = new VoxelShapeArray(new VoxelShapeBitSet(0, 0, 0), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D})); static final VoxelShape getEmptyShape() { return VoxelShapes.c; } // Tuinity - OBFHELPER
++
++    // Tuinity start - optimise voxelshapes
++    public static boolean isEmpty(VoxelShape voxelshape) {
++        // helper function for determining empty shapes fast
++        return voxelshape == getEmptyShape() || voxelshape.isEmpty();
++    }
++    // Tuinity end - optimise voxelshapes
+ 
+     public static VoxelShape a() {
+         return VoxelShapes.c;
+     }
+ 
++    private static final AABBVoxelShape optimisedFullCube = new AABBVoxelShape(new AxisAlignedBB(0, 0, 0, 1.0, 1.0, 1.0)); // Tuinity - optimise voxelshape
++
+     public static VoxelShape b() {
+-        return VoxelShapes.b;
++        return VoxelShapes.optimisedFullCube; // Tuinity - optimise voxelshape
+     }
+ 
+     public static VoxelShape create(double d0, double d1, double d2, double d3, double d4, double d5) {
+@@ -65,7 +74,7 @@ public final class VoxelShapes {
+                 return new VoxelShapeCube(voxelshapebitset);
+             }
+         } else {
+-            return new VoxelShapeArray(VoxelShapes.b.a, new double[]{axisalignedbb.minX, axisalignedbb.maxX}, new double[]{axisalignedbb.minY, axisalignedbb.maxY}, new double[]{axisalignedbb.minZ, axisalignedbb.maxZ});
++            return new AABBVoxelShape(axisalignedbb); // Tuinity - optimise VoxelShapes for single AABB shapes
+         }
+     }
+ 
+@@ -130,6 +139,11 @@ public final class VoxelShapes {
+ 
+     public static final boolean applyOperation(VoxelShape voxelshape, VoxelShape voxelshape1, OperatorBoolean operatorboolean) { return VoxelShapes.c(voxelshape, voxelshape1, operatorboolean); } // Paper - OBFHELPER
+     public static boolean c(VoxelShape voxelshape, VoxelShape voxelshape1, OperatorBoolean operatorboolean) {
++        // Tuinity start - optimise voxelshape
++        if (operatorboolean == OperatorBoolean.AND && voxelshape instanceof AABBVoxelShape && voxelshape1 instanceof AABBVoxelShape) {
++            return ((AABBVoxelShape)voxelshape).aabb.intersects(((AABBVoxelShape)voxelshape1).aabb);
++        }
++        // Tuinity end - optimise voxelshape
+         if (operatorboolean.apply(false, false)) {
+             throw (IllegalArgumentException) SystemUtils.c(new IllegalArgumentException());
+         } else if (voxelshape == voxelshape1) {
+diff --git a/src/main/java/net/minecraft/server/WorldBorder.java b/src/main/java/net/minecraft/server/WorldBorder.java
+index 5f10c4338e4f8feffd8f0145dee7550c4db6c9e0..26a1058f9b972b9ab580aa2b0bd057caa9256f94 100644
+--- a/src/main/java/net/minecraft/server/WorldBorder.java
++++ b/src/main/java/net/minecraft/server/WorldBorder.java
+@@ -40,6 +40,7 @@ public class WorldBorder {
+         return (double) chunkcoordintpair.f() > this.c() && (double) chunkcoordintpair.d() < this.e() && (double) chunkcoordintpair.g() > this.d() && (double) chunkcoordintpair.e() < this.f();
+     }
+ 
++    public final boolean isInBounds(AxisAlignedBB axisalignedbb) { return this.a(axisalignedbb); } // Tuinity - OBFHELPER
+     public boolean a(AxisAlignedBB axisalignedbb) {
+         return axisalignedbb.maxX > this.c() && axisalignedbb.minX < this.e() && axisalignedbb.maxZ > this.d() && axisalignedbb.minZ < this.f();
+     }
