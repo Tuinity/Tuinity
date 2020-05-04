@@ -257,7 +257,7 @@ index 3fdb52007a2cf53b3319e4decf84d99876e830d0..b3739f46964001193093f43227186844
          return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
      }
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index cf3c329f848ca57280b04633e03180c4c2bea045..5b026a3d8b31715d5b75fd15e2af56a3ce4cf670 100644
+index cf3c329f848ca57280b04633e03180c4c2bea045..d84d1cb940b7c23fc460dc425b1b7e475a3a28c3 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -882,8 +882,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -266,12 +266,12 @@ index cf3c329f848ca57280b04633e03180c4c2bea045..5b026a3d8b31715d5b75fd15e2af56a3
          VoxelShapeCollision voxelshapecollision = VoxelShapeCollision.a(this);
 -        VoxelShape voxelshape = this.world.getWorldBorder().a();
 -        Stream<VoxelShape> stream = VoxelShapes.c(voxelshape, VoxelShapes.a(axisalignedbb.shrink(1.0E-7D)), OperatorBoolean.AND) ? Stream.empty() : Stream.of(voxelshape);
-+        Stream<VoxelShape> stream = this.world.getWorldBorder().isInBounds(axisalignedbb) ? Stream.empty() : Stream.of(this.world.getWorldBorder().a()); // Tuinity - optimise voxelshapes
++        Stream<VoxelShape> stream = !this.world.getWorldBorder().isInBounds(axisalignedbb) ? Stream.empty() : Stream.of(this.world.getWorldBorder().a()); // Tuinity - optimise voxelshapes
          Stream<VoxelShape> stream1 = this.world.b(this, axisalignedbb.a(vec3d), (Set) ImmutableSet.of());
          StreamAccumulator<VoxelShape> streamaccumulator = new StreamAccumulator<>(Stream.concat(stream1, stream));
          Vec3D vec3d1 = vec3d.g() == 0.0D ? vec3d : a(this, vec3d, axisalignedbb, this.world, voxelshapecollision, streamaccumulator);
 diff --git a/src/main/java/net/minecraft/server/ICollisionAccess.java b/src/main/java/net/minecraft/server/ICollisionAccess.java
-index d154487294b89d5a316929ed665c75d4dd3cfc6b..4b957a19e537283b7966d1797d76ebf4a2427aea 100644
+index d154487294b89d5a316929ed665c75d4dd3cfc6b..74feca3731b9fd6e46ded12b2cf09be87ae947a7 100644
 --- a/src/main/java/net/minecraft/server/ICollisionAccess.java
 +++ b/src/main/java/net/minecraft/server/ICollisionAccess.java
 @@ -72,12 +72,12 @@ public interface ICollisionAccess extends IBlockAccess {
@@ -282,8 +282,8 @@ index d154487294b89d5a316929ed665c75d4dd3cfc6b..4b957a19e537283b7966d1797d76ebf4
 -                    boolean flag = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().shrink(1.0E-7D)), OperatorBoolean.AND);
 -                    boolean flag1 = VoxelShapes.c(voxelshape1, VoxelShapes.a(entity.getBoundingBox().g(1.0E-7D)), OperatorBoolean.AND);
 +                    // Tuinity - moved down
-+                    boolean flag = ICollisionAccess.this.getWorldBorder().isInBounds(entity.getBoundingBox().shrink(1.0E-7D)); // Tuinity - optimise voxelshapes
-+                    boolean flag1 = ICollisionAccess.this.getWorldBorder().isInBounds(entity.getBoundingBox().g(1.0E-7D)); // Tuinity - optimise voxelshapes
++                    boolean flag = !ICollisionAccess.this.getWorldBorder().isInBounds(entity.getBoundingBox().shrink(1.0E-7D)); // Tuinity - optimise voxelshapes
++                    boolean flag1 = !ICollisionAccess.this.getWorldBorder().isInBounds(entity.getBoundingBox().g(1.0E-7D)); // Tuinity - optimise voxelshapes
  
                      if (!flag && flag1) {
 -                        consumer.accept(voxelshape1);
