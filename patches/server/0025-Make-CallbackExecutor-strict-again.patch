@@ -19,7 +19,7 @@ This patch also reverts incorrect use(s) of the class by paper.
   any exception thrown from it.
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 289377f8ae92ea2fb9aa02b48eef314371b42ff2..cb466ce668ad30353b79860f1e980a2ad2b60f87 100644
+index 5ed2a5a03b4f12b4c6642dc7a8c717dfbb5845ef..15b6a75503d3d69afc86bb5727b0703159175006 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -180,9 +180,9 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -35,36 +35,45 @@ index 289377f8ae92ea2fb9aa02b48eef314371b42ff2..cb466ce668ad30353b79860f1e980a2a
                  } catch (Throwable thr) {
                      if (thr instanceof ThreadDeath) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index fa452d0f4c8038ef62c820f3ffd8fc498970070c..03f4c35bd8cde9cddffa48485269aa5203bef459 100644
+index e48667ed6110146d5783a505e89ce6db3219a629..7995eacbd66e9e13181ac51e89f6a0d569392643 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -84,18 +84,26 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -86,29 +86,26 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     // CraftBukkit start - recursion-safe executor for Chunk loadCallback() and unloadCallback()
      public final CallbackExecutor callbackExecutor = new CallbackExecutor();
      public static final class CallbackExecutor implements java.util.concurrent.Executor, Runnable {
- 
--        // Paper start - replace impl with Deque - possible multiple is needed in single pass
--        private java.util.Deque<Runnable> queued = new java.util.ArrayDeque<>();
-+        private Runnable queued; // Tuinity - revert paper's change
+-
+-        // Paper start - replace impl with recursive safe multi entry queue
+-        // it's possible to schedule multiple tasks currently, so it's vital we change this impl
+-        // If we recurse into the executor again, we will append to another queue, ensuring task order consistency
+-        private java.util.ArrayDeque<Runnable> queued = new java.util.ArrayDeque<>();
++        // Tuinity start - revert paper's change
++        private Runnable queued;
  
          @Override
          public void execute(Runnable runnable) {
--            queued.add(runnable); // Paper
-+            // Tuinity start - revert paper's change
+-            if (queued == null) {
+-                queued = new java.util.ArrayDeque<>();
 +            if (queued != null) {
 +                MinecraftServer.LOGGER.fatal("Failed to schedule runnable", new IllegalStateException("Already queued")); // Paper - make sure this is printed
 +                throw new IllegalStateException("Already queued");
-+            }
+             }
+-            queued.add(runnable);
 +            queued = runnable;
-+            // Tuinity end - revert paper's change
          }
++        // Tuinity end - revert paper's change
  
          @Override
          public void run() {
--            Runnable task;
--            while ((task = queued.pollFirst()) != null) {
+-            if (queued == null) {
+-                return;
+-            }
+-            java.util.ArrayDeque<Runnable> queue = queued;
 +            // Tuinity start - revert paper's change
 +            Runnable task = queued;
-+            queued = null;
+             queued = null;
+-            Runnable task;
+-            while ((task = queue.pollFirst()) != null) {
 +            if (task != null) {
 +                // Tuinity end - revert paper's change
                  task.run();

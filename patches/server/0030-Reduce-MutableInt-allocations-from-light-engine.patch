@@ -5,7 +5,7 @@ Subject: [PATCH] Reduce MutableInt allocations from light engine
 
 
 diff --git a/src/main/java/net/minecraft/server/LightEngineBlock.java b/src/main/java/net/minecraft/server/LightEngineBlock.java
-index 93a972605c26aa757b9c915876f847da04fcb496..0c322f817b88502e8043511f0ac0db647523ddbe 100644
+index 93a972605c26aa757b9c915876f847da04fcb496..c4ba30bd56e2ead6015c0109f8e889388afeb7f2 100644
 --- a/src/main/java/net/minecraft/server/LightEngineBlock.java
 +++ b/src/main/java/net/minecraft/server/LightEngineBlock.java
 @@ -37,7 +37,10 @@ public final class LightEngineBlock extends LightEngineLayer<LightEngineStorageB
@@ -14,7 +14,7 @@ index 93a972605c26aa757b9c915876f847da04fcb496..0c322f817b88502e8043511f0ac0db64
              } else {
 -                MutableInt mutableint = new MutableInt();
 +                // Tuinity start - reduce mutableint allocations
-+                MutableInt mutableint = com.destroystokyo.paper.util.misc.pooled.PooledObjects.POOLED_MUTABLE_INTEGERS.acquire();
++                MutableInt mutableint = com.destroystokyo.paper.util.pooled.PooledObjects.POOLED_MUTABLE_INTEGERS.acquire();
 +                try {
 +                // Tuinity end - reduce mutableint allocations
                  IBlockData iblockdata = this.a(j, mutableint);
@@ -25,14 +25,14 @@ index 93a972605c26aa757b9c915876f847da04fcb496..0c322f817b88502e8043511f0ac0db64
                      return VoxelShapes.b(voxelshape, voxelshape1) ? 15 : k + Math.max(1, mutableint.getValue());
                  }
 +                } finally { // Tuinity start - reduce mutableint allocations
-+                    com.destroystokyo.paper.util.misc.pooled.PooledObjects.POOLED_MUTABLE_INTEGERS.release(mutableint);
++                    com.destroystokyo.paper.util.pooled.PooledObjects.POOLED_MUTABLE_INTEGERS.release(mutableint);
 +                }
 +                // Tuinity end - reduce mutableint allocations
              }
          }
      }
 diff --git a/src/main/java/net/minecraft/server/LightEngineSky.java b/src/main/java/net/minecraft/server/LightEngineSky.java
-index 2301a982e17ab9568e3da9ca84c4a024c7c1b214..20beb260254e37e040afb80031ada90fccd5020a 100644
+index 2301a982e17ab9568e3da9ca84c4a024c7c1b214..0b4f4604f4ea444017c021768574646a8d11ba26 100644
 --- a/src/main/java/net/minecraft/server/LightEngineSky.java
 +++ b/src/main/java/net/minecraft/server/LightEngineSky.java
 @@ -27,7 +27,10 @@ public final class LightEngineSky extends LightEngineLayer<LightEngineStorageSky
@@ -41,7 +41,7 @@ index 2301a982e17ab9568e3da9ca84c4a024c7c1b214..20beb260254e37e040afb80031ada90f
              } else {
 -                MutableInt mutableint = new MutableInt();
 +                // Tuinity start - reduce mutableint allocations
-+                MutableInt mutableint = com.destroystokyo.paper.util.misc.pooled.PooledObjects.POOLED_MUTABLE_INTEGERS.acquire();
++                MutableInt mutableint = com.destroystokyo.paper.util.pooled.PooledObjects.POOLED_MUTABLE_INTEGERS.acquire();
 +                try {
 +                // Tuinity end - reduce mutableint allocations
                  IBlockData iblockdata = this.a(j, mutableint);
@@ -52,7 +52,7 @@ index 2301a982e17ab9568e3da9ca84c4a024c7c1b214..20beb260254e37e040afb80031ada90f
                      return flag1 && k == 0 && mutableint.getValue() == 0 ? 0 : k + Math.max(1, mutableint.getValue());
                  }
 +                } finally { // Tuinity start - reduce mutableint allocations
-+                    com.destroystokyo.paper.util.misc.pooled.PooledObjects.POOLED_MUTABLE_INTEGERS.release(mutableint);
++                    com.destroystokyo.paper.util.pooled.PooledObjects.POOLED_MUTABLE_INTEGERS.release(mutableint);
 +                }
 +                // Tuinity end - reduce mutableint allocations
              }

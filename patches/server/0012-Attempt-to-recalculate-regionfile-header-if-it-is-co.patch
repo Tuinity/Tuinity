@@ -10,7 +10,7 @@ hoping that at least then we don't swap chunks, and maybe recover
 them all.
 
 diff --git a/src/main/java/net/minecraft/server/ChunkRegionLoader.java b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-index 57a6e7c1339bc94c43cf045f20cfdc4c703a7890..8a9a59967dbcf73a67ff61e62ee39f4b41a609ef 100644
+index fa893b14bcef9bab6891dea2c4375b09d74ac038..f85671a6d4d147b72bb2246fdae8f7f6b51fd944 100644
 --- a/src/main/java/net/minecraft/server/ChunkRegionLoader.java
 +++ b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
 @@ -23,6 +23,14 @@ public class ChunkRegionLoader {
@@ -42,7 +42,7 @@ index 57a6e7c1339bc94c43cf045f20cfdc4c703a7890..8a9a59967dbcf73a67ff61e62ee39f4b
          nbttagcompound1.setString("Status", ichunkaccess.getChunkStatus().d());
          ChunkConverter chunkconverter = ichunkaccess.p();
 diff --git a/src/main/java/net/minecraft/server/RegionFile.java b/src/main/java/net/minecraft/server/RegionFile.java
-index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf1708603884374d 100644
+index 20927d55c6700f66f0931bfe3d20fd8959c87989..f9c8fbebea17bd8ec14fc25de0baf3be17304532 100644
 --- a/src/main/java/net/minecraft/server/RegionFile.java
 +++ b/src/main/java/net/minecraft/server/RegionFile.java
 @@ -28,14 +28,349 @@ public class RegionFile implements AutoCloseable {
@@ -53,7 +53,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf170860
 -    private final RegionFileCompression e;
 +    private final java.nio.file.Path d; private final java.nio.file.Path getContainingDataFolder() { return this.d; } // Tuinity - OBFHELPER
 +    private final RegionFileCompression e; private final RegionFileCompression getRegionFileCompression() { return this.e; } // Tuinity - OBFHELPER
-     private final ByteBuffer f;
+     private final ByteBuffer f; private ByteBuffer getFileBuffer() { return f; } // Paper - clean up direct buffers on close
 -    private final IntBuffer g;
 -    private final IntBuffer h;
 +    private final IntBuffer g; private final IntBuffer getOffsets() { return this.g; } // Tuinity - OBFHELPER
@@ -653,7 +653,7 @@ index 1ebdf73cc927405bc536dc74a5118d2a086db0e5..cfa3ecb031b59ec677f016ecdea92d16
          int j = 0;
  
 diff --git a/src/main/java/net/minecraft/server/RegionFileCache.java b/src/main/java/net/minecraft/server/RegionFileCache.java
-index 0f201000f6638f54d575db2c7ae61a86555a3be2..c88ad8de0ad51d5b7a4969a92486a76ec34f52ed 100644
+index 2b9bf25fbb04c542472627dd12d54d0671813412..ab07cfd4ef12aa2d25c10ca42ea767e6d2d0df69 100644
 --- a/src/main/java/net/minecraft/server/RegionFileCache.java
 +++ b/src/main/java/net/minecraft/server/RegionFileCache.java
 @@ -18,6 +18,30 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
@@ -699,10 +699,10 @@ index 0f201000f6638f54d575db2c7ae61a86555a3be2..c88ad8de0ad51d5b7a4969a92486a76e
  
              this.cache.putAndMoveToFirst(i, regionfile1);
              // Paper start
-@@ -137,6 +161,13 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
-     @Nullable
-     public NBTTagCompound read(ChunkCoordIntPair chunkcoordintpair) throws IOException {
-         RegionFile regionfile = this.getFile(chunkcoordintpair, false, true); // CraftBukkit // Paper
+@@ -142,6 +166,13 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+             return null;
+         }
+         // CraftBukkit end
 +        // Tuinity start - Add regionfile parameter
 +        return this.readFromRegionFile(regionfile, chunkcoordintpair);
 +    }
@@ -713,7 +713,7 @@ index 0f201000f6638f54d575db2c7ae61a86555a3be2..c88ad8de0ad51d5b7a4969a92486a76e
          try { // Paper
          DataInputStream datainputstream = regionfile.a(chunkcoordintpair);
          // Paper start
-@@ -152,6 +183,16 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -157,6 +188,16 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
          try {
              if (datainputstream != null) {
                  nbttagcompound = NBTCompressedStreamTools.a(datainputstream);
