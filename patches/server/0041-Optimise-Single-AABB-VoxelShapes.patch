@@ -4,16 +4,20 @@ Date: Mon, 4 May 2020 10:06:24 -0700
 Subject: [PATCH] Optimise Single AABB VoxelShapes
 
 
-diff --git a/src/main/java/net/minecraft/server/AABBVoxelShape.java b/src/main/java/net/minecraft/server/AABBVoxelShape.java
+diff --git a/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java b/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda1ac7d11f
+index 0000000000000000000000000000000000000000..467ec1e717e83a5556cbd7d3f8ad0a17a4b12200
 --- /dev/null
-+++ b/src/main/java/net/minecraft/server/AABBVoxelShape.java
-@@ -0,0 +1,226 @@
-+package net.minecraft.server;
++++ b/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java
+@@ -0,0 +1,241 @@
++package com.tuinity.tuinity.voxel;
 +
 +import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
 +import it.unimi.dsi.fastutil.doubles.DoubleList;
++import net.minecraft.server.AxisAlignedBB;
++import net.minecraft.server.EnumDirection;
++import net.minecraft.server.VoxelShape;
++import net.minecraft.server.VoxelShapes;
 +import java.util.ArrayList;
 +import java.util.List;
 +
@@ -22,8 +26,8 @@ index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda
 +    public final AxisAlignedBB aabb;
 +    private boolean isEmpty;
 +
-+    public AABBVoxelShape(final AxisAlignedBB aabb) {
-+        super(VoxelShapes.getFullCube().getShape());
++    public AABBVoxelShape(AxisAlignedBB aabb) {
++        super(VoxelShapes.getFullUnoptimisedCube().getShape());
 +        this.aabb = aabb;
 +        this.isEmpty = (fuzzyEquals(aabb.minX, aabb.maxX) && fuzzyEquals(aabb.minY, aabb.maxY) && fuzzyEquals(aabb.minZ, aabb.maxZ));
 +    }
@@ -38,7 +42,7 @@ index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda
 +    }
 +
 +    @Override
-+    public double b(EnumDirection.EnumAxis enumdirection_enumaxis) {
++    public double b(EnumDirection.EnumAxis enumdirection_enumaxis) { // getMin
 +        switch (enumdirection_enumaxis.ordinal()) {
 +            case 0:
 +                return this.aabb.minX;
@@ -47,12 +51,12 @@ index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda
 +            case 2:
 +                return this.aabb.minZ;
 +            default:
-+                return 0.0;
++                throw new IllegalStateException("Unknown axis requested");
 +        }
 +    }
 +
 +    @Override
-+    public double c(EnumDirection.EnumAxis enumdirection_enumaxis) {
++    public double c(EnumDirection.EnumAxis enumdirection_enumaxis) { //getMax
 +        switch (enumdirection_enumaxis.ordinal()) {
 +            case 0:
 +                return this.aabb.maxX;
@@ -61,17 +65,18 @@ index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda
 +            case 2:
 +                return this.aabb.maxZ;
 +            default:
-+                return 0.0;
++                throw new IllegalStateException("Unknown axis requested");
 +        }
 +    }
 +
 +    @Override
-+    public AxisAlignedBB getBoundingBox() {
++    public AxisAlignedBB getBoundingBox() { // rets bounding box enclosing this entire shape
 +        return this.aabb;
 +    }
 +
 +    // enum direction axis is from 0 -> 2, so we keep the lower bits for direction axis.
-+    protected double a(EnumDirection.EnumAxis enumdirection_enumaxis, int i) {
++    @Override
++    protected double a(EnumDirection.EnumAxis enumdirection_enumaxis, int i) { // getPointFromIndex
 +        switch (enumdirection_enumaxis.ordinal() | (i << 2)) {
 +            case (0 | (0 << 2)):
 +                return this.aabb.minX;
@@ -86,7 +91,7 @@ index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda
 +            case (2 | (1 << 2)):
 +                return this.aabb.maxZ;
 +            default:
-+                return 0.0;
++                throw new IllegalStateException("Unknown axis requested");
 +        }
 +    }
 +
@@ -95,7 +100,7 @@ index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda
 +    private DoubleList cachedListZ;
 +
 +    @Override
-+    protected DoubleList a(EnumDirection.EnumAxis enumdirection_enumaxis) {
++    protected DoubleList a(EnumDirection.EnumAxis enumdirection_enumaxis) { // getPoints
 +        switch (enumdirection_enumaxis.ordinal()) {
 +            case 0:
 +                return this.cachedListX == null ? this.cachedListX = DoubleArrayList.wrap(new double[] { this.aabb.minX, this.aabb.maxX }) : this.cachedListX;
@@ -104,32 +109,35 @@ index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda
 +            case 2:
 +                return this.cachedListZ == null ? this.cachedListZ = DoubleArrayList.wrap(new double[] { this.aabb.minZ, this.aabb.maxZ }) : this.cachedListZ;
 +            default:
-+                return null;
++                throw new IllegalStateException("Unknown axis requested");
 +        }
 +    }
 +
-+    public VoxelShape a(double d0, double d1, double d2) {
++    @Override
++    public VoxelShape a(double d0, double d1, double d2) { // createOffset
 +        return new AABBVoxelShape(this.aabb.offset(d0, d1, d2));
 +    }
 +
 +    @Override
-+    public VoxelShape c() {
++    public VoxelShape c() { // simplify
 +        return this;
 +    }
 +
-+    public void b(VoxelShapes.a voxelshapes_a) {
++    @Override
++    public void b(VoxelShapes.a voxelshapes_a) { // forEachAABB
 +        voxelshapes_a.consume(this.aabb.minX, this.aabb.minY, this.aabb.minZ, this.aabb.maxX, this.aabb.maxY, this.aabb.maxX);
 +    }
 +
 +    @Override
-+    public List<AxisAlignedBB> d() {
++    public List<AxisAlignedBB> d() { // getAABBs
 +        List<AxisAlignedBB> ret = new ArrayList<>(1);
 +        ret.add(this.aabb);
 +        return ret;
 +    }
 +
-+    protected int a(EnumDirection.EnumAxis enumdirection_enumaxis, double d0) {
-+        switch (enumdirection_enumaxis.ordinal()) { // TODO verify
++    @Override
++    protected int a(EnumDirection.EnumAxis enumdirection_enumaxis, double d0) { // findPointIndexAfterOffset
++        switch (enumdirection_enumaxis.ordinal()) {
 +            case 0:
 +                return d0 < this.aabb.maxX ? (d0 < this.aabb.minX ? -1 : 0) : 1;
 +            case 1:
@@ -137,19 +145,22 @@ index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda
 +            case 2:
 +                return d0 < this.aabb.maxZ ? (d0 < this.aabb.minZ ? -1 : 0) : 1;
 +            default:
-+                return -1;
++                throw new IllegalStateException("Unknown axis requested");
 +        }
 +    }
 +
-+    protected boolean b(double d0, double d1, double d2) {
++    @Override
++    protected boolean b(double d0, double d1, double d2) { // containsPoint
 +        return this.aabb.contains(d0, d1, d2);
 +    }
 +
-+    public VoxelShape a(EnumDirection enumdirection) {
-+        return this; // TODO check this
++    @Override
++    public VoxelShape a(EnumDirection enumdirection) { // unknown
++        return super.a(enumdirection);
 +    }
 +
-+    public double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb, double d0) {
++    @Override
++    public double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb, double d0) { // collide
 +        if (this.isEmpty) {
 +            return d0;
 +        }
@@ -164,9 +175,13 @@ index 0000000000000000000000000000000000000000..95823d1933f543873409e3b1e9cd9eda
 +            case 2:
 +                return this.collideZ(axisalignedbb, d0);
 +            default:
-+                return 0.0;
++                throw new IllegalStateException("Unknown axis requested");
 +        }
 +    }
++
++    // collideX, collideY, collideZ are copied from 1.12 src and remapped
++    // so the code all belongs to mojang
++
 +    public double collideX(AxisAlignedBB axisalignedbb, double d0) {
 +        if (axisalignedbb.maxY > this.aabb.minY && axisalignedbb.minY < this.aabb.maxY
 +                && axisalignedbb.maxZ > this.aabb.minZ && axisalignedbb.minZ < this.aabb.maxZ) {
@@ -307,20 +322,25 @@ index d154487294b89d5a316929ed665c75d4dd3cfc6b..74feca3731b9fd6e46ded12b2cf09be8
                          }
                      }
 diff --git a/src/main/java/net/minecraft/server/VoxelShape.java b/src/main/java/net/minecraft/server/VoxelShape.java
-index 0f95bcbccb96f9d525583f6bb6c0c0ed7fb7561b..80690ae6bec015bb550096487b65c31fbeef1a01 100644
+index 0f95bcbccb96f9d525583f6bb6c0c0ed7fb7561b..077ed1dc728564fb559c260b5e72a5c3924b4f9e 100644
 --- a/src/main/java/net/minecraft/server/VoxelShape.java
 +++ b/src/main/java/net/minecraft/server/VoxelShape.java
-@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
+@@ -8,11 +8,11 @@ import javax.annotation.Nullable;
  
  public abstract class VoxelShape {
  
 -    protected final VoxelShapeDiscrete a;
-+    protected final VoxelShapeDiscrete a; protected final VoxelShapeDiscrete getShape() { return this.a; } // Tuinity - OBFHELPER
++    protected final VoxelShapeDiscrete a; public final VoxelShapeDiscrete getShape() { return this.a; } // Tuinity - OBFHELPER
      @Nullable
      private VoxelShape[] b;
  
+-    VoxelShape(VoxelShapeDiscrete voxelshapediscrete) {
++    protected VoxelShape(VoxelShapeDiscrete voxelshapediscrete) { // Tuinity
+         this.a = voxelshapediscrete;
+     }
+ 
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
-index 08c83c62dfe875600162a46a0ca4b835b0bfe199..97c7919ea86a6d06bc2bb1807e02a1adbeee1c4a 100644
+index 08c83c62dfe875600162a46a0ca4b835b0bfe199..aa334d3f58a74587ab4676ca8c288000664a20a4 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java
 +++ b/src/main/java/net/minecraft/server/VoxelShapes.java
 @@ -17,16 +17,25 @@ public final class VoxelShapes {
@@ -328,7 +348,7 @@ index 08c83c62dfe875600162a46a0ca4b835b0bfe199..97c7919ea86a6d06bc2bb1807e02a1ad
          voxelshapebitset.a(0, 0, 0, true, true);
          return new VoxelShapeCube(voxelshapebitset);
 -    });
-+    }); static final VoxelShape getFullCube() { return VoxelShapes.b; } // Tuinity - OBFHELPER
++    }); public static final VoxelShape getFullUnoptimisedCube() { return VoxelShapes.b; } // Tuinity - OBFHELPER
      public static final VoxelShape a = create(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
 -    private static final VoxelShape c = new VoxelShapeArray(new VoxelShapeBitSet(0, 0, 0), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}));
 +    private static final VoxelShape c = new VoxelShapeArray(new VoxelShapeBitSet(0, 0, 0), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D})); static final VoxelShape getEmptyShape() { return VoxelShapes.c; } // Tuinity - OBFHELPER
@@ -344,7 +364,7 @@ index 08c83c62dfe875600162a46a0ca4b835b0bfe199..97c7919ea86a6d06bc2bb1807e02a1ad
          return VoxelShapes.c;
      }
  
-+    private static final AABBVoxelShape optimisedFullCube = new AABBVoxelShape(new AxisAlignedBB(0, 0, 0, 1.0, 1.0, 1.0)); // Tuinity - optimise voxelshape
++    private static final com.tuinity.tuinity.voxel.AABBVoxelShape optimisedFullCube = new com.tuinity.tuinity.voxel.AABBVoxelShape(new AxisAlignedBB(0, 0, 0, 1.0, 1.0, 1.0)); // Tuinity - optimise voxelshape
 +
      public static VoxelShape b() {
 -        return VoxelShapes.b;
@@ -357,18 +377,21 @@ index 08c83c62dfe875600162a46a0ca4b835b0bfe199..97c7919ea86a6d06bc2bb1807e02a1ad
              }
          } else {
 -            return new VoxelShapeArray(VoxelShapes.b.a, new double[]{axisalignedbb.minX, axisalignedbb.maxX}, new double[]{axisalignedbb.minY, axisalignedbb.maxY}, new double[]{axisalignedbb.minZ, axisalignedbb.maxZ});
-+            return new AABBVoxelShape(axisalignedbb); // Tuinity - optimise VoxelShapes for single AABB shapes
++            return new com.tuinity.tuinity.voxel.AABBVoxelShape(axisalignedbb); // Tuinity - optimise VoxelShapes for single AABB shapes
          }
      }
  
-@@ -130,6 +139,11 @@ public final class VoxelShapes {
+@@ -130,6 +139,14 @@ public final class VoxelShapes {
  
      public static final boolean applyOperation(VoxelShape voxelshape, VoxelShape voxelshape1, OperatorBoolean operatorboolean) { return VoxelShapes.c(voxelshape, voxelshape1, operatorboolean); } // Paper - OBFHELPER
      public static boolean c(VoxelShape voxelshape, VoxelShape voxelshape1, OperatorBoolean operatorboolean) {
 +        // Tuinity start - optimise voxelshape
-+        if (operatorboolean == OperatorBoolean.AND && voxelshape instanceof AABBVoxelShape && voxelshape1 instanceof AABBVoxelShape) {
-+            return ((AABBVoxelShape)voxelshape).aabb.intersects(((AABBVoxelShape)voxelshape1).aabb);
++        if (operatorboolean == OperatorBoolean.AND && voxelshape instanceof com.tuinity.tuinity.voxel.AABBVoxelShape && voxelshape1 instanceof com.tuinity.tuinity.voxel.AABBVoxelShape) {
++            return ((com.tuinity.tuinity.voxel.AABBVoxelShape) voxelshape).aabb.intersects(((com.tuinity.tuinity.voxel.AABBVoxelShape) voxelshape1).aabb);
 +        }
++        return abstract_c(voxelshape, voxelshape1, operatorboolean);
++    }
++    public static boolean abstract_c(VoxelShape voxelshape, VoxelShape voxelshape1, OperatorBoolean operatorboolean) {
 +        // Tuinity end - optimise voxelshape
          if (operatorboolean.apply(false, false)) {
              throw (IllegalArgumentException) SystemUtils.c(new IllegalArgumentException());
