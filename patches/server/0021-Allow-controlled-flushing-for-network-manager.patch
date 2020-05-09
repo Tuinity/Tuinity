@@ -9,7 +9,7 @@ This patch will be used to optimise out flush calls in later
 patches.
 
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index f81014973a4cf50c1320f82c22ed1c19fd7d6ac9..34468d9912f4cd97fdec5ee2223234ab5661e669 100644
+index d24d7df807287c51a8dd5ecf4f7c842b7cdf3976..77807958cf9a9199f052d12177214d961e80971e 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -70,6 +70,39 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -52,7 +52,7 @@ index f81014973a4cf50c1320f82c22ed1c19fd7d6ac9..34468d9912f4cd97fdec5ee2223234ab
      public NetworkManager(EnumProtocolDirection enumprotocoldirection) {
          this.h = enumprotocoldirection;
      }
-@@ -233,6 +266,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -236,6 +269,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
  
      private void dispatchPacket(Packet<?> packet, @Nullable GenericFutureListener<? extends Future<? super Void>> genericFutureListener) { this.b(packet, genericFutureListener); } // Paper - OBFHELPER
      private void b(Packet<?> packet, @Nullable GenericFutureListener<? extends Future<? super Void>> genericfuturelistener) {
@@ -67,7 +67,7 @@ index f81014973a4cf50c1320f82c22ed1c19fd7d6ac9..34468d9912f4cd97fdec5ee2223234ab
          EnumProtocol enumprotocol = EnumProtocol.a(packet);
          EnumProtocol enumprotocol1 = (EnumProtocol) this.channel.attr(NetworkManager.c).get();
  
-@@ -247,7 +288,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -250,7 +291,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                  this.setProtocol(enumprotocol);
              }
  
@@ -76,7 +76,7 @@ index f81014973a4cf50c1320f82c22ed1c19fd7d6ac9..34468d9912f4cd97fdec5ee2223234ab
  
              if (genericfuturelistener != null) {
                  channelfuture.addListener(genericfuturelistener);
-@@ -260,7 +301,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -263,7 +304,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                      this.setProtocol(enumprotocol);
                  }
  
@@ -85,7 +85,7 @@ index f81014973a4cf50c1320f82c22ed1c19fd7d6ac9..34468d9912f4cd97fdec5ee2223234ab
  
                  if (genericfuturelistener != null) {
                      channelfuture1.addListener(genericfuturelistener);
-@@ -290,6 +331,8 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -293,6 +334,8 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
      }
      private boolean processQueue() {
          if (this.packetQueue.isEmpty()) return true;
@@ -94,7 +94,7 @@ index f81014973a4cf50c1320f82c22ed1c19fd7d6ac9..34468d9912f4cd97fdec5ee2223234ab
          // If we are on main, we are safe here in that nothing else should be processing queue off main anymore
          // But if we are not on main due to login/status, the parent is synchronized on packetQueue
          java.util.Iterator<QueuedPacket> iterator = this.packetQueue.iterator();
-@@ -297,16 +340,22 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -300,16 +343,22 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
              NetworkManager.QueuedPacket queued = iterator.next(); // poll -> peek
  
              // Fix NPE (Spigot bug caused by handleDisconnection())
