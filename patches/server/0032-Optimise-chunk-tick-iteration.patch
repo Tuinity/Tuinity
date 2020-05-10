@@ -6,10 +6,10 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 15b6a75503d3d69afc86bb5727b0703159175006..c8c244edd5ca0069529fc35de47b9fe1751ff07b 100644
+index a516369dc1e68aa35f5447641fef40d368e09cfd..6dec36965e6a2bbe86c3706c14d1694563a3a1b6 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -733,6 +733,16 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -726,6 +726,16 @@ public class ChunkProviderServer extends IChunkProvider {
          this.clearCache();
      }
  
@@ -26,7 +26,7 @@ index 15b6a75503d3d69afc86bb5727b0703159175006..c8c244edd5ca0069529fc35de47b9fe1
      private void tickChunks() {
          long i = this.world.getTime();
          long j = i - this.lastTickTime;
-@@ -808,11 +818,12 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -801,11 +811,12 @@ public class ChunkProviderServer extends IChunkProvider {
              this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
              this.world.getMethodProfiler().exit();
              // Paper - replaced by above
@@ -44,7 +44,7 @@ index 15b6a75503d3d69afc86bb5727b0703159175006..c8c244edd5ca0069529fc35de47b9fe1
  
                      this.world.getMethodProfiler().enter("broadcast");
                      this.world.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
-@@ -894,7 +905,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -887,7 +898,23 @@ public class ChunkProviderServer extends IChunkProvider {
                          MinecraftServer.getServer().executeMidTickTasks(); // Tuinity - exec chunk tasks during world tick
                      }
                  }
@@ -70,10 +70,10 @@ index 15b6a75503d3d69afc86bb5727b0703159175006..c8c244edd5ca0069529fc35de47b9fe1
              if (flag1) {
                  try (co.aikar.timings.Timing ignored = this.world.timings.miscMobSpawning.startTiming()) { // Paper - timings
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 709e35cd4864eb666b68c1b6666a9d3a5a5a3c29..5e400aebbfba31bd8aa8d4a9ca0731542e563ebe 100644
+index d0085b7459293e3e3460cfda34c67bda6e7bc324..731fcb04fc61158b150cbd8743f6b37181526294 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -677,7 +677,14 @@ public class PlayerChunk {
+@@ -678,7 +678,14 @@ public class PlayerChunk {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      Chunk entityTickingChunk = either.left().get();
                      PlayerChunk.this.isEntityTickingReady = true;
@@ -89,7 +89,7 @@ index 709e35cd4864eb666b68c1b6666a9d3a5a5a3c29..5e400aebbfba31bd8aa8d4a9ca073154
  
  
  
-@@ -689,6 +696,17 @@ public class PlayerChunk {
+@@ -690,6 +697,17 @@ public class PlayerChunk {
  
          if (flag6 && !flag7) {
              this.entityTickingFuture.complete(PlayerChunk.UNLOADED_CHUNK); this.isEntityTickingReady = false; // Paper - cache chunk ticking stage
