@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Sun, 10 May 2020 13:27:30 -0700
+Subject: [PATCH] Force load chunks for getCube calls
+
+The behaviour is tricky to get right and I'm tired of dealing
+with issues related with this.
+
+diff --git a/src/main/java/net/minecraft/server/ICollisionAccess.java b/src/main/java/net/minecraft/server/ICollisionAccess.java
+index 6fc499f6d1d2f7fcb7e788e89f9a394b0ea4422c..6b263afa134e22db742845e1c5f7f9e92f39f142 100644
+--- a/src/main/java/net/minecraft/server/ICollisionAccess.java
++++ b/src/main/java/net/minecraft/server/ICollisionAccess.java
+@@ -112,15 +112,12 @@ public interface ICollisionAccess extends IBlockAccess {
+                         // Paper start - ensure we don't load chunks
+                         //int k2 = k1 >> 4;
+                         //int l2 = i2 >> 4;
+-                        boolean far = entity != null && MCUtil.distanceSq(entity.locX(), y, entity.locZ(), x, y, z) > 8;
++                        boolean far = false && entity != null && MCUtil.distanceSq(entity.locX(), y, entity.locZ(), x, y, z) > 8; // Tuinity - force load the chunk
+                         blockposition_mutableblockposition.setValues(x, y, z);
+ 
+                         boolean isRegionLimited = ICollisionAccess.this instanceof RegionLimitedWorldAccess;
+-                        IBlockData iblockdata = isRegionLimited ? Blocks.VOID_AIR.getBlockData() : (!far && entity instanceof EntityPlayer
+-                            ? ICollisionAccess.this.getType(blockposition_mutableblockposition)
+-                            : ICollisionAccess.this.getTypeIfLoaded(blockposition_mutableblockposition)
+-                        );
+-                        if (iblockdata == null) {
++                        IBlockData iblockdata = ICollisionAccess.this.getType(blockposition_mutableblockposition); // Tuinity - force load the chunk
++                        if (false && iblockdata == null) { // Tuinity - force load the chunk
+                             if (!(entity instanceof EntityPlayer) || entity.world.paperConfig.preventMovingIntoUnloadedChunks) {
+                                 collisions.add(VoxelShapes.of(far ? entity.getBoundingBox() : new AxisAlignedBB(new BlockPosition(x, y, z))));
+                                 if (returnFast) return collisions;
