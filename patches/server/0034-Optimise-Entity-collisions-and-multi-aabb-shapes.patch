@@ -1,0 +1,1103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Sat, 9 May 2020 17:54:43 -0700
+Subject: [PATCH] Optimise Entity collisions and multi-aabb shapes
+
+In my testing this reduced move calls from 14.5% to 5.6%.
+
+diff --git a/src/main/java/com/tuinity/tuinity/util/CachedLists.java b/src/main/java/com/tuinity/tuinity/util/CachedLists.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..82b97107219b7d1ab3c9ff1c133bc7206baa47a2
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/util/CachedLists.java
+@@ -0,0 +1,18 @@
++package com.tuinity.tuinity.util;
++
++import net.minecraft.server.Entity;
++import net.minecraft.server.VoxelShape;
++import org.bukkit.craftbukkit.util.UnsafeList;
++
++public class CachedLists {
++
++    public static final UnsafeList<VoxelShape> TEMP_COLLISION_LIST = new UnsafeList<>(1024);
++    public static final UnsafeList<Entity> TEMP_ENTITY_LIST = new UnsafeList<>(1024);
++    public static final UnsafeList<Entity> TEMP_COLLIDE_NEARBY_LIST = new UnsafeList<>(1024);
++
++    public static void reset() {
++        TEMP_COLLISION_LIST.completeReset();
++        TEMP_ENTITY_LIST.completeReset();
++        TEMP_COLLIDE_NEARBY_LIST.completeReset();
++    }
++}
+diff --git a/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java b/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java
+index 467ec1e717e83a5556cbd7d3f8ad0a17a4b12200..4363a7ef44fad650d209d03528be8ed713f6738f 100644
+--- a/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java
++++ b/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java
+@@ -238,4 +238,9 @@ public final class AABBVoxelShape extends VoxelShape {
+             return d0;
+         }
+     }
++
++    @Override
++    public boolean intersects(AxisAlignedBB axisalingedbb) {
++        return this.aabb.intersects(axisalingedbb);
++    }
+ }
+diff --git a/src/main/java/net/minecraft/server/AxisAlignedBB.java b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+index b3739f46964001193093f432271868444188b0c6..fe026b4afa6e2bc3ee84be4354641fc625b149a3 100644
+--- a/src/main/java/net/minecraft/server/AxisAlignedBB.java
++++ b/src/main/java/net/minecraft/server/AxisAlignedBB.java
+@@ -13,6 +13,114 @@ public class AxisAlignedBB {
+     public final double maxY;
+     public final double maxZ;
+ 
++    // Tuinity start
++    public final boolean isEmpty() {
++        return (this.maxX - this.minX) < 1.0E-7 && (this.maxY - this.minY) < 1.0E-7 && (this.maxZ - this.minZ) < 1.0E-7;
++    }
++
++    public static AxisAlignedBB getBoxForChunk(int chunkX, int chunkZ) {
++        long x = chunkX << 4;
++        long z = chunkZ << 4;
++        return new AxisAlignedBB(x, 0, z, x | 15, 255, z | 15, false);
++    }
++
++    // collideX, collideY, collideZ are copied from 1.12 src
++    // so the code all belongs to mojang
++    public double collideX(AxisAlignedBB axisalignedbb, double d0) {
++        if (axisalignedbb.maxY > this.minY && axisalignedbb.minY < this.maxY
++                && axisalignedbb.maxZ > this.minZ && axisalignedbb.minZ < this.maxZ) {
++            double d1;
++
++            if (d0 > 0.0D && axisalignedbb.maxX <= this.minX) {
++                d1 = this.minX - axisalignedbb.maxX;
++                if (d1 < d0) {
++                    d0 = d1;
++                }
++            } else if (d0 < 0.0D && axisalignedbb.minX >= this.maxX) {
++                d1 = this.maxX - axisalignedbb.minX;
++                if (d1 > d0) {
++                    d0 = d1;
++                }
++            }
++
++            return d0;
++        } else {
++            return d0;
++        }
++    }
++
++    public double collideY(AxisAlignedBB axisalignedbb, double d0) {
++        if (axisalignedbb.maxX > this.minX && axisalignedbb.minX < this.maxX
++                && axisalignedbb.maxZ > this.minZ && axisalignedbb.minZ < this.maxZ) {
++            double d1;
++
++            if (d0 > 0.0D && axisalignedbb.maxY <= this.minY) {
++                d1 = this.minY - axisalignedbb.maxY;
++                if (d1 < d0) {
++                    d0 = d1;
++                }
++            } else if (d0 < 0.0D && axisalignedbb.minY >= this.maxY) {
++                d1 = this.maxY - axisalignedbb.minY;
++                if (d1 > d0) {
++                    d0 = d1;
++                }
++            }
++
++            return d0;
++        } else {
++            return d0;
++        }
++    }
++
++    public double collideZ(AxisAlignedBB axisalignedbb, double d0) {
++        if (axisalignedbb.maxX > this.minX && axisalignedbb.minX < this.maxX
++                && axisalignedbb.maxY > this.minY && axisalignedbb.minY < this.maxY) {
++            double d1;
++
++            if (d0 > 0.0D && axisalignedbb.maxZ <= this.minZ) {
++                d1 = this.minZ - axisalignedbb.maxZ;
++                if (d1 < d0) {
++                    d0 = d1;
++                }
++            } else if (d0 < 0.0D && axisalignedbb.minZ >= this.maxZ) {
++                d1 = this.maxZ - axisalignedbb.minZ;
++                if (d1 > d0) {
++                    d0 = d1;
++                }
++            }
++
++            return d0;
++        } else {
++            return d0;
++        }
++    }
++
++    public final AxisAlignedBB offsetX(double dx) {
++        return new AxisAlignedBB(this.minX + dx, this.minY, this.minZ, this.maxX + dx, this.maxY, this.maxZ, false);
++    }
++
++    public final AxisAlignedBB offsetY(double dy) {
++        return new AxisAlignedBB(this.minX, this.minY + dy, this.minZ, this.maxX, this.maxY + dy, this.maxZ, false);
++    }
++
++    public final AxisAlignedBB offsetZ(double dz) {
++        return new AxisAlignedBB(this.minX, this.minY, this.minZ + dz, this.maxX, this.maxY, this.maxZ + dz, false);
++    }
++
++    public AxisAlignedBB(double d0, double d1, double d2, double d3, double d4, double d5, boolean dummy) {
++        this.minX = d0;
++        this.minY = d1;
++        this.minZ = d2;
++        this.maxX = d3;
++        this.maxY = d4;
++        this.maxZ = d5;
++    }
++
++    public final AxisAlignedBB expandUpwards(double dy) {
++        return new AxisAlignedBB(this.minX, this.minY, this.minZ, this.maxX, this.maxY + dy, this.maxZ, false);
++    }
++    // Tuinity end
++
+     public AxisAlignedBB(double d0, double d1, double d2, double d3, double d4, double d5) {
+         this.minX = Math.min(d0, d3);
+         this.minY = Math.min(d1, d4);
+@@ -190,6 +298,7 @@ public class AxisAlignedBB {
+         return new AxisAlignedBB(this.minX + (double) blockposition.getX(), this.minY + (double) blockposition.getY(), this.minZ + (double) blockposition.getZ(), this.maxX + (double) blockposition.getX(), this.maxY + (double) blockposition.getY(), this.maxZ + (double) blockposition.getZ());
+     }
+ 
++    public final AxisAlignedBB offset(Vec3D vec3d) { return this.b(vec3d); } // Tuinity - OBFHELPER
+     public AxisAlignedBB b(Vec3D vec3d) {
+         return this.d(vec3d.x, vec3d.y, vec3d.z);
+     }
+@@ -199,6 +308,7 @@ public class AxisAlignedBB {
+         return this.a(axisalignedbb.minX, axisalignedbb.minY, axisalignedbb.minZ, axisalignedbb.maxX, axisalignedbb.maxY, axisalignedbb.maxZ);
+     }
+ 
++    public final boolean intersects(double d0, double d1, double d2, double d3, double d4, double d5) { return this.a(d0, d1, d2, d3, d4, d5); } // Tuinity - OBFHELPER
+     public boolean a(double d0, double d1, double d2, double d3, double d4, double d5) {
+         return this.minX < d3 && this.maxX > d0 && this.minY < d4 && this.maxY > d1 && this.minZ < d5 && this.maxZ > d2;
+     }
+diff --git a/src/main/java/net/minecraft/server/ChunkSection.java b/src/main/java/net/minecraft/server/ChunkSection.java
+index b7b06e082e59f8518be2036637385c7710d524ea..5347edd99e2f2adc59c663faaec9ec5c1a1ed31c 100644
+--- a/src/main/java/net/minecraft/server/ChunkSection.java
++++ b/src/main/java/net/minecraft/server/ChunkSection.java
+@@ -95,6 +95,7 @@ public class ChunkSection {
+         return iblockdata1;
+     }
+ 
++    public final boolean isFullOfAir() { return this.c(); } // Tuinity - OBFHELPER
+     public boolean c() {
+         return this.nonEmptyBlockCount == 0;
+     }
+diff --git a/src/main/java/net/minecraft/server/DataPaletteBlock.java b/src/main/java/net/minecraft/server/DataPaletteBlock.java
+index be5f98c3c368cb046112dc488344bb529fc395c1..feec6c2e94edbb7e1198ccefcb03dbbe20012eee 100644
+--- a/src/main/java/net/minecraft/server/DataPaletteBlock.java
++++ b/src/main/java/net/minecraft/server/DataPaletteBlock.java
+@@ -167,6 +167,7 @@ public class DataPaletteBlock<T> implements DataPaletteExpandable<T> {
+         return this.a(b(i, j, k));
+     }
+ 
++    public final T rawGet(int index) { return this.a(index); } // Tuinity - OBFHELPER
+     protected T a(int i) {
+         T t0 = this.h.a(this.a.a(i));
+ 
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index 5ed0a949e6d13dd57e2e82b227a0bb366c90e680..32e285279fe4d294f1ecd127c566ccd79e1fe0b2 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -136,7 +136,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+     public double E;
+     public double F;
+     public double G;
+-    public float H;
++    public float H; public final float getStepHeight() { return this.H; } // Tuinity - OBFHELPER
+     public boolean noclip;
+     public float J;
+     protected final Random random;
+@@ -660,7 +660,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+             // Paper end
+ 
+             vec3d = this.a(vec3d, enummovetype);
+-            Vec3D vec3d1 = this.e(vec3d);
++            Vec3D vec3d1 = this.performCollision(vec3d); // Tuinity - optimise collisions
+ 
+             if (vec3d1.g() > 1.0E-7D) {
+                 this.a(this.getBoundingBox().b(vec3d1));
+@@ -879,10 +879,111 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return d0;
+     }
+ 
++    // Tuinity start - optimise entity movement
++    private static double performCollisionsX(AxisAlignedBB currentBoundingBox, double value, List<AxisAlignedBB> potentialCollisions) {
++        for (int i = 0, len = potentialCollisions.size(); i < len; ++i) {
++            AxisAlignedBB target = potentialCollisions.get(i);
++            value = target.collideX(currentBoundingBox, value);
++        }
++
++        return value;
++    }
++
++    private static double performCollisionsY(AxisAlignedBB currentBoundingBox, double value, List<AxisAlignedBB> potentialCollisions) {
++        for (int i = 0, len = potentialCollisions.size(); i < len; ++i) {
++            AxisAlignedBB target = potentialCollisions.get(i);
++            value = target.collideY(currentBoundingBox, value);
++        }
++
++        return value;
++    }
++
++    private static double performCollisionsZ(AxisAlignedBB currentBoundingBox, double value, List<AxisAlignedBB> potentialCollisions) {
++        for (int i = 0, len = potentialCollisions.size(); i < len; ++i) {
++            AxisAlignedBB target = potentialCollisions.get(i);
++            value = target.collideZ(currentBoundingBox, value);
++        }
++
++        return value;
++    }
++
++    private static Vec3D performCollisions(Vec3D moveVector, AxisAlignedBB axisalignedbb, List<AxisAlignedBB> potentialCollisions) {
++        double x = moveVector.x;
++        double y = moveVector.y;
++        double z = moveVector.z;
++
++        if (y != 0.0) {
++            y = Entity.performCollisionsY(axisalignedbb, y, potentialCollisions);
++            if (y != 0.0) {
++                axisalignedbb = axisalignedbb.offsetY(y);
++            }
++        }
++
++        if (x != 0.0) {
++            x = Entity.performCollisionsX(axisalignedbb, x, potentialCollisions);
++            if (x != 0.0) {
++                axisalignedbb = axisalignedbb.offsetX(x);
++            }
++        }
++
++        if (z != 0.0) {
++            z = Entity.performCollisionsZ(axisalignedbb, z, potentialCollisions);
++        }
++
++        return new Vec3D(x, y, z);
++    }
++
++    private Vec3D performCollision(Vec3D moveVector) {
++        if (moveVector.getX() == 0.0 && moveVector.getY() == 0.0 && moveVector.getZ() == 0.0) {
++            return Vec3D.getZeroVector();
++        }
++
++        WorldServer world = ((WorldServer)this.world);
++        AxisAlignedBB currBoundingBox = this.getBoundingBox();
++
++        List<AxisAlignedBB> potentialCollisions = new java.util.ArrayList<>();
++
++        // We take a fat guess that we actually need to do the step height checks.
++        // So we collect all of the AABB's we would ever need into one list, and use that list
++        // for every collision check we want.
++        AxisAlignedBB collisionBox;
++        double stepHeight = (double)this.getStepHeight();
++        if (moveVector.y <= 0.0F) {
++            collisionBox = currBoundingBox.expand(moveVector.x, moveVector.y, moveVector.z).expandUpwards(stepHeight);
++        } else {
++            collisionBox = currBoundingBox.expand(moveVector.x, Math.max(stepHeight, moveVector.y), moveVector.z);
++        }
++        world.getCollisions(this, collisionBox, potentialCollisions);
++
++        Vec3D limitedMoveVector = Entity.performCollisions(moveVector, currBoundingBox, potentialCollisions);
++
++        if (this.getStepHeight() > 0.0F && (this.onGround || (limitedMoveVector.y != moveVector.y && moveVector.y < 0.0))) {
++            Vec3D vec3d2 = Entity.performCollisions(new Vec3D(moveVector.x, stepHeight, moveVector.z), currBoundingBox, potentialCollisions);
++            Vec3D vec3d3 = Entity.performCollisions(new Vec3D(0.0, stepHeight, 0.0), currBoundingBox.expand(moveVector.x, 0.0, moveVector.z), potentialCollisions);
++
++            if (vec3d3.y < stepHeight) {
++                Vec3D vec3d4 = Entity.performCollisions(new Vec3D(moveVector.x, 0.0D, moveVector.z), currBoundingBox.offset(vec3d3), potentialCollisions);
++
++                if (Entity.getXZSquared(vec3d4) > Entity.getXZSquared(vec3d2)) {
++                    vec3d2 = vec3d4;
++                }
++            }
++
++            if (Entity.getXZSquared(vec3d2) > Entity.getXZSquared(limitedMoveVector)) {
++                return vec3d2.add(Entity.performCollisions(new Vec3D(0.0D, -vec3d2.y + moveVector.y, 0.0D), currBoundingBox.offset(vec3d2), potentialCollisions));
++            }
++
++            return limitedMoveVector;
++        } else {
++            return limitedMoveVector;
++        }
++    }
++    // Tuinity end - optimise entity movement
++
+     private Vec3D e(Vec3D vec3d) {
+         AxisAlignedBB axisalignedbb = this.getBoundingBox();
+         VoxelShapeCollision voxelshapecollision = VoxelShapeCollision.a(this);
+-        Stream<VoxelShape> stream = !this.world.getWorldBorder().isInBounds(axisalignedbb) ? Stream.empty() : Stream.of(this.world.getWorldBorder().a()); // Tuinity - optimise voxelshapes
++        Stream<VoxelShape> stream = !this.world.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb.minX - vec3d.x, axisalignedbb.maxX + vec3d.x, axisalignedbb.minZ - vec3d.z, axisalignedbb.maxZ + vec3d.z) ? Stream.empty() : Stream.of(this.world.getWorldBorder().a()); // Tuinity - optimise voxelshapes
+         Stream<VoxelShape> stream1 = this.world.b(this, axisalignedbb.a(vec3d), (Set) ImmutableSet.of());
+         StreamAccumulator<VoxelShape> streamaccumulator = new StreamAccumulator<>(Stream.concat(stream1, stream));
+         Vec3D vec3d1 = vec3d.g() == 0.0D ? vec3d : a(this, vec3d, axisalignedbb, this.world, voxelshapecollision, streamaccumulator);
+@@ -911,6 +1012,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return vec3d1;
+     }
+ 
++    public static double getXZSquared(Vec3D vec3d) { return Entity.b(vec3d); } // Tuinity - OBFHELPER
+     public static double b(Vec3D vec3d) {
+         return vec3d.x * vec3d.x + vec3d.z * vec3d.z;
+     }
+@@ -1174,8 +1276,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+ 
+     }
+ 
+-    @Nullable
+-    public AxisAlignedBB au() {
++    @Nullable public final AxisAlignedBB getHardCollisionBox() { return this.au(); } // Tuinity - OBFHELPER
++    @Nullable public AxisAlignedBB au() { // Tuinity - OBFHELPER
+         return null;
+     }
+ 
+@@ -2092,8 +2194,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return false;
+     }
+ 
+-    @Nullable
+-    public AxisAlignedBB j(Entity entity) {
++    @Nullable public AxisAlignedBB getHardCollisionBoxWith(Entity entity) { return this.j(entity); } // Tuinity - OBFHELPER
++    @Nullable public AxisAlignedBB j(Entity entity) { // Tuinity - OBFHELPER
+         return null;
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/ICollisionAccess.java b/src/main/java/net/minecraft/server/ICollisionAccess.java
+index 74feca3731b9fd6e46ded12b2cf09be87ae947a7..88d8095e76de28dfd2d36a394a90d2d04fd125e5 100644
+--- a/src/main/java/net/minecraft/server/ICollisionAccess.java
++++ b/src/main/java/net/minecraft/server/ICollisionAccess.java
+@@ -43,6 +43,11 @@ public interface ICollisionAccess extends IBlockAccess {
+     }
+ 
+     default boolean a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
++        // Tuinity start - allow overriding in WorldServer
++        return this.getCubes(entity, axisalignedbb, set);
++    }
++    default boolean getCubes(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
++        // Tuinity end - allow overriding in WorldServer
+         return this.c(entity, axisalignedbb, set).allMatch(VoxelShape::isEmpty);
+     }
+ 
+@@ -72,11 +77,9 @@ public interface ICollisionAccess extends IBlockAccess {
+             public boolean tryAdvance(Consumer<? super VoxelShape> consumer) {
+                 if (!this.a) {
+                     this.a = true;
+-                    // Tuinity - moved down
+-                    boolean flag = !ICollisionAccess.this.getWorldBorder().isInBounds(entity.getBoundingBox().shrink(1.0E-7D)); // Tuinity - optimise voxelshapes
+-                    boolean flag1 = !ICollisionAccess.this.getWorldBorder().isInBounds(entity.getBoundingBox().g(1.0E-7D)); // Tuinity - optimise voxelshapes
++                    // Tuinity - optimise voxelshapes
+ 
+-                    if (!flag && flag1) {
++                    if (ICollisionAccess.this.getWorldBorder().isCollidingOnBorderEdge(entity.getBoundingBox())) { // Tuinity - optimise voxelshapes
+                         consumer.accept(ICollisionAccess.this.getWorldBorder().a()); // Tuinity - moved down
+                         return true;
+                     }
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 1bf73ca92f5cdf73922f6f44c0b6c1c6368335f4..cb366f3f7f0bdd54a2f3854a9bce71cad06af9cb 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -1279,6 +1279,8 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+         }
+         // Paper end
+ 
++        com.tuinity.tuinity.util.CachedLists.reset(); // Tuinity
++
+         // Paper start
+         long endTime = System.nanoTime();
+         long remaining = (TICK_TIME - (endTime - lastTick)) - catchupTime;
+diff --git a/src/main/java/net/minecraft/server/Vec3D.java b/src/main/java/net/minecraft/server/Vec3D.java
+index 0c7f094e548e843144fc8083b3781598440fbb9d..c2e4b5e8dc6971769147e09623a061da0ab26a77 100644
+--- a/src/main/java/net/minecraft/server/Vec3D.java
++++ b/src/main/java/net/minecraft/server/Vec3D.java
+@@ -4,7 +4,7 @@ import java.util.EnumSet;
+ 
+ public class Vec3D implements IPosition {
+ 
+-    public static final Vec3D a = new Vec3D(0.0D, 0.0D, 0.0D);
++    public static final Vec3D a = new Vec3D(0.0D, 0.0D, 0.0D); public static Vec3D getZeroVector() { return Vec3D.a; } // Tuinity - OBFHELPER
+     public final double x;
+     public final double y;
+     public final double z;
+@@ -49,6 +49,7 @@ public class Vec3D implements IPosition {
+         return this.add(-d0, -d1, -d2);
+     }
+ 
++    public final Vec3D add(Vec3D vec3d) { return this.e(vec3d); } // Tuinity - OBFHELPER
+     public Vec3D e(Vec3D vec3d) {
+         return this.add(vec3d.x, vec3d.y, vec3d.z);
+     }
+@@ -93,10 +94,12 @@ public class Vec3D implements IPosition {
+         return new Vec3D(this.x * d0, this.y * d1, this.z * d2);
+     }
+ 
++    public final double magnitude() { return this.f(); } // Tuinity - OBFHELPER
+     public double f() {
+         return (double) MathHelper.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+     }
+ 
++    public final double magnitudeSquared() { return this.g(); } // Tuinity - OBFHELPER
+     public double g() {
+         return this.x * this.x + this.y * this.y + this.z * this.z;
+     }
+diff --git a/src/main/java/net/minecraft/server/VoxelShape.java b/src/main/java/net/minecraft/server/VoxelShape.java
+index 077ed1dc728564fb559c260b5e72a5c3924b4f9e..cb47d466c25f74b1c740b459ede19e640fd03d0b 100644
+--- a/src/main/java/net/minecraft/server/VoxelShape.java
++++ b/src/main/java/net/minecraft/server/VoxelShape.java
+@@ -51,6 +51,12 @@ public abstract class VoxelShape {
+         return (VoxelShape) (this.isEmpty() ? VoxelShapes.a() : new VoxelShapeArray(this.a, new DoubleListOffset(this.a(EnumDirection.EnumAxis.X), d0), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Y), d1), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Z), d2)));
+     }
+ 
++    // Tuinity start - optimise multi-aabb shapes
++    public boolean intersects(final AxisAlignedBB axisalingedbb) {
++        return VoxelShapes.applyOperation(this, new com.tuinity.tuinity.voxel.AABBVoxelShape(axisalingedbb), OperatorBoolean.AND);
++    }
++    // Tuinity end - optimise multi-aabb shapes
++
+     public VoxelShape c() {
+         VoxelShape[] avoxelshape = new VoxelShape[]{VoxelShapes.a()};
+ 
+@@ -70,6 +76,7 @@ public abstract class VoxelShape {
+         }, true);
+     }
+ 
++    public final List<AxisAlignedBB> getBoundingBoxesRepresentation() { return this.d(); } // Tuinity - OBFHELPER
+     public List<AxisAlignedBB> d() {
+         List<AxisAlignedBB> list = Lists.newArrayList();
+ 
+diff --git a/src/main/java/net/minecraft/server/VoxelShapeArray.java b/src/main/java/net/minecraft/server/VoxelShapeArray.java
+index caf297fe977942ca68fdb963d97dd9fc0f78d883..8d68c783f6d8c1dae62c0d3ed34e305785169579 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapeArray.java
++++ b/src/main/java/net/minecraft/server/VoxelShapeArray.java
+@@ -3,6 +3,7 @@ package net.minecraft.server;
+ import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
+ import it.unimi.dsi.fastutil.doubles.DoubleList;
+ import java.util.Arrays;
++import java.util.List;
+ 
+ public final class VoxelShapeArray extends VoxelShape {
+ 
+@@ -10,11 +11,25 @@ public final class VoxelShapeArray extends VoxelShape {
+     private final DoubleList c;
+     private final DoubleList d;
+ 
++    // Tuinity start - optimise multi-aabb shapes
++    static final AxisAlignedBB[] EMPTY = new AxisAlignedBB[0];
++    final AxisAlignedBB[] boundingBoxesRepresentation;
++
++    final double offsetX;
++    final double offsetY;
++    final double offsetZ;
++    // Tuinity end - optimise multi-aabb shapes
++
+     protected VoxelShapeArray(VoxelShapeDiscrete voxelshapediscrete, double[] adouble, double[] adouble1, double[] adouble2) {
+         this(voxelshapediscrete, (DoubleList) DoubleArrayList.wrap(Arrays.copyOf(adouble, voxelshapediscrete.b() + 1)), (DoubleList) DoubleArrayList.wrap(Arrays.copyOf(adouble1, voxelshapediscrete.c() + 1)), (DoubleList) DoubleArrayList.wrap(Arrays.copyOf(adouble2, voxelshapediscrete.d() + 1)));
+     }
+ 
+     VoxelShapeArray(VoxelShapeDiscrete voxelshapediscrete, DoubleList doublelist, DoubleList doublelist1, DoubleList doublelist2) {
++        // Tuinity start - optimise multi-aabb shapes
++        this(voxelshapediscrete, doublelist, doublelist1, doublelist2, null, null, 0.0, 0.0, 0.0);
++    }
++    VoxelShapeArray(VoxelShapeDiscrete voxelshapediscrete, DoubleList doublelist, DoubleList doublelist1, DoubleList doublelist2, VoxelShapeArray original, AxisAlignedBB[] boundingBoxesRepresentation, double offsetX, double offsetY, double offsetZ) {
++        // Tuinity end - optimise multi-aabb shapes
+         super(voxelshapediscrete);
+         int i = voxelshapediscrete.b() + 1;
+         int j = voxelshapediscrete.c() + 1;
+@@ -27,6 +42,18 @@ public final class VoxelShapeArray extends VoxelShape {
+         } else {
+             throw (IllegalArgumentException) SystemUtils.c(new IllegalArgumentException("Lengths of point arrays must be consistent with the size of the VoxelShape."));
+         }
++        // Tuinity start - optimise multi-aabb shapes
++        this.boundingBoxesRepresentation = boundingBoxesRepresentation == null ? this.getBoundingBoxesRepresentation().toArray(EMPTY) : boundingBoxesRepresentation; // Tuinity - optimise multi-aabb shapes
++        if (original == null) {
++            this.offsetX = offsetX;
++            this.offsetY = offsetY;
++            this.offsetZ = offsetZ;
++        } else {
++            this.offsetX = offsetX + original.offsetX;
++            this.offsetY = offsetY + original.offsetY;
++            this.offsetZ = offsetZ + original.offsetZ;
++        }
++        // Tuinity end - optimise multi-aabb shapes
+     }
+ 
+     @Override
+@@ -42,4 +69,49 @@ public final class VoxelShapeArray extends VoxelShape {
+                 throw new IllegalArgumentException();
+         }
+     }
++
++    // Tuinity start - optimise multi-aabb shapes
++    @Override
++    public VoxelShape a(double d0, double d1, double d2) {
++        if (this == VoxelShapes.getEmptyShape() || this.boundingBoxesRepresentation.length == 0) {
++            return this;
++        }
++        return new VoxelShapeArray(this.a, new DoubleListOffset(this.a(EnumDirection.EnumAxis.X), d0), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Y), d1), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Z), d2), this, this.boundingBoxesRepresentation, d0, d1, d2);
++    }
++
++    public final AxisAlignedBB[] getBoundingBoxesRepresentationRaw() {
++        return this.boundingBoxesRepresentation;
++    }
++
++    public final double getOffsetX() {
++        return this.offsetX;
++    }
++
++    public final double getOffsetY() {
++        return this.offsetY;
++    }
++
++    public final double getOffsetZ() {
++        return this.offsetZ;
++    }
++
++    public final boolean intersects(AxisAlignedBB axisalingedbb) {
++        double minX = axisalingedbb.minX - this.offsetX;
++        double maxX = axisalingedbb.maxX - this.offsetX;
++        double minY = axisalingedbb.minY - this.offsetY;
++        double maxY = axisalingedbb.maxY - this.offsetY;
++        double minZ = axisalingedbb.minZ - this.offsetZ;
++        double maxZ = axisalingedbb.maxZ - this.offsetZ;
++
++        // this can be optimised by checking an "overall shape"
++
++        for (AxisAlignedBB boundingBox : this.boundingBoxesRepresentation) {
++            if (boundingBox.intersects(minX, minY, minZ, maxX, maxY, maxZ)) {
++                return true;
++            }
++        }
++
++        return false;
++    }
++    // Tuinity end - optimise multi-aabb shapes
+ }
+diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
+index 17e99be012ac59f014fb4821ebec924c200e5e83..ec37ef4bb4e023423b5e797db4cfc014e000166a 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapes.java
++++ b/src/main/java/net/minecraft/server/VoxelShapes.java
+@@ -32,6 +32,60 @@ public final class VoxelShapes {
+         return VoxelShapes.c;
+     }
+ 
++    // Tuinity start - optimise voxelshapes
++    public static void addBoxesToIfIntersects(VoxelShape shape, AxisAlignedBB aabb, java.util.List<AxisAlignedBB> list) {
++        if (shape instanceof com.tuinity.tuinity.voxel.AABBVoxelShape) {
++            com.tuinity.tuinity.voxel.AABBVoxelShape shapeCasted = (com.tuinity.tuinity.voxel.AABBVoxelShape)shape;
++            if (shapeCasted.aabb.intersects(aabb)) {
++                list.add(shapeCasted.aabb);
++            }
++        } else if (shape instanceof VoxelShapeArray) {
++            VoxelShapeArray shapeCasted = (VoxelShapeArray)shape;
++            double minX = aabb.minX - shapeCasted.offsetX;
++            double maxX = aabb.maxX - shapeCasted.offsetX;
++            double minY = aabb.minY - shapeCasted.offsetY;
++            double maxY = aabb.maxY - shapeCasted.offsetY;
++            double minZ = aabb.minZ - shapeCasted.offsetZ;
++            double maxZ = aabb.maxZ - shapeCasted.offsetZ;
++
++            // this can be optimised by checking an "overall shape"
++
++            for (AxisAlignedBB boundingBox : shapeCasted.boundingBoxesRepresentation) {
++                if (boundingBox.intersects(minX, minY, minZ, maxX, maxY, maxZ)) {
++                    list.add(boundingBox.offset(shapeCasted.offsetX, shapeCasted.offsetY, shapeCasted.offsetZ));
++                }
++            }
++        } else {
++            java.util.List<AxisAlignedBB> boxes = shape.getBoundingBoxesRepresentation();
++            for (int i = 0, len = boxes.size(); i < len; ++i) {
++                AxisAlignedBB box = boxes.get(i);
++                if (box.intersects(aabb)) {
++                    list.add(box);
++                }
++            }
++        }
++    }
++
++    public static void addBoxesTo(VoxelShape shape, java.util.List<AxisAlignedBB> list) {
++        if (shape instanceof com.tuinity.tuinity.voxel.AABBVoxelShape) {
++            com.tuinity.tuinity.voxel.AABBVoxelShape shapeCasted = (com.tuinity.tuinity.voxel.AABBVoxelShape)shape;
++            list.add(shapeCasted.aabb);
++        } else if (shape instanceof VoxelShapeArray) {
++            VoxelShapeArray shapeCasted = (VoxelShapeArray)shape;
++
++            for (AxisAlignedBB boundingBox : shapeCasted.boundingBoxesRepresentation) {
++                list.add(boundingBox.offset(shapeCasted.offsetX, shapeCasted.offsetY, shapeCasted.offsetZ));
++            }
++        } else {
++            java.util.List<AxisAlignedBB> boxes = shape.getBoundingBoxesRepresentation();
++            for (int i = 0, len = boxes.size(); i < len; ++i) {
++                AxisAlignedBB box = boxes.get(i);
++                list.add(box);
++            }
++        }
++    }
++    // Tuinity start - optimise voxelshapes
++
+     private static final com.tuinity.tuinity.voxel.AABBVoxelShape optimisedFullCube = new com.tuinity.tuinity.voxel.AABBVoxelShape(new AxisAlignedBB(0, 0, 0, 1.0, 1.0, 1.0)); // Tuinity - optimise voxelshape
+ 
+     public static VoxelShape b() {
+diff --git a/src/main/java/net/minecraft/server/WorldBorder.java b/src/main/java/net/minecraft/server/WorldBorder.java
+index 26a1058f9b972b9ab580aa2b0bd057caa9256f94..0522d0ed8a504f8bc2cce03fa5c2e77ddb3bc764 100644
+--- a/src/main/java/net/minecraft/server/WorldBorder.java
++++ b/src/main/java/net/minecraft/server/WorldBorder.java
+@@ -45,10 +45,42 @@ public class WorldBorder {
+         return axisalignedbb.maxX > this.c() && axisalignedbb.minX < this.e() && axisalignedbb.maxZ > this.d() && axisalignedbb.minZ < this.f();
+     }
+ 
++    // Tuinity start - optimise collisions
++    // determines whether we are colliding with one of the wordborder faces.
++    public final boolean isCollidingOnBorderEdge(AxisAlignedBB boundingBox) {
++        return this.isCollidingOnBorderEdge(boundingBox.minX, boundingBox.maxX, boundingBox.minZ, boundingBox.maxZ);
++    }
++
++    public final boolean isCollidingOnBorderEdge(double boxMinX, double boxMaxX, double boxMinZ, double boxMaxZ) {
++        double minX = this.getMinX() - 1.0E-7;
++        double maxX = this.getMaxX() + 1.0E-7;
++
++        double minZ = this.getMinZ() - 1.0E-7;
++        double maxZ = this.getMaxZ() + 1.0E-7;
++
++        return
++                // First, check if the worldborder is enclosing the specified box.
++                // We check this first as it's most likely to fail.
++                !(minX < boxMinX && maxX > boxMaxX && minZ < boxMinZ && maxZ > boxMaxZ)
++                &&
++
++                // Now we verify if we're even intersecting.
++                (minX < boxMaxX && maxX > boxMinX && minZ < boxMaxZ && maxZ > boxMinZ)
++                &&
++
++                // Now verify that the worldborder isn't being enclosed.
++                // This is never expected to happen, but is left here to ensure our logic
++                // is right 100% of the time.
++                !(boxMinX < minX && boxMaxX > maxX && boxMinZ < minZ && boxMaxZ > maxZ)
++                ;
++    }
++    // Tuinity end - optimise collisions
++
+     public double a(Entity entity) {
+         return this.b(entity.locX(), entity.locZ());
+     }
+ 
++    public final VoxelShape getCollisionShape() { return this.a(); } // Tuinity - OBFHELPER
+     public VoxelShape a() {
+         return this.i.m();
+     }
+@@ -64,18 +96,22 @@ public class WorldBorder {
+         return Math.min(d6, d3);
+     }
+ 
++    public final double getMinX() { return this.c(); } // Tuinity - OBFHELPER
+     public double c() {
+         return this.i.a();
+     }
+ 
++    public final double getMinZ() { return this.d(); } // Tuinity - OBFHELPER
+     public double d() {
+         return this.i.c();
+     }
+ 
++    public final double getMaxX() { return this.e(); } // Tuinity - OBFHELPER
+     public double e() {
+         return this.i.b();
+     }
+ 
++    public final double getMaxZ() { return this.f(); } // Tuinity - OBFHELPER
+     public double f() {
+         return this.i.d();
+     }
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index 132c5e7dfb140ee171ae762c0af7b576fa98607a..83419f689986a35b83d320e98022afab20cee398 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -250,6 +250,348 @@ public class WorldServer extends World {
+         this.asyncChunkTaskManager = new com.destroystokyo.paper.io.chunk.ChunkTaskManager(this); // Paper
+     }
+ 
++    // Tuinity start - optimise collision
++    public boolean collidesWithAnyBlockOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
++        if (entity != null) {
++            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
++                return true;
++            }
++        }
++
++        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
++        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
++
++        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
++        if (minBlockY < 0) {
++            minBlockY = 0;
++        }
++        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
++        if (maxBlockY > 255) {
++            maxBlockY = 255;
++        }
++
++        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
++        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
++
++
++        BlockPosition.MutableBlockPosition mutablePos = new BlockPosition.MutableBlockPosition();
++        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity); // TODO make this lazy
++
++        // special cases:
++        if (maxBlockY < 0) {
++            // no point in checking
++            return true;
++        }
++
++        int minChunkX = minBlockX >> 4;
++        int maxChunkX = maxBlockX >> 4;
++
++        int minChunkY = minBlockY >> 4;
++        int maxChunkY = maxBlockY >> 4;
++
++        int minChunkZ = minBlockZ >> 4;
++        int maxChunkZ = maxBlockZ >> 4;
++
++        ChunkProviderServer chunkProvider = (ChunkProviderServer)this.chunkProvider;
++        // TODO special case single chunk?
++
++        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++
++            for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++                int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++                int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++
++                int chunkXGlobalPos = currChunkX << 4;
++                int chunkZGlobalPos = currChunkZ << 4;
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ);
++
++                if (chunk == null) {
++                    return true;
++                }
++
++                ChunkSection[] sections = chunk.getSections();
++
++                // bound y
++
++                for (int currY = minBlockY; currY <= maxBlockY; ++currY) {
++                    ChunkSection section = sections[currY >>> 4];
++                    if (section == null || section.isFullOfAir()) {
++                        // empty
++                        // skip to next section
++                        currY = (currY & ~(15)) + 16;
++                        continue;
++                    }
++
++                    DataPaletteBlock<IBlockData> blocks = section.blockIds;
++                    int blockKeyY = (currY & 15) << 8;
++
++                    int edgeCountY = (currY == minBlockY || currY == maxBlockY) ? 1 : 0;
++
++                    for (int currX = minX; currX <= maxX; ++currX) {
++                        int blockKeyXY = blockKeyY | currX;
++                        int blockX = currX | chunkXGlobalPos; // world position
++
++                        int edgeCountXY;
++                        if (blockX == minBlockX || blockX == maxBlockX) {
++                            edgeCountXY = edgeCountY + 1;
++                        } else {
++                            edgeCountXY = edgeCountY;
++                        }
++
++                        for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                            int blockZ = currZ | chunkZGlobalPos; // world position
++
++                            int edgeCountFull;
++                            if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                                edgeCountFull = edgeCountXY + 1;
++                            } else {
++                                edgeCountFull = edgeCountXY;
++                            }
++
++                            if (edgeCountFull == 3) {
++                                continue;
++                            }
++
++                            int blockKeyFull = blockKeyXY | (currZ << 4);
++                            IBlockData blockData = blocks.rawGet(blockKeyFull);
++
++                            if (!blockData.isAir() && (edgeCountFull != 1 || blockData.f()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                                mutablePos.setValues(blockX, currY, blockZ);
++                                VoxelShape voxelshape2 = blockData.getCollisionShape(this, mutablePos, collisionShape);
++                                if (voxelshape2 != VoxelShapes.getEmptyShape()) {
++                                    VoxelShape voxelshape3 = voxelshape2.offset((double)blockX, (double)currY, (double)blockZ);
++
++                                    if (voxelshape3.intersects(axisalignedbb)) {
++                                        return true;
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        return false;
++    }
++
++    public final boolean hardCollidesWithAnyEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Set<Entity> set) {
++        if (axisalignedbb.isEmpty()) {
++            return false;
++        }
++        AxisAlignedBB axisalignedbb1 = axisalignedbb.grow(1.0E-7D, 1.0E-7D, 1.0E-7D);
++        List<Entity> entities = (entity != null && entity.hardCollides()) ? this.getEntities(entity, axisalignedbb) : this.getHardCollidingEntities(entity, axisalignedbb1);
++
++        for (int i = 0, len = entities.size(); i < len; ++i) {
++            Entity otherEntity = entities.get(i);
++
++            if (set != null && set.contains(otherEntity)) {
++                continue;
++            }
++
++            if (entity != null) {
++                if (entity.isSameVehicle(otherEntity)) {
++                    continue;
++                }
++                AxisAlignedBB hardCollisionBox = entity.getHardCollisionBoxWith(otherEntity);
++                if (hardCollisionBox != null && axisalignedbb1.intersects(hardCollisionBox)) {
++                    return true;
++                }
++            }
++
++            AxisAlignedBB hardCollisionBox = otherEntity.getHardCollisionBox();
++
++            if (hardCollisionBox != null && axisalignedbb1.intersects(hardCollisionBox)) {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    public final boolean hasAnyCollisions(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
++        return this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb) || this.hardCollidesWithAnyEntities(entity, axisalignedbb, null);
++    }
++
++    // Tuinity start - optimise collision
++    public void getCollisionsForBlocksOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<AxisAlignedBB> list) {
++        if (entity != null) {
++            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
++                VoxelShapes.addBoxesTo(this.getWorldBorder().getCollisionShape(), list);
++            }
++        }
++
++        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 1;
++        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
++
++        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
++        if (minBlockY < 0) {
++            minBlockY = 0;
++        }
++        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
++        if (maxBlockY > 255) {
++            maxBlockY = 255;
++        }
++
++        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
++        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
++
++
++        BlockPosition.MutableBlockPosition mutablePos = new BlockPosition.MutableBlockPosition();
++        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity); // TODO make this lazy
++
++        // special cases:
++        if (maxBlockY < 0) {
++            // no point in checking
++            return;
++        }
++
++        int minChunkX = minBlockX >> 4;
++        int maxChunkX = maxBlockX >> 4;
++
++        int minChunkY = minBlockY >> 4;
++        int maxChunkY = maxBlockY >> 4;
++
++        int minChunkZ = minBlockZ >> 4;
++        int maxChunkZ = maxBlockZ >> 4;
++
++        ChunkProviderServer chunkProvider = (ChunkProviderServer)this.chunkProvider;
++        // TODO special case single chunk?
++
++        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++
++            for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++                int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++                int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++
++                int chunkXGlobalPos = currChunkX << 4;
++                int chunkZGlobalPos = currChunkZ << 4;
++                Chunk chunk = chunkProvider.getChunkAtIfLoadedMainThread(currChunkX, currChunkZ);
++
++                if (chunk == null) {
++                    list.add(AxisAlignedBB.getBoxForChunk(currChunkX, currChunkZ));
++                    continue;
++                }
++
++                ChunkSection[] sections = chunk.getSections();
++
++                // bound y
++
++                for (int currY = minBlockY; currY <= maxBlockY; ++currY) {
++                    ChunkSection section = sections[currY >>> 4];
++                    if (section == null || section.isFullOfAir()) {
++                        // empty
++                        // skip to next section
++                        currY = (currY & ~(15)) + 16;
++                        continue;
++                    }
++
++                    DataPaletteBlock<IBlockData> blocks = section.blockIds;
++                    int blockKeyY = (currY & 15) << 8;
++
++                    int edgeCountY = (currY == minBlockY || currY == maxBlockY) ? 1 : 0;
++
++                    for (int currX = minX; currX <= maxX; ++currX) {
++                        int blockKeyXY = blockKeyY | currX;
++                        int blockX = currX | chunkXGlobalPos; // world position
++
++                        int edgeCountXY;
++                        if (blockX == minBlockX || blockX == maxBlockX) {
++                            edgeCountXY = edgeCountY + 1;
++                        } else {
++                            edgeCountXY = edgeCountY;
++                        }
++
++                        for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                            int blockZ = currZ | chunkZGlobalPos; // world position
++
++                            int edgeCountFull;
++                            if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                                edgeCountFull = edgeCountXY + 1;
++                            } else {
++                                edgeCountFull = edgeCountXY;
++                            }
++
++                            if (edgeCountFull == 3) {
++                                continue;
++                            }
++
++                            int blockKeyFull = blockKeyXY | (currZ << 4);
++                            IBlockData blockData = blocks.rawGet(blockKeyFull);
++
++                            if (!blockData.isAir() && (edgeCountFull != 1 || blockData.f()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                                mutablePos.setValues(blockX, currY, blockZ);
++                                VoxelShape voxelshape2 = blockData.getCollisionShape(this, mutablePos, collisionShape);
++                                if (voxelshape2 != VoxelShapes.getEmptyShape()) {
++                                    VoxelShape voxelshape3 = voxelshape2.offset((double)blockX, (double)currY, (double)blockZ);
++
++                                    VoxelShapes.addBoxesToIfIntersects(voxelshape3, axisalignedbb, list);
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    public final void getEntityHardCollisions(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Set<Entity> set, List<AxisAlignedBB> list) {
++        if (axisalignedbb.isEmpty()) {
++            return;
++        }
++        AxisAlignedBB axisalignedbb1 = axisalignedbb.grow(1.0E-7D, 1.0E-7D, 1.0E-7D);
++        List<Entity> entities = (entity != null && entity.hardCollides()) ? this.getEntities(entity, axisalignedbb) : this.getHardCollidingEntities(entity, axisalignedbb1);
++
++        for (int i = 0, len = entities.size(); i < len; ++i) {
++            Entity otherEntity = entities.get(i);
++
++            if (set != null && set.contains(otherEntity)) {
++                continue;
++            }
++
++            if (entity != null) {
++                if (entity.isSameVehicle(otherEntity)) {
++                    continue;
++                }
++                AxisAlignedBB hardCollisionBox = entity.getHardCollisionBoxWith(otherEntity);
++                if (hardCollisionBox != null && axisalignedbb1.intersects(hardCollisionBox)) {
++                    list.add(hardCollisionBox);
++                }
++            }
++
++            AxisAlignedBB hardCollisionBox = otherEntity.getHardCollisionBox();
++
++            if (hardCollisionBox != null && axisalignedbb1.intersects(hardCollisionBox)) {
++                list.add(hardCollisionBox);
++            }
++        }
++    }
++
++    public final void getCollisions(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<AxisAlignedBB> list) {
++        this.getCollisionsForBlocksOrWorldBorder(entity, axisalignedbb, list);
++        this.getEntityHardCollisions(entity, axisalignedbb, null, list);
++    }
++
++    @Override
++    public boolean getCubes(Entity entity) {
++        return !this.hasAnyCollisions(entity, entity.getBoundingBox());
++    }
++
++    @Override
++    public boolean getCubes(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
++        return !this.hasAnyCollisions(entity, axisalignedbb);
++    }
++
++    @Override
++    public boolean getCubes(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Set<Entity> set) {
++        return !this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb) && !this.hardCollidesWithAnyEntities(entity, axisalignedbb, set);
++    }
++    // Tuinity end - optimise collision
++
+     // CraftBukkit start
+     @Override
+     protected TileEntity getTileEntity(BlockPosition pos, boolean validate) {
+diff --git a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+index f72c13bedaa6fa45e26f5dcad564835bdd4af61f..50f855b931dba60754fff9c7cdf5e0e744f00fdd 100644
+--- a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
++++ b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+@@ -119,6 +119,32 @@ public class UnsafeList<E> extends AbstractList<E> implements List<E>, RandomAcc
+         return indexOf(o) >= 0;
+     }
+ 
++    // Tuinity start
++    protected transient int maxSize;
++    public void setSize(int size) {
++        if (this.maxSize < this.size) {
++            this.maxSize = this.size;
++        }
++        this.size = size;
++    }
++
++    public void completeReset() {
++        if (this.data != null) {
++            Arrays.fill(this.data, 0, Math.max(this.size, this.maxSize), null);
++        }
++        this.size = 0;
++        this.maxSize = 0;
++        if (this.iterPool != null) {
++            for (Iterator temp : this.iterPool) {
++                if (temp == null) {
++                    continue;
++                }
++                ((Itr)temp).valid = false;
++            }
++        }
++    }
++    // Tuinity end
++
+     @Override
+     public void clear() {
+         // Create new array to reset memory usage to initial capacity
