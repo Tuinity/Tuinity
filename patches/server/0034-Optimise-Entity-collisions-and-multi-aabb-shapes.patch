@@ -195,7 +195,7 @@ index be5f98c3c368cb046112dc488344bb529fc395c1..feec6c2e94edbb7e1198ccefcb03dbbe
          T t0 = this.h.a(this.a.a(i));
  
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 2f7c78e2b42600a5e4d57cf16af6811d6e8f162f..ad3835633d8803faef6f375183edee11355e401f 100644
+index 2f7c78e2b42600a5e4d57cf16af6811d6e8f162f..892d08b3441034bde10bbe288dcace0bc3b6796c 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -136,7 +136,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -216,7 +216,7 @@ index 2f7c78e2b42600a5e4d57cf16af6811d6e8f162f..ad3835633d8803faef6f375183edee11
  
              if (vec3d1.g() > 1.0E-7D) {
                  this.a(this.getBoundingBox().b(vec3d1));
-@@ -879,10 +879,111 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -879,10 +879,113 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return d0;
      }
  
@@ -298,7 +298,9 @@ index 2f7c78e2b42600a5e4d57cf16af6811d6e8f162f..ad3835633d8803faef6f375183edee11
 +
 +        Vec3D limitedMoveVector = Entity.performCollisions(moveVector, currBoundingBox, potentialCollisions);
 +
-+        if (this.getStepHeight() > 0.0F && (this.onGround || (limitedMoveVector.y != moveVector.y && moveVector.y < 0.0))) {
++        if (this.getStepHeight() > 0.0F
++                && (this.onGround || (limitedMoveVector.y != moveVector.y && moveVector.y < 0.0))
++                && (limitedMoveVector.x != moveVector.x || limitedMoveVector.z != moveVector.z)) {
 +            Vec3D vec3d2 = Entity.performCollisions(new Vec3D(moveVector.x, stepHeight, moveVector.z), currBoundingBox, potentialCollisions);
 +            Vec3D vec3d3 = Entity.performCollisions(new Vec3D(0.0, stepHeight, 0.0), currBoundingBox.expand(moveVector.x, 0.0, moveVector.z), potentialCollisions);
 +
@@ -329,7 +331,7 @@ index 2f7c78e2b42600a5e4d57cf16af6811d6e8f162f..ad3835633d8803faef6f375183edee11
          Stream<VoxelShape> stream1 = this.world.b(this, axisalignedbb.a(vec3d), (Set) ImmutableSet.of());
          StreamAccumulator<VoxelShape> streamaccumulator = new StreamAccumulator<>(Stream.concat(stream1, stream));
          Vec3D vec3d1 = vec3d.g() == 0.0D ? vec3d : a(this, vec3d, axisalignedbb, this.world, voxelshapecollision, streamaccumulator);
-@@ -911,6 +1012,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -911,6 +1014,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return vec3d1;
      }
  
@@ -337,7 +339,7 @@ index 2f7c78e2b42600a5e4d57cf16af6811d6e8f162f..ad3835633d8803faef6f375183edee11
      public static double b(Vec3D vec3d) {
          return vec3d.x * vec3d.x + vec3d.z * vec3d.z;
      }
-@@ -1175,8 +1277,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -1175,8 +1279,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
  
      public final AxisAlignedBB getCollisionBox(){return au();} //Paper - OBFHELPER
@@ -348,7 +350,7 @@ index 2f7c78e2b42600a5e4d57cf16af6811d6e8f162f..ad3835633d8803faef6f375183edee11
          return null;
      }
  
-@@ -2094,8 +2196,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -2094,8 +2198,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
  
      public final AxisAlignedBB getHardCollisionBox(Entity entity){ return j(entity);}//Paper - OBFHELPER
@@ -705,7 +707,7 @@ index 8b481eb6df1c017719392dd8ac885084c83c6b96..b6615a9502a5809758225deaa56ec0ef
          return this.i.d();
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..c59f57a02065cc805b43ef3b9404236017d00b49 100644
+index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..f34ab7ebe95313763fa727b32b7445c0c7ddd768 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -250,6 +250,342 @@ public class WorldServer extends World {
@@ -764,7 +766,7 @@ index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..c59f57a02065cc805b43ef3b94042360
 +
 +                int chunkXGlobalPos = currChunkX << 4;
 +                int chunkZGlobalPos = currChunkZ << 4;
-+                Chunk chunk = (Chunk)chunkProvider.getChunkAt(currChunkX, currChunkX, ChunkStatus.FULL, true);
++                Chunk chunk = (Chunk)chunkProvider.getChunkAt(currChunkX, currChunkZ, ChunkStatus.FULL, true);
 +
 +                if (chunk == null) {
 +                    return true;
@@ -926,7 +928,7 @@ index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..c59f57a02065cc805b43ef3b94042360
 +
 +                int chunkXGlobalPos = currChunkX << 4;
 +                int chunkZGlobalPos = currChunkZ << 4;
-+                Chunk chunk = (Chunk)chunkProvider.getChunkAt(currChunkX, currChunkX, ChunkStatus.FULL, true);
++                Chunk chunk = (Chunk)chunkProvider.getChunkAt(currChunkX, currChunkZ, ChunkStatus.FULL, true);
 +
 +                if (chunk == null) {
 +                    list.add(AxisAlignedBB.getBoxForChunk(currChunkX, currChunkZ));
