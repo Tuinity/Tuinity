@@ -7,25 +7,15 @@ We don't need a full chunk, just EMPTY (if it's already generated).
 This will prevent us from having to load its neighbours.
 
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index c904e22281cb99c90e09e5a4fd3241b450f17ab8..867381981686850b6b3b8696afe2f62af8eae1ef 100644
+index c904e22281cb99c90e09e5a4fd3241b450f17ab8..9d08a837e42c697145f380be713d80abdea5da9b 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -662,7 +662,17 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -662,7 +662,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          if (isOutsideWorld(blockposition)) {
              return Blocks.VOID_AIR.getBlockData();
          } else {
 -            Chunk chunk = this.getChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4);
-+            // Tuinity start
-+            int chunkX = blockposition.getX() >> 4;
-+            int chunkZ = blockposition.getZ() >> 4;
-+            IChunkAccess chunk = this.getChunkIfLoadedImmediately(chunkX, chunkZ);
-+            if (chunk == null) {
-+                chunk = this.getChunkAt(chunkX, chunkZ, ChunkStatus.EMPTY, true);
-+                if (chunk == null || chunk.getChunkStatus() != ChunkStatus.FULL) {
-+                    chunk = this.getChunkAt(chunkX, chunkZ, ChunkStatus.FULL, true);
-+                }
-+            }
-+            // Tuinity end
++            IChunkAccess chunk = ((ChunkProviderServer)this.chunkProvider).getFullStatusChunkAt(blockposition.getX() >> 4, blockposition.getZ() >> 4); // Tuinity
  
              return chunk.getType(blockposition);
          }

@@ -4,6 +4,32 @@ Date: Sat, 18 May 2019 12:25:19 -0700
 Subject: [PATCH] Util patch
 
 
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index 89017e002f4381ffdae1678349d674474088fb4f..02c6380741001ccab535d4e532130c9e299ff553 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -207,6 +207,21 @@ public class ChunkProviderServer extends IChunkProvider {
+     }
+     // Paper end - rewrite ticklistserver
+ 
++    // Tuinity start
++    // this will try to avoid chunk neighbours for lighting
++    public final IChunkAccess getFullStatusChunkAt(int chunkX, int chunkZ) {
++        Chunk ifLoaded = this.getChunkAtIfLoadedImmediately(chunkX, chunkZ);
++        if (ifLoaded != null) {
++            return ifLoaded;
++        }
++
++        IChunkAccess empty = this.getChunkAt(chunkX, chunkZ, ChunkStatus.EMPTY, true);
++        if (empty != null && empty.getChunkStatus() == ChunkStatus.FULL) {
++            return empty;
++        }
++        return this.getChunkAt(chunkX, chunkZ, ChunkStatus.FULL, true);
++    }
++    // Tuinity end
+ 
+     public ChunkProviderServer(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator<?> chunkgenerator, int i, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
+         this.world = worldserver;
 diff --git a/src/main/java/net/minecraft/server/HeightMap.java b/src/main/java/net/minecraft/server/HeightMap.java
 index 8a272ae1b800e31aab6431b647e5b349430b2634..aa73396100adbf741ed52f457284a78c73d658c3 100644
 --- a/src/main/java/net/minecraft/server/HeightMap.java
