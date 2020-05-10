@@ -1,4 +1,4 @@
-name: Pull Request builder
+name: Build PR
 
 on: [pull_request]
 
@@ -12,25 +12,30 @@ jobs:
         java: [11, 8]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v2.1.0
+
+    - name: Get PR info
+      run: echo ::set-env name=PR::$(echo $GITHUB_REF | awk 'BEGIN { FS = "/" } ; { print $3 }')
+
     - name: Set up JDK ${{ matrix.java }}
       uses: actions/setup-java@v1.3.0
       with:
         java-version: ${{ matrix.java }}
+
     - uses: actions/cache@v1.1.2
       with:
         path: ~/.m2/repository
         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-
+        restore-keys: ${{ runner.os }}-maven-
+
     - name: Patch Tuinity
       run: |
         git config --global user.email "you@example.com"
         git config --global user.name "Your Name"
         git submodule update --init --recursive
         ./tuinity jar
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v2-preview
+        
+    - uses: actions/upload-artifact@v2
       with:
-        name: Tuinity
+        name: Tuinity-PR${{ env.PR }}-JDK${{ matrix.java }}
         path: tuinity-paperclip.jar
