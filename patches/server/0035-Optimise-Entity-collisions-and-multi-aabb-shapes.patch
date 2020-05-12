@@ -733,10 +733,10 @@ index 535d08ffb1d20570b19307c8619cfd39b4541356..079a7319693cf2c7f94a718cdea75dea
          return this.i.d();
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..2481bff38a9f4371b5270b3341997456ff3a8a6f 100644
+index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..8ef095630c3f580ecd4f648a67565af1a67b858e 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -250,6 +250,342 @@ public class WorldServer extends World {
+@@ -250,6 +250,336 @@ public class WorldServer extends World {
          this.asyncChunkTaskManager = new com.destroystokyo.paper.io.chunk.ChunkTaskManager(this); // Paper
      }
  
@@ -752,13 +752,7 @@ index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..2481bff38a9f4371b5270b3341997456
 +        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
 +
 +        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
-+        if (minBlockY < 0) {
-+            minBlockY = 0;
-+        }
 +        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
-+        if (maxBlockY > 255) {
-+            maxBlockY = 255;
-+        }
 +
 +        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
 +        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
@@ -768,10 +762,13 @@ index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..2481bff38a9f4371b5270b3341997456
 +        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity); // TODO make this lazy
 +
 +        // special cases:
-+        if (maxBlockY < 0) {
++        if (minBlockY > 255 || maxBlockY < 0) {
 +            // no point in checking
-+            return true;
++            return false;
 +        }
++
++        int minYIterate = Math.max(0, minBlockY);
++        int maxYIterate = Math.min(255, maxBlockY);
 +
 +        int minChunkX = minBlockX >> 4;
 +        int maxChunkX = maxBlockX >> 4;
@@ -802,7 +799,7 @@ index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..2481bff38a9f4371b5270b3341997456
 +
 +                // bound y
 +
-+                for (int currY = minBlockY; currY <= maxBlockY; ++currY) {
++                for (int currY = minYIterate; currY <= maxYIterate; ++currY) {
 +                    ChunkSection section = sections[currY >>> 4];
 +                    if (section == null || section.isFullOfAir()) {
 +                        // empty
@@ -914,13 +911,7 @@ index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..2481bff38a9f4371b5270b3341997456
 +        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 1;
 +
 +        int minBlockY = MathHelper.floor(axisalignedbb.minY - 1.0E-7D) - 1;
-+        if (minBlockY < 0) {
-+            minBlockY = 0;
-+        }
 +        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + 1.0E-7D) + 1;
-+        if (maxBlockY > 255) {
-+            maxBlockY = 255;
-+        }
 +
 +        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 1;
 +        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 1;
@@ -930,10 +921,13 @@ index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..2481bff38a9f4371b5270b3341997456
 +        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity); // TODO make this lazy
 +
 +        // special cases:
-+        if (maxBlockY < 0) {
++        if (minBlockY > 255 || maxBlockY < 0) {
 +            // no point in checking
 +            return;
 +        }
++
++        int minYIterate = Math.max(0, minBlockY);
++        int maxYIterate = Math.min(255, maxBlockY);
 +
 +        int minChunkX = minBlockX >> 4;
 +        int maxChunkX = maxBlockX >> 4;
@@ -965,7 +959,7 @@ index 25c8e55b81b3023bc46f07fa3c35592f2d6ff1b0..2481bff38a9f4371b5270b3341997456
 +
 +                // bound y
 +
-+                for (int currY = minBlockY; currY <= maxBlockY; ++currY) {
++                for (int currY = minYIterate; currY <= maxYIterate; ++currY) {
 +                    ChunkSection section = sections[currY >>> 4];
 +                    if (section == null || section.isFullOfAir()) {
 +                        // empty
