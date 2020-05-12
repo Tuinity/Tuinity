@@ -38,7 +38,7 @@ index 67c377b6e1f3d1b887e4c1fc1c56565259df0ccf..5b1c323f7c75f4cd3a3d098814eea3a9
          double d3 = MathHelper.a(d0, -3.0E7D, 3.0E7D);
          double d4 = MathHelper.a(d2, -3.0E7D, 3.0E7D);
 diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
-index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e7346ffa1c16 100644
+index fa324898f8816f1f4eba22682d069756e3036d98..f5f6afef919d0a70c4999fbdee833783bf1ef31c 100644
 --- a/src/main/java/net/minecraft/server/PlayerConnection.java
 +++ b/src/main/java/net/minecraft/server/PlayerConnection.java
 @@ -82,19 +82,9 @@ public class PlayerConnection implements PacketListenerPlayIn {
@@ -102,17 +102,23 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
      public CraftPlayer getPlayer() {
          return (this.player == null) ? null : (CraftPlayer) this.player.getBukkitEntity();
      }
-@@ -157,7 +179,8 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -157,7 +179,14 @@ public class PlayerConnection implements PacketListenerPlayIn {
          this.player.lastY = this.player.locY();
          this.player.lastZ = this.player.locZ();
          this.player.playerTick();
 -        this.player.setLocation(this.l, this.m, this.n, this.player.yaw, this.player.pitch);
-+        this.setLastTickedClientPos(this.lastClientX, this.lastClientY, this.lastClientZ); // Tuinity
-+        this.player.setLocationAndBringRootVehicle(this.lastClientX, this.lastClientY, this.lastClientZ, this.player.yaw, this.player.pitch); // Tuinity
++        // Tuinity start
++        if (this.hasLastClientBeenSet) {
++            this.setLastTickedClientPos(this.lastClientX, this.lastClientY, this.lastClientZ);
++            this.player.setLocationAndBringRootVehicle(this.lastClientX, this.lastClientY, this.lastClientZ, this.player.yaw, this.player.pitch);
++        } else {
++            this.player.setLocationAndBringRootVehicle(this.player.locX(), this.player.locY(), this.player.locZ(), this.player.yaw, this.player.pitch);
++        }
++        // Tuinity end
          ++this.e;
          this.processedMovePackets = this.receivedMovePackets;
          if (this.B && !this.player.isSleeping()) { // Paper - #3176 Allow sleeping players to float
-@@ -173,12 +196,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -173,12 +202,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
  
          this.r = this.player.getRootVehicle();
          if (this.r != this.player && this.r.getRidingPassenger() == this.player) {
@@ -126,7 +132,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
              if (this.D && this.player.getRootVehicle().getRidingPassenger() == this.player) {
                  if (++this.E > 80) {
                      PlayerConnection.LOGGER.warn("{} was kicked for floating a vehicle too long!", this.player.getDisplayName().getString());
-@@ -240,12 +258,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -240,12 +264,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
      }
  
      public void syncPosition() {
@@ -140,7 +146,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
      }
  
      @Override
-@@ -323,20 +336,30 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -323,20 +342,30 @@ public class PlayerConnection implements PacketListenerPlayIn {
  
              if (entity != this.player && entity.getRidingPassenger() == this.player && entity == this.r) {
                  WorldServer worldserver = this.player.getWorldServer();
@@ -181,7 +187,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
  
                  // CraftBukkit start - handle custom speeds and skipped ticks
                  this.allowedPlayerTicks += (System.currentTimeMillis() / 50) - this.lastTick;
-@@ -377,11 +400,25 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -377,11 +406,25 @@ public class PlayerConnection implements PacketListenerPlayIn {
                      return;
                  }
  
@@ -212,7 +218,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
                  entity.move(EnumMoveType.PLAYER, new Vec3D(d6, d7, d8));
                  double d11 = d7;
  
-@@ -393,22 +430,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -393,22 +436,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
  
                  d8 = d5 - entity.locZ();
                  d10 = d6 * d6 + d7 * d7 + d8 * d8;
@@ -243,7 +249,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
                      return;
                  }
  
-@@ -482,9 +515,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -482,9 +521,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                  this.player.getWorldServer().getChunkProvider().movePlayer(this.player);
                  this.player.checkMovement(this.player.locX() - d0, this.player.locY() - d1, this.player.locZ() - d2);
                  this.D = d11 >= -0.03125D && !this.minecraftServer.getAllowFlight() && !worldserver.b(entity.getBoundingBox().g(0.0625D).b(0.0D, -0.55D, 0.0D));
@@ -254,7 +260,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
              }
  
          }
-@@ -494,15 +525,15 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -494,15 +531,15 @@ public class PlayerConnection implements PacketListenerPlayIn {
      public void a(PacketPlayInTeleportAccept packetplayinteleportaccept) {
          PlayerConnectionUtils.ensureMainThread(packetplayinteleportaccept, this, this.player.getWorldServer());
          if (packetplayinteleportaccept.b() == this.teleportAwait && this.teleportPos != null) { // CraftBukkit
@@ -274,7 +280,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
              this.teleportPos = null;
              this.player.getWorldServer().getChunkProvider().movePlayer(this.player); // CraftBukkit
          }
-@@ -950,12 +981,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -950,12 +987,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
                  }
  
                  if (this.teleportPos != null) {
@@ -294,7 +300,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
                      this.A = this.e;
                      if (this.player.isPassenger()) {
                          this.player.setLocation(this.player.locX(), this.player.locY(), this.player.locZ(), packetplayinflying.a(this.player.yaw), packetplayinflying.b(this.player.pitch));
-@@ -974,13 +1011,15 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -974,13 +1017,15 @@ public class PlayerConnection implements PacketListenerPlayIn {
                          double d2 = this.player.locZ();
                          double d3 = this.player.locY();
                          double d4 = packetplayinflying.a(this.player.locX());double toX = d4; // Paper - OBFHELPER
@@ -314,7 +320,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
                          double d10 = this.player.getMot().g();
                          double d11 = d7 * d7 + d8 * d8 + d9 * d9;
  
-@@ -1032,11 +1071,13 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1032,11 +1077,13 @@ public class PlayerConnection implements PacketListenerPlayIn {
                                  }
                              }
  
@@ -332,7 +338,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
                              if (d8 > 0.0D) {
                                  this.player.fallDistance = 0.0F;
                              }
-@@ -1072,7 +1113,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1072,7 +1119,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
                                  // Paper end
                              }
  
@@ -352,7 +358,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
                              this.player.onGround = packetplayinflying.b();
                              double d12 = d8;
  
-@@ -1084,23 +1136,16 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1084,23 +1142,16 @@ public class PlayerConnection implements PacketListenerPlayIn {
  
                              d9 = d6 - this.player.locZ();
                              d11 = d7 * d7 + d8 * d8 + d9 * d9;
@@ -383,7 +389,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
  
                              // CraftBukkit start - fire PlayerMoveEvent
                              // Rest to old location first
-@@ -1170,9 +1215,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1170,9 +1221,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                              this.player.onGround = packetplayinflying.b();
                              this.player.getWorldServer().getChunkProvider().movePlayer(this.player);
                              this.player.a(this.player.locY() - d3, packetplayinflying.b());
@@ -394,7 +400,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
                          }
                      }
                  }
-@@ -1184,6 +1227,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1184,6 +1233,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
          return iworldreader.getCubes(this.player, this.player.getBoundingBox().shrink(9.999999747378752E-6D));
      }
  
@@ -402,7 +408,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..8c8ba48f97014b4453f4af4f79b4e734
      public void a(double d0, double d1, double d2, float f, float f1) {
          this.a(d0, d1, d2, f, f1, Collections.<PacketPlayOutPosition.EnumPlayerTeleportFlags>emptySet());
      }
-@@ -1240,6 +1284,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1240,6 +1290,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
              LOGGER.info("Attempt to teleport dead player {} restricted", player.getName());
              return;
          }
