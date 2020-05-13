@@ -74,10 +74,10 @@ index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b
          int ret = 0;
  
 diff --git a/src/main/java/com/tuinity/tuinity/util/TickThread.java b/src/main/java/com/tuinity/tuinity/util/TickThread.java
-index 033548a58d27f64d3954206d267783c0437d4019..d5688a734e742567c9f9a44c43538f3c4b7c2f3d 100644
+index 033548a58d27f64d3954206d267783c0437d4019..08ed243259f052165c6f75aed1d1d65a14219715 100644
 --- a/src/main/java/com/tuinity/tuinity/util/TickThread.java
 +++ b/src/main/java/com/tuinity/tuinity/util/TickThread.java
-@@ -1,7 +1,32 @@
+@@ -1,7 +1,33 @@
  package com.tuinity.tuinity.util;
  
 +import net.minecraft.server.MinecraftServer;
@@ -103,6 +103,7 @@ index 033548a58d27f64d3954206d267783c0437d4019..d5688a734e742567c9f9a44c43538f3c
 +
 +    public static void ensureTickThread(final String reason) {
 +        if (!Bukkit.isPrimaryThread()) {
++            MinecraftServer.LOGGER.fatal("Thread " + Thread.currentThread().getName() + " failed main thread check: " + reason, new Throwable());
 +            throw new IllegalStateException(reason);
 +        }
 +    }
@@ -155,7 +156,7 @@ index 8c1f3290d23795b58a30274c9437dc7dc43fa3a1..f6c5b707521e95e2c44a4e593917bcc6
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 942efe62fe5cefd6373ea568c7a62c524d536771..aba0fed95e6235deb627f6d8e97dcacdb598e1e5 100644
+index 942efe62fe5cefd6373ea568c7a62c524d536771..b9030c5f7e41770b42503effe6d0b226d9be0e6e 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -55,6 +55,7 @@ public abstract class ChunkMapDistance {
@@ -166,7 +167,15 @@ index 942efe62fe5cefd6373ea568c7a62c524d536771..aba0fed95e6235deb627f6d8e97dcacd
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
-@@ -138,6 +139,7 @@ public abstract class ChunkMapDistance {
+@@ -87,6 +88,7 @@ public abstract class ChunkMapDistance {
+     protected abstract PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k);
+ 
+     public boolean a(PlayerChunkMap playerchunkmap) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot tick ChunkMapDistance off of the main-thread");// Tuinity
+         //this.f.a(); // Paper - no longer used
+         this.g.a();
+         int i = Integer.MAX_VALUE - this.e.a(Integer.MAX_VALUE);
+@@ -138,6 +140,7 @@ public abstract class ChunkMapDistance {
      }
  
      private boolean addTicket(long i, Ticket<?> ticket) { // CraftBukkit - void -> boolean
@@ -174,7 +183,7 @@ index 942efe62fe5cefd6373ea568c7a62c524d536771..aba0fed95e6235deb627f6d8e97dcacd
          ArraySetSorted<Ticket<?>> arraysetsorted = this.e(i);
          int j = a(arraysetsorted);
          Ticket<?> ticket1 = (Ticket) arraysetsorted.a(ticket); // CraftBukkit - decompile error
-@@ -151,6 +153,7 @@ public abstract class ChunkMapDistance {
+@@ -151,6 +154,7 @@ public abstract class ChunkMapDistance {
      }
  
      private boolean removeTicket(long i, Ticket<?> ticket) { // CraftBukkit - void -> boolean
@@ -182,7 +191,7 @@ index 942efe62fe5cefd6373ea568c7a62c524d536771..aba0fed95e6235deb627f6d8e97dcacd
          ArraySetSorted<Ticket<?>> arraysetsorted = this.e(i);
  
          boolean removed = false; // CraftBukkit
-@@ -199,6 +202,7 @@ public abstract class ChunkMapDistance {
+@@ -199,6 +203,7 @@ public abstract class ChunkMapDistance {
      }
  
      private ArraySetSorted<Ticket<?>> e(long i) {
@@ -190,7 +199,7 @@ index 942efe62fe5cefd6373ea568c7a62c524d536771..aba0fed95e6235deb627f6d8e97dcacd
          return (ArraySetSorted) this.tickets.computeIfAbsent(i, (j) -> {
              return ArraySetSorted.a(4);
          });
-@@ -216,6 +220,7 @@ public abstract class ChunkMapDistance {
+@@ -216,6 +221,7 @@ public abstract class ChunkMapDistance {
      }
  
      public void a(SectionPosition sectionposition, EntityPlayer entityplayer) {
@@ -198,7 +207,7 @@ index 942efe62fe5cefd6373ea568c7a62c524d536771..aba0fed95e6235deb627f6d8e97dcacd
          long i = sectionposition.u().pair();
  
          ((ObjectSet) this.c.computeIfAbsent(i, (j) -> {
-@@ -226,6 +231,7 @@ public abstract class ChunkMapDistance {
+@@ -226,6 +232,7 @@ public abstract class ChunkMapDistance {
      }
  
      public void b(SectionPosition sectionposition, EntityPlayer entityplayer) {
@@ -206,7 +215,7 @@ index 942efe62fe5cefd6373ea568c7a62c524d536771..aba0fed95e6235deb627f6d8e97dcacd
          long i = sectionposition.u().pair();
          ObjectSet<EntityPlayer> objectset = (ObjectSet) this.c.get(i);
          if (objectset == null) return; // Paper - mitigate weird state mismatch that this chunk isn't tracked.
-@@ -276,6 +282,7 @@ public abstract class ChunkMapDistance {
+@@ -276,6 +283,7 @@ public abstract class ChunkMapDistance {
  
      // CraftBukkit start
      public <T> void removeAllTicketsFor(TicketType<T> ticketType, int ticketLevel, T ticketIdentifier) {
@@ -214,6 +223,18 @@ index 942efe62fe5cefd6373ea568c7a62c524d536771..aba0fed95e6235deb627f6d8e97dcacd
          Ticket<T> target = new Ticket<>(ticketType, ticketLevel, ticketIdentifier);
  
          for (java.util.Iterator<Entry<ArraySetSorted<Ticket<?>>>> iterator = this.tickets.long2ObjectEntrySet().fastIterator(); iterator.hasNext();) {
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index 9e625bef273305ffc2ae5369290c9dc556f5432d..48f2ebfca1977b8f89e8268fc229cf9284e9f5ab 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -1078,6 +1078,7 @@ public class ChunkProviderServer extends IChunkProvider {
+ 
+         @Override
+         protected boolean executeNext() {
++            com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot execute chunk tasks off-main thread");// Tuinity
+         // CraftBukkit start - process pending Chunk loadCallback() and unloadCallback() after each run task
+         try {
+             boolean execChunkTask = com.destroystokyo.paper.io.chunk.ChunkTaskManager.pollChunkWaitQueue() || ChunkProviderServer.this.world.asyncChunkTaskManager.pollNextChunkTask(); // Paper
 diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
 index 6d3b34ead9cc95dcc1152dffa8c6c4a8c7f1d58b..64fc0e24ad2f935feaf9da77b68f47150436c27e 100644
 --- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
@@ -227,10 +248,34 @@ index 6d3b34ead9cc95dcc1152dffa8c6c4a8c7f1d58b..64fc0e24ad2f935feaf9da77b68f4715
  
          if (!list.equals(this.p)) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 81bb26abc520f49de2e916cf2757ac4c710d02cd..2cb362ab44fbbd6bf2a4ed8dee6136e6306ab5e7 100644
+index 81bb26abc520f49de2e916cf2757ac4c710d02cd..16a18869a518b8c1b7ab54cac5b03d9a9380d54f 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -578,6 +578,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -162,6 +162,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     // Paper end - no-tick view distance
+ 
+     void addPlayerToDistanceMaps(EntityPlayer player) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot update distance maps off of the main thread"); // Tuinity
+         int chunkX = MCUtil.getChunkCoordinate(player.locX());
+         int chunkZ = MCUtil.getChunkCoordinate(player.locZ());
+         // Note: players need to be explicitly added to distance maps before they can be updated
+@@ -192,6 +193,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     }
+ 
+     void removePlayerFromDistanceMaps(EntityPlayer player) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot update distance maps off of the main thread"); // Tuinity
+         // Paper start - use distance map to optimise tracker
+         for (int i = 0, len = TRACKING_RANGE_TYPES.length; i < len; ++i) {
+             this.playerEntityTrackerTrackMaps[i].remove(player);
+@@ -209,6 +211,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     }
+ 
+     void updateMaps(EntityPlayer player) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot update distance maps off of the main thread"); // Tuinity
+         int chunkX = MCUtil.getChunkCoordinate(player.locX());
+         int chunkZ = MCUtil.getChunkCoordinate(player.locZ());
+         // Note: players need to be explicitly added to distance maps before they can be updated
+@@ -578,6 +581,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      @Nullable
      private PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k) {
@@ -238,6 +283,30 @@ index 81bb26abc520f49de2e916cf2757ac4c710d02cd..2cb362ab44fbbd6bf2a4ed8dee6136e6
          if (k > PlayerChunkMap.GOLDEN_TICKET && j > PlayerChunkMap.GOLDEN_TICKET) {
              return playerchunk;
          } else {
+@@ -878,6 +882,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     }
+ 
+     protected boolean b() {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot update visibleChunks off of the main thread"); // Tuinity
+         if (!this.updatingChunksModified) {
+             return false;
+         } else {
+@@ -1308,6 +1313,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     }
+ 
+     public final void setViewDistance(int i) { // Paper - public
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot update view distance off of the main thread"); // Tuinity
+         int j = MathHelper.clamp(i + 1, 3, 33); // Paper - diff on change, these make the lower view distance limit 2 and the upper 32
+ 
+         if (j != this.viewDistance) {
+@@ -1333,6 +1339,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+     // Paper start - no-tick view distance
+     public final void setNoTickViewDistance(int viewDistance) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot update view distance off of the main thread"); // Tuinity
+         viewDistance = viewDistance == -1 ? -1 : MathHelper.clamp(viewDistance, 2, 32);
+         if (viewDistance == this.noTickViewDistance && viewDistance != -1) {
+             return;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
 index 5e6618eea67dcb6a023fd84370cf00bf84795694..c904e22281cb99c90e09e5a4fd3241b450f17ab8 100644
 --- a/src/main/java/net/minecraft/server/World.java
