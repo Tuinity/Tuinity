@@ -106,7 +106,7 @@ done
 #
 #             # group    # lib          # prefix               # many files
 
-importLibrary com.mojang datafixerupper com/mojang/datafixers/util Either.java
+#importLibrary com.mojang datafixerupper com/mojang/datafixers/util Either.java
 
 ################
 (
