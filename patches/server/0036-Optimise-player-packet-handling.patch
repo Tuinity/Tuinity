@@ -10,10 +10,10 @@ one set of variables, so we shouldn't be seeing any more large
 mov vecs.
 
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 67c377b6e1f3d1b887e4c1fc1c56565259df0ccf..1f6a3f6dedd6667f8c698b2d39af3a42d88b474c 100644
+index 4f76007110635e043a1535f0df443d608ba6b23c..5206ed27c6aeed46bac48dde42cbea5a7f980e9c 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -1548,6 +1548,20 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -1562,6 +1562,20 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          this.world = world;
      }
  
@@ -34,6 +34,21 @@ index 67c377b6e1f3d1b887e4c1fc1c56565259df0ccf..1f6a3f6dedd6667f8c698b2d39af3a42
      public void setLocation(double d0, double d1, double d2, float f, float f1) {
          double d3 = MathHelper.a(d0, -3.0E7D, 3.0E7D);
          double d4 = MathHelper.a(d2, -3.0E7D, 3.0E7D);
+@@ -3618,6 +3632,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return this.f((2.0D * this.random.nextDouble() - 1.0D) * d0);
+     }
+ 
++    // Tuinity start
++    public final AxisAlignedBB getBoundingBoxAt(double x, double y, double z) {
++        double widthHalf = (double)this.size.width / 2.0;
++        double height = (double)this.size.height;
++        return new AxisAlignedBB(x - widthHalf, y, z - widthHalf, x + widthHalf, y + height, z + widthHalf);
++    }
++    // Tuinity end
++
+     public void setPositionRaw(double d0, double d1, double d2) {
+         // Paper start - never allow AABB to become desynced from position
+         // hanging has its own special logic
 diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
 index d421e03c809a90a2d6f082d20ff7e5ce504bff92..0ee17e602946d30275082c0730e143c68f122b38 100644
 --- a/src/main/java/net/minecraft/server/EntityPlayer.java
@@ -91,7 +106,7 @@ index d421e03c809a90a2d6f082d20ff7e5ce504bff92..0ee17e602946d30275082c0730e143c6
          }
  
 diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
-index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6fb6a1f61 100644
+index fa324898f8816f1f4eba22682d069756e3036d98..22ac46cb9a6ccf7a28acdad5b35fea27d3390553 100644
 --- a/src/main/java/net/minecraft/server/PlayerConnection.java
 +++ b/src/main/java/net/minecraft/server/PlayerConnection.java
 @@ -82,19 +82,9 @@ public class PlayerConnection implements PacketListenerPlayIn {
@@ -240,7 +255,25 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
  
                  // CraftBukkit start - handle custom speeds and skipped ticks
                  this.allowedPlayerTicks += (System.currentTimeMillis() / 50) - this.lastTick;
-@@ -377,11 +406,25 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -364,8 +393,10 @@ public class PlayerConnection implements PacketListenerPlayIn {
+                 speed *= 2f; // TODO: Get the speed of the vehicle instead of the player
+ 
+                 // Paper start - Prevent moving into unloaded chunks
+-                if (player.world.paperConfig.preventMovingIntoUnloadedChunks && worldserver.getChunkIfLoadedImmediately((int) Math.floor(packetplayinvehiclemove.getX()) >> 4, (int) Math.floor(packetplayinvehiclemove.getZ()) >> 4) == null) {
+-                    this.networkManager.sendPacket(new PacketPlayOutVehicleMove(entity));
++                if (player.world.paperConfig.preventMovingIntoUnloadedChunks // Tuinity - improve this check
++                        && (!worldserver.areChunksLoadedForMove(this.player.getBoundingBoxAt(this.lastClientX, this.lastClientY, this.lastClientZ).expand(toX - this.lastClientX, toY - this.lastClientY, toZ - this.lastClientZ)) // Tuinity - improve this check
++                        || !worldserver.areChunksLoadedForMove(entity.getBoundingBoxAt(this.lastClientX, this.lastClientY, this.lastClientZ).expand(toX - this.lastClientX, toY - this.lastClientY, toZ - this.lastClientZ)))) { // Tuinity - improve this check
++                    this.networkManager.sendPacket(new PacketPlayOutVehicleMove(entity)); this.teleport(fromX, fromY, fromZ, this.player.yaw, this.player.pitch); // Tuinity
+                     return;
+                 }
+                 // Paper end
+@@ -373,15 +404,29 @@ public class PlayerConnection implements PacketListenerPlayIn {
+                 if (d10 - d9 > Math.max(100.0D, Math.pow((double) (org.spigotmc.SpigotConfig.movedTooQuicklyMultiplier * (float) i * speed), 2)) && !this.isExemptPlayer()) {
+                 // CraftBukkit end
+                     PlayerConnection.LOGGER.warn("{} (vehicle of {}) moved too quickly! {},{},{}", entity.getDisplayName().getString(), this.player.getDisplayName().getString(), d6, d7, d8);
+-                    this.networkManager.sendPacket(new PacketPlayOutVehicleMove(entity));
++                    this.networkManager.sendPacket(new PacketPlayOutVehicleMove(entity)); this.teleport(fromX, fromY, fromZ, this.player.yaw, this.player.pitch); // Tuinity
                      return;
                  }
  
@@ -271,7 +304,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
                  entity.move(EnumMoveType.PLAYER, new Vec3D(d6, d7, d8));
                  double d11 = d7;
  
-@@ -393,22 +436,19 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -393,22 +438,19 @@ public class PlayerConnection implements PacketListenerPlayIn {
  
                  d8 = d5 - entity.locZ();
                  d10 = d6 * d6 + d7 * d7 + d8 * d8;
@@ -303,7 +336,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
                      return;
                  }
  
-@@ -482,9 +522,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -482,9 +524,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                  this.player.getWorldServer().getChunkProvider().movePlayer(this.player);
                  this.player.checkMovement(this.player.locX() - d0, this.player.locY() - d1, this.player.locZ() - d2);
                  this.D = d11 >= -0.03125D && !this.minecraftServer.getAllowFlight() && !worldserver.b(entity.getBoundingBox().g(0.0625D).b(0.0D, -0.55D, 0.0D));
@@ -314,7 +347,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
              }
  
          }
-@@ -494,15 +532,15 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -494,15 +534,15 @@ public class PlayerConnection implements PacketListenerPlayIn {
      public void a(PacketPlayInTeleportAccept packetplayinteleportaccept) {
          PlayerConnectionUtils.ensureMainThread(packetplayinteleportaccept, this, this.player.getWorldServer());
          if (packetplayinteleportaccept.b() == this.teleportAwait && this.teleportPos != null) { // CraftBukkit
@@ -334,7 +367,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
              this.teleportPos = null;
              this.player.getWorldServer().getChunkProvider().movePlayer(this.player); // CraftBukkit
          }
-@@ -950,12 +988,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -950,12 +990,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
                  }
  
                  if (this.teleportPos != null) {
@@ -354,7 +387,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
                      this.A = this.e;
                      if (this.player.isPassenger()) {
                          this.player.setLocation(this.player.locX(), this.player.locY(), this.player.locZ(), packetplayinflying.a(this.player.yaw), packetplayinflying.b(this.player.pitch));
-@@ -974,13 +1018,15 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -974,13 +1020,15 @@ public class PlayerConnection implements PacketListenerPlayIn {
                          double d2 = this.player.locZ();
                          double d3 = this.player.locY();
                          double d4 = packetplayinflying.a(this.player.locX());double toX = d4; // Paper - OBFHELPER
@@ -374,7 +407,16 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
                          double d10 = this.player.getMot().g();
                          double d11 = d7 * d7 + d8 * d8 + d9 * d9;
  
-@@ -1032,11 +1078,13 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1015,7 +1063,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+                                 speed = player.abilities.walkSpeed * 10f;
+                             }
+                             // Paper start - Prevent moving into unloaded chunks
+-                            if (player.world.paperConfig.preventMovingIntoUnloadedChunks && (this.player.locX() != toX || this.player.locZ() != toZ) && worldserver.getChunkIfLoadedImmediately((int) Math.floor(toX) >> 4, (int) Math.floor(toZ) >> 4) == null) { // Paper - use getIfLoadedImmediately
++                            if (player.world.paperConfig.preventMovingIntoUnloadedChunks && !worldserver.areChunksLoadedForMove(this.player.getBoundingBoxAt(this.lastClientX, this.lastClientY, this.lastClientZ).expand(toX - this.lastClientX, toY - this.lastClientY, toZ - this.lastClientZ))) { // Paper - use getIfLoadedImmediately // Tuinity - improve this check
+                                 this.internalTeleport(this.player.locX(), this.player.locY(), this.player.locZ(), this.player.yaw, this.player.pitch, Collections.emptySet());
+                                 return;
+                             }
+@@ -1032,11 +1080,13 @@ public class PlayerConnection implements PacketListenerPlayIn {
                                  }
                              }
  
@@ -392,7 +434,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
                              if (d8 > 0.0D) {
                                  this.player.fallDistance = 0.0F;
                              }
-@@ -1072,7 +1120,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1072,7 +1122,18 @@ public class PlayerConnection implements PacketListenerPlayIn {
                                  // Paper end
                              }
  
@@ -412,7 +454,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
                              this.player.onGround = packetplayinflying.b();
                              double d12 = d8;
  
-@@ -1084,23 +1143,16 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1084,23 +1145,16 @@ public class PlayerConnection implements PacketListenerPlayIn {
  
                              d9 = d6 - this.player.locZ();
                              d11 = d7 * d7 + d8 * d8 + d9 * d9;
@@ -443,7 +485,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
  
                              // CraftBukkit start - fire PlayerMoveEvent
                              // Rest to old location first
-@@ -1170,9 +1222,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1170,9 +1224,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                              this.player.onGround = packetplayinflying.b();
                              this.player.getWorldServer().getChunkProvider().movePlayer(this.player);
                              this.player.a(this.player.locY() - d3, packetplayinflying.b());
@@ -454,7 +496,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
                          }
                      }
                  }
-@@ -1184,6 +1234,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1184,6 +1236,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
          return iworldreader.getCubes(this.player, this.player.getBoundingBox().shrink(9.999999747378752E-6D));
      }
  
@@ -462,7 +504,7 @@ index fa324898f8816f1f4eba22682d069756e3036d98..cc0996445e1b076f731201c38e14fbe6
      public void a(double d0, double d1, double d2, float f, float f1) {
          this.a(d0, d1, d2, f, f1, Collections.<PacketPlayOutPosition.EnumPlayerTeleportFlags>emptySet());
      }
-@@ -1240,6 +1291,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1240,6 +1293,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
              LOGGER.info("Attempt to teleport dead player {} restricted", player.getName());
              return;
          }
@@ -483,3 +525,45 @@ index d1533a8265b4704f5d8abe28cfa94e71d921af39..c05dc9e17e7790a3b2e632d47a0e72cb
          entityplayer1.copyFrom(entityplayer, flag);
          entityplayer1.e(entityplayer.getId());
          entityplayer1.a(entityplayer.getMainHand());
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index 75af99c2eb800504e1a7dda39dd47916e0492028..4db6ae2133cc52d5c0a10c9dfd93b192f2f58bdf 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -584,6 +584,37 @@ public class WorldServer extends World {
+     }
+     // Tuinity end - optimise collision
+ 
++    // Tuinity start
++    public boolean areChunksLoadedForMove(AxisAlignedBB axisalignedbb) {
++        // copied code from collision methods, so that we can guarantee that they wont load chunks (we don't override
++        // ICollisionAccess methods for VoxelShapes)
++        // be more strict too, add a block (dumb plugins in move events?)
++        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 3;
++        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 3;
++
++        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 3;
++        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 3;
++
++        int minChunkX = minBlockX >> 4;
++        int maxChunkX = maxBlockX >> 4;
++
++        int minChunkZ = minBlockZ >> 4;
++        int maxChunkZ = maxBlockZ >> 4;
++
++        ChunkProviderServer chunkProvider = this.getChunkProvider();
++
++        for (int cx = minChunkX; cx <= maxChunkX; ++cx) {
++            for (int cz = minChunkZ; cz <= maxChunkZ; ++cz) {
++                if (chunkProvider.getChunkAtIfLoadedImmediately(cx, cz) == null) {
++                    return false;
++                }
++            }
++        }
++
++        return true;
++    }
++    // Tuinity end
++
+     // CraftBukkit start
+     @Override
+     protected TileEntity getTileEntity(BlockPosition pos, boolean validate) {

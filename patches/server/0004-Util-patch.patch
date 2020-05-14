@@ -5,10 +5,10 @@ Subject: [PATCH] Util patch
 
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index ac06bc95adb9c0b716a158767b77e1bb93cfbd7f..9e625bef273305ffc2ae5369290c9dc556f5432d 100644
+index ac06bc95adb9c0b716a158767b77e1bb93cfbd7f..e4f22725b3a91f259a810ecc8525caef7939cd60 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -207,6 +207,21 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -207,6 +207,35 @@ public class ChunkProviderServer extends IChunkProvider {
      }
      // Paper end - rewrite ticklistserver
  
@@ -26,6 +26,20 @@ index ac06bc95adb9c0b716a158767b77e1bb93cfbd7f..9e625bef273305ffc2ae5369290c9dc5
 +        }
 +        return this.getChunkAt(chunkX, chunkZ, ChunkStatus.FULL, true);
 +    }
++
++    public final IChunkAccess getFullStatusChunkAtIfLoaded(int chunkX, int chunkZ) {
++        Chunk ifLoaded = this.getChunkAtIfLoadedImmediately(chunkX, chunkZ);
++        if (ifLoaded != null) {
++            return ifLoaded;
++        }
++
++        IChunkAccess ret = this.getChunkAtImmediately(chunkX, chunkZ);
++        if (ret != null && ret.getChunkStatus() == ChunkStatus.FULL) {
++            return ret;
++        } else {
++            return null;
++        }
++     }
 +    // Tuinity end
  
      public ChunkProviderServer(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator<?> chunkgenerator, int i, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
