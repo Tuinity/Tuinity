@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 18 May 2020 01:35:50 -0700
+Subject: [PATCH] Fix paper's incorrect impl of getChunkAtAsynchronously
+
+
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index 87718cd12c002383c6b80a4b602c4e39444223ad..a224ee363a1daa60e366a048e97b47657fec4da2 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -467,7 +467,7 @@ public class ChunkProviderServer extends IChunkProvider {
+             return future;
+         }
+ 
+-        if (!com.destroystokyo.paper.PaperConfig.asyncChunks) {
++        if (false && !com.destroystokyo.paper.PaperConfig.asyncChunks) { // Tuinity - logic below is handles gen incorrectly
+             Chunk chunk = getChunkAt(x, z, gen);
+             return CompletableFuture.completedFuture(chunk != null ? Either.left(chunk) : PlayerChunk.UNLOADED_CHUNK_ACCESS);
+         }
+@@ -507,7 +507,7 @@ public class ChunkProviderServer extends IChunkProvider {
+         IChunkAccess current = this.getChunkAtImmediately(x, z); // we want to bypass ticket restrictions
+         if (current != null) {
+             if (!(current instanceof ProtoChunkExtension) && !(current instanceof net.minecraft.server.Chunk)) {
+-                return CompletableFuture.completedFuture(Either.left(null));
++                return PlayerChunk.UNLOADED_CHUNK_ACCESS_FUTURE; // Tuinity - can't have a null optional...
+             }
+             // we know the chunk is at full status here (either in read-only mode or the real thing)
+             return this.bringToFullStatusAsync(x, z, chunkPos, isUrgent);
