@@ -5,7 +5,7 @@ Subject: [PATCH] Util patch
 
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 8ca6adbac2d2e43bf597c405134c1c5c1b430e63..e4e8f311f7982b1dcad770cce2fd1bef9d0608f5 100644
+index 8ca6adbac2d2e43bf597c405134c1c5c1b430e63..9a4d092402a058949c7d099909ed5f8ab07824fd 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -118,7 +118,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -17,7 +17,7 @@ index 8ca6adbac2d2e43bf597c405134c1c5c1b430e63..e4e8f311f7982b1dcad770cce2fd1bef
  
      public void getEntityTickingChunkAsync(int x, int z, java.util.function.Consumer<Chunk> onLoad) {
          if (Thread.currentThread() != this.serverThread) {
-@@ -207,6 +207,148 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -207,6 +207,149 @@ public class ChunkProviderServer extends IChunkProvider {
      }
      // Paper end - rewrite ticklistserver
  
@@ -41,8 +41,9 @@ index 8ca6adbac2d2e43bf597c405134c1c5c1b430e63..e4e8f311f7982b1dcad770cce2fd1bef
 +        this.getChunkAtAsynchronously(chunkX, chunkZ, ticketLevel, (PlayerChunk playerChunk) -> {
 +            if (ticketLevel <= 33) {
 +                return (CompletableFuture)playerChunk.getFullChunkFuture();
++            } else {
++                return playerChunk.getOrCreateFuture(PlayerChunk.getChunkStatus(ticketLevel), ChunkProviderServer.this.playerChunkMap);
 +            }
-+            return playerChunk.getStatusFutureUnchecked(PlayerChunk.getChunkStatus(ticketLevel));
 +        }, consumer);
 +    }
 +
@@ -197,11 +198,23 @@ index 8a272ae1b800e31aab6431b647e5b349430b2634..aa73396100adbf741ed52f457284a78c
      public int a(int i, int j) {
          return this.a(c(i, j));
      }
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index d0085b7459293e3e3460cfda34c67bda6e7bc324..5fa4c40bda0953086c2de6befb27fee026f1f134 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -483,6 +483,7 @@ public class PlayerChunk {
+         // Paper end - per player view distance
+     }
+ 
++    public final CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getOrCreateFuture(ChunkStatus chunkstatus, PlayerChunkMap playerchunkmap) { return this.a(chunkstatus, playerchunkmap); } // Tuinity - OBFHELPER
+     public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> a(ChunkStatus chunkstatus, PlayerChunkMap playerchunkmap) {
+         int i = chunkstatus.c();
+         CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 9e32e2db10f5faaa3c5f4adc5cbc2c1a2e4d3073..236fb64678926a9c24c37c981296cfd78976c9bd 100644
+index 9e32e2db10f5faaa3c5f4adc5cbc2c1a2e4d3073..9efd87d161374304e459cb1c36404782c7e51c20 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -189,6 +189,112 @@ public class WorldServer extends World {
+@@ -189,6 +189,115 @@ public class WorldServer extends World {
      }
      // Paper end - rewrite ticklistserver
  
@@ -257,7 +270,7 @@ index 9e32e2db10f5faaa3c5f4adc5cbc2c1a2e4d3073..236fb64678926a9c24c37c981296cfd7
 +        }
 +    }
 +
-+    public final void loadChunksForMoveAsync(AxisAlignedBB axisalignedbb,
++    public final void loadChunksForMoveAsync(AxisAlignedBB axisalignedbb, double toX, double toZ,
 +                                             java.util.function.Consumer<List<IChunkAccess>> onLoad) {
 +        List<IChunkAccess> ret = new java.util.ArrayList<>();
 +        it.unimi.dsi.fastutil.ints.IntArrayList ticketLevels = new it.unimi.dsi.fastutil.ints.IntArrayList();
@@ -276,7 +289,7 @@ index 9e32e2db10f5faaa3c5f4adc5cbc2c1a2e4d3073..236fb64678926a9c24c37c981296cfd7
 +
 +        ChunkProviderServer chunkProvider = this.getChunkProvider();
 +
-+        int requiredChunks = (maxChunkX - minChunkX) * (maxChunkZ - minChunkZ);
++        int requiredChunks = (maxChunkX - minChunkX + 1) * (maxChunkZ - minChunkZ + 1);
 +        int[] loadedChunks = new int[1];
 +
 +        Long holderIdentifier = Long.valueOf(chunkProvider.chunkFutureAwaitCounter++);
@@ -303,9 +316,12 @@ index 9e32e2db10f5faaa3c5f4adc5cbc2c1a2e4d3073..236fb64678926a9c24c37c981296cfd7
 +            }
 +        };
 +
++        int centerX = MCUtil.getChunkCoordinate(toX);
++        int centerZ = MCUtil.getChunkCoordinate(toZ);
++
 +        for (int cx = minChunkX; cx <= maxChunkX; ++cx) {
 +            for (int cz = minChunkZ; cz <= maxChunkZ; ++cz) {
-+                chunkProvider.getChunkAtAsynchronously(cx, cz, ChunkStatus.FULL, true, true, consumer);
++                chunkProvider.getChunkAtAsynchronously(cx, cz, ChunkStatus.FULL, true, !(centerX == cx && centerZ == cz), consumer);
 +            }
 +        }
 +    }
