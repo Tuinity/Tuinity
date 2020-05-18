@@ -18,10 +18,10 @@ index 2dfda90acfab087f4b7c25130c14e23b9debb9e7..a08bfb4b3b02e998d3a6f519107e522f
                      // re-schedule eventually
                      toTick.tickState = STATE_SCHEDULED;
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 4771f25f697724213d11e2e46b4d428492e24e4c..f5d984d5bf96386ed5f1e38f95641955cae98902 100644
+index ebf6196e3b0c2eea791fcacee9f24bfd28fb1d9f..5ecffcbb3fb8e5dd51f2197b4067dde18c9e51fd 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -726,7 +726,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -853,7 +853,7 @@ public class ChunkProviderServer extends IChunkProvider {
          this.world.getMethodProfiler().enter("purge");
          this.world.timings.doChunkMap.startTiming(); // Spigot
          this.chunkMapDistance.purgeTickets();
@@ -30,7 +30,7 @@ index 4771f25f697724213d11e2e46b4d428492e24e4c..f5d984d5bf96386ed5f1e38f95641955
          this.tickDistanceManager();
          this.world.timings.doChunkMap.stopTiming(); // Spigot
          this.world.getMethodProfiler().exitEnter("chunks");
-@@ -736,7 +736,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -863,7 +863,7 @@ public class ChunkProviderServer extends IChunkProvider {
          this.world.timings.doChunkUnload.startTiming(); // Spigot
          this.world.getMethodProfiler().exitEnter("unload");
          this.playerChunkMap.unloadChunks(booleansupplier);
@@ -39,7 +39,7 @@ index 4771f25f697724213d11e2e46b4d428492e24e4c..f5d984d5bf96386ed5f1e38f95641955
          this.world.timings.doChunkUnload.stopTiming(); // Spigot
          this.world.getMethodProfiler().exit();
          this.clearCache();
-@@ -900,7 +900,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1027,7 +1027,7 @@ public class ChunkProviderServer extends IChunkProvider {
                          this.world.timings.chunkTicks.startTiming(); // Spigot // Paper
                          this.world.a(chunk, k);
                          this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
@@ -48,7 +48,7 @@ index 4771f25f697724213d11e2e46b4d428492e24e4c..f5d984d5bf96386ed5f1e38f95641955
                      }
                  }
              });
-@@ -1042,40 +1042,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1169,40 +1169,7 @@ public class ChunkProviderServer extends IChunkProvider {
              super.executeTask(runnable);
          }
  
@@ -267,12 +267,12 @@ index 19c3d6e64c33890a8a1bab8dabb7c7cbe181cfc1..ecca60403038ca2eef92efef4022bc3e
                      // Spigot Start
                      CrashReport crashreport;
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 91ebbc79d6cf67088b560baef5f9194ba7c2037f..9d6e725bb16e8e42c3d020e71f35e93f4519c193 100644
+index 1428a25ae6e8eb30192f74603120f503c0133b2d..d9416d432f50257fe42bf0c4dcde42b56e385667 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -189,6 +189,10 @@ public class WorldServer extends World {
+@@ -295,6 +295,10 @@ public class WorldServer extends World {
      }
-     // Paper end - rewrite ticklistserver
+     // Tuinity end
  
 +    // Tuinity start - execute chunk tasks mid tick
 +    long lastMidTickExecuteFailure;
@@ -281,7 +281,7 @@ index 91ebbc79d6cf67088b560baef5f9194ba7c2037f..9d6e725bb16e8e42c3d020e71f35e93f
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(worlddata, dimensionmanager, (world, worldprovider) -> {
-@@ -442,7 +446,7 @@ public class WorldServer extends World {
+@@ -548,7 +552,7 @@ public class WorldServer extends World {
          }
          timings.scheduledBlocks.stopTiming(); // Spigot
  
@@ -290,7 +290,7 @@ index 91ebbc79d6cf67088b560baef5f9194ba7c2037f..9d6e725bb16e8e42c3d020e71f35e93f
          gameprofilerfiller.exitEnter("raid");
          this.timings.raids.startTiming(); // Paper - timings
          this.persistentRaid.a();
-@@ -455,7 +459,7 @@ public class WorldServer extends World {
+@@ -561,7 +565,7 @@ public class WorldServer extends World {
          timings.doSounds.startTiming(); // Spigot
          this.ad();
          timings.doSounds.stopTiming(); // Spigot
@@ -299,7 +299,7 @@ index 91ebbc79d6cf67088b560baef5f9194ba7c2037f..9d6e725bb16e8e42c3d020e71f35e93f
          this.ticking = false;
          gameprofilerfiller.exitEnter("entities");
          boolean flag3 = true || !this.players.isEmpty() || !this.getForceLoadedChunks().isEmpty(); // CraftBukkit - this prevents entity cleanup, other issues on servers with no players
-@@ -551,7 +555,7 @@ public class WorldServer extends World {
+@@ -657,7 +661,7 @@ public class WorldServer extends World {
              }
              this.afterEntityTickingTasks.clear();
              // Paper end
@@ -308,7 +308,7 @@ index 91ebbc79d6cf67088b560baef5f9194ba7c2037f..9d6e725bb16e8e42c3d020e71f35e93f
  
              try (co.aikar.timings.Timing ignored = this.timings.newEntities.startTiming()) { // Paper - timings
              while ((entity = (Entity) this.entitiesToAdd.poll()) != null) {
-@@ -562,7 +566,7 @@ public class WorldServer extends World {
+@@ -668,7 +672,7 @@ public class WorldServer extends World {
  
              gameprofilerfiller.exit();
              timings.tickEntities.stopTiming(); // Spigot

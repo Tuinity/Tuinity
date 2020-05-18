@@ -6,10 +6,10 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index db636a7d79d5aa183010cb283db80e0f68017e7f..e9100b74eb157c577240a861d658d7517a85833b 100644
+index 24564d6b6808dcadede3405b73462d190d6dbdd5..099dbb2366c281cb5a296b5e4346c8297fc7b35a 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -742,6 +742,16 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -869,6 +869,16 @@ public class ChunkProviderServer extends IChunkProvider {
          this.clearCache();
      }
  
@@ -26,7 +26,7 @@ index db636a7d79d5aa183010cb283db80e0f68017e7f..e9100b74eb157c577240a861d658d751
      private void tickChunks() {
          long i = this.world.getTime();
          long j = i - this.lastTickTime;
-@@ -817,11 +827,12 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -944,11 +954,12 @@ public class ChunkProviderServer extends IChunkProvider {
              this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
              this.world.getMethodProfiler().exit();
              // Paper - replaced by above
@@ -44,7 +44,7 @@ index db636a7d79d5aa183010cb283db80e0f68017e7f..e9100b74eb157c577240a861d658d751
  
                      this.world.getMethodProfiler().enter("broadcast");
                      this.world.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
-@@ -903,7 +914,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1030,7 +1041,23 @@ public class ChunkProviderServer extends IChunkProvider {
                          MinecraftServer.getServer().executeMidTickTasks(); // Tuinity - exec chunk tasks during world tick
                      }
                  }
