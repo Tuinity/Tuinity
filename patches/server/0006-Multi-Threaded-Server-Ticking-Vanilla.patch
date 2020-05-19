@@ -7,171 +7,168 @@ This patch is the vanilla server changes
 
 Currently a placeholder patch.
 
-diff --git a/src/main/java/com/tuinity/tuinity/chunk/ChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/ChunkRegionManager.java
+diff --git a/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..4ef350060045a91ce723bddec31eab2bcdeb23df
+index 0000000000000000000000000000000000000000..97c4100c5d60de7babfc3b7b6a4352101b21aac9
 --- /dev/null
-+++ b/src/main/java/com/tuinity/tuinity/chunk/ChunkRegionManager.java
-@@ -0,0 +1,162 @@
++++ b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
+@@ -0,0 +1,159 @@
 +package com.tuinity.tuinity.chunk;
 +
-+import com.tuinity.tuinity.util.TickThread;
-+import net.minecraft.server.MCUtil;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +import it.unimi.dsi.fastutil.longs.LongIterator;
 +import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-+import net.minecraft.server.World;
++import net.minecraft.server.MCUtil;
++import net.minecraft.server.WorldServer;
++import java.util.List;
 +
-+public final class ChunkRegionManager {
++public final class SingleThreadChunkRegionManager {
 +
-+    private static final int REGION_MERGE_RADIUS = 1;
++    static final int REGION_SECTION_MERGE_RADIUS = 1;
 +
-+    public final Long2ObjectOpenHashMap<ChunkRegionHolder> regions = new Long2ObjectOpenHashMap<>(8192, 0.25f);
-+    public final World world;
++    static final int REGION_SECTION_CHUNK_SIZE       = 8;
++    static final int REGION_SECTION_CHUNK_SIZE_SHIFT = 3;
 +
-+    private final TickThread[] threads;
++    final Long2ObjectOpenHashMap<SingleThreadChunkRegionManager.ChunkRegion> regionsBySection = new Long2ObjectOpenHashMap<>(4096, 0.25f);
++    final LongOpenHashSet chunks = new LongOpenHashSet(8192, 0.25f);
 +
-+    public ChunkRegionManager(final World world, final TickThread[] threads) {
++    public final WorldServer world;
++
++    public SingleThreadChunkRegionManager(final WorldServer world) {
 +        this.world = world;
-+        this.threads = threads;
 +    }
 +
-+    public void addToRegion(final long coordinate) {
-+        this.addToRegion(MCUtil.getCoordinateX(coordinate), MCUtil.getCoordinateZ(coordinate), coordinate);
++    public void addChunk(final int chunkX, final int chunkZ) {
++        this.addChunk(chunkX, chunkZ, true);
 +    }
 +
-+    public void addToRegion(final int chunkX, final int chunkZ) {
-+        this.addToRegion(chunkX, chunkZ, MCUtil.getCoordinateKey(chunkX, chunkZ));
-+    }
++    void addChunk(final int chunkX, final int chunkZ, boolean addToChunks) {
++        final long coordinate = MCUtil.getCoordinateKey(chunkX, chunkZ);
++        final long sectionPos = MCUtil.getCoordinateKey(chunkX >> REGION_SECTION_CHUNK_SIZE_SHIFT, chunkZ >> REGION_SECTION_CHUNK_SIZE_SHIFT);
++        if (addToChunks) {
++            this.chunks.add(coordinate);
++        }
 +
-+    // note: for MT, when we want to merge regions we actually need to tell the owning thread (if any) to merge it
-+    // themselves
-+    public void addToRegion(final int chunkX, final int chunkZ, final long coordinate) {
-+        // find the ideal region to merge into
++        // merge nearby regions first
 +
-+        ChunkRegionHolder regionHolder = null;
-+        ChunkRegion region = null;
-+        int regionHolderChunks = 0;
++        // gather regions to merge
 +
-+        for (int dx = -REGION_MERGE_RADIUS; dx <= REGION_MERGE_RADIUS; ++dx) {
-+            for (int dz = -REGION_MERGE_RADIUS; dz <= REGION_MERGE_RADIUS; ++dz) {
-+                final int checkX = dx + chunkX;
-+                final int checkZ = dz + chunkZ;
-+                final long k = MCUtil.getCoordinateKey(checkX, checkZ);
++        SingleThreadChunkRegionManager.ChunkRegion mergeIntoCandidate = null;
++        int mergeCandidateChunkCount = -1;
 +
-+                ChunkRegionHolder currentRegion = this.regions.get(k);
++        List<SingleThreadChunkRegionManager.ChunkRegion> toMerge = null;
 +
-+                if (currentRegion != null) {
-+                    final int currentSize = currentRegion.region.coordinates.size();
-+                    if (currentSize > regionHolderChunks) {
-+                        regionHolderChunks = currentSize;
-+                        regionHolder = currentRegion;
-+                        region = currentRegion.region;
-+                    }
++        final int regionSectionX = chunkX >> REGION_SECTION_CHUNK_SIZE_SHIFT;
++        final int regionSectionZ = chunkZ >> REGION_SECTION_CHUNK_SIZE_SHIFT;
++
++        final int checkXStart = regionSectionX - REGION_SECTION_MERGE_RADIUS;
++        final int checkZStart = regionSectionZ - REGION_SECTION_MERGE_RADIUS;
++        final int checkXEnd = regionSectionX + REGION_SECTION_MERGE_RADIUS;
++        final int checkZEnd = regionSectionZ + REGION_SECTION_MERGE_RADIUS;
++
++        // select the ideal region to merge into
++        for (int checkX = checkXStart; checkX <= checkXEnd; ++checkX) {
++            for (int checkZ = checkZStart; checkZ <= checkZEnd; ++checkZ) {
++                final SingleThreadChunkRegionManager.ChunkRegion region = this.regionsBySection.get(MCUtil.getCoordinateKey(checkX, checkZ));
++                if (region == null) {
++                    continue;
++                }
++
++                final int coordinateSize = region.coordinates.size();
++                if (coordinateSize > mergeCandidateChunkCount) {
++                    mergeIntoCandidate = region;
++                    mergeCandidateChunkCount = coordinateSize;
++                }
++                if (toMerge == null) {
++                    toMerge = new java.util.ArrayList<>(4);
++                    toMerge.add(region);
 +                }
 +            }
 +        }
 +
-+        if (regionHolder == null) {
-+            regionHolder = new ChunkRegionHolder(region = new ChunkRegion());
++        // merge
++        if (toMerge != null) {
++            for (int i = 0, len = toMerge.size(); i < len; ++i) {
++                final SingleThreadChunkRegionManager.ChunkRegion needsMerge = toMerge.get(i);
++                if (needsMerge == mergeIntoCandidate) {
++                    continue;
++                }
++                // this function forwards the sections
++                needsMerge.mergeInto(this, mergeIntoCandidate);
++            }
++        } else {
++            mergeIntoCandidate = new ChunkRegion();
 +        }
 +
-+        // now merge regions in radius
-+
-+        region.addChunk(chunkX, chunkZ, coordinate);
-+
-+        for (int dx = -REGION_MERGE_RADIUS; dx <= REGION_MERGE_RADIUS; ++dx) {
-+            for (int dz = -REGION_MERGE_RADIUS; dz <= REGION_MERGE_RADIUS; ++dz) {
-+                final int checkX = dx + chunkX;
-+                final int checkZ = dz + chunkZ;
-+                final long k = MCUtil.getCoordinateKey(checkX, checkZ);
-+
-+                ChunkRegionHolder currentRegion = this.regions.putIfAbsent(k, regionHolder);
-+
-+                if (currentRegion != null && currentRegion.region != region) {
-+                    currentRegion.region.mergeInto(region);
-+                }
-+            }
++        mergeIntoCandidate.addChunk(coordinate);
++        if (mergeIntoCandidate.addSection(sectionPos)) {
++            this.regionsBySection.put(sectionPos, mergeIntoCandidate);
 +        }
 +    }
 +
-+    static final class ChunkRegionHolder {
++    public void removeChunk(final int chunkX, final int chunkZ) {
++        final long coordinate = MCUtil.getCoordinateKey(chunkX, chunkZ);
++        final long sectionPos = MCUtil.getCoordinateKey(chunkX >> REGION_SECTION_CHUNK_SIZE_SHIFT, chunkZ >> REGION_SECTION_CHUNK_SIZE_SHIFT);
++        this.chunks.remove(coordinate);
 +
-+        public ChunkRegion region;
++        final SingleThreadChunkRegionManager.ChunkRegion region = this.regionsBySection.get(sectionPos);
++        if (region == null) {
++            throw new IllegalStateException("Cannot remove chunk form no region");
++        }
 +
-+        public ChunkRegionHolder(final ChunkRegion region) {
-+            this.region = region;
-+            this.region.addRegionHolder(this);
++        if (!region.removeChunk(coordinate)) {
++            throw new IllegalStateException("Cannot remove chunk from region, has no chunk");
++        }
++    }
++
++    public void recalculateRegions() {
++        this.regionsBySection.clear();
++        for (final LongIterator iterator = this.chunks.iterator(); iterator.hasNext();) {
++            final long coordinate = iterator.nextLong();
++            this.addChunk(MCUtil.getCoordinateX(coordinate), MCUtil.getCoordinateZ(coordinate), false);
 +        }
 +    }
 +
 +    static final class ChunkRegion {
-+
 +        private final LongOpenHashSet coordinates = new LongOpenHashSet();
++        private final LongOpenHashSet sections = new LongOpenHashSet();
 +        private boolean dead;
 +
-+        private int lowerX;
-+        private int lowerZ;
-+
-+        private int upperX;
-+        private int upperZ;
-+
-+        private final ObjectOpenHashSet<ChunkRegionHolder> regionHolders = new ObjectOpenHashSet<>();
-+
-+        void addRegionHolder(final ChunkRegionHolder regionHolder) {
-+            this.regionHolders.add(regionHolder);
-+        }
-+
-+        public void mergeInto(final ChunkRegion region) {
++        public void mergeInto(final SingleThreadChunkRegionManager regionManager, final ChunkRegion region) {
 +            if (region.dead) {
 +                throw new IllegalStateException("Attempting to merge into a dead region");
 +            } else if (this.dead) {
 +                throw new IllegalStateException("Attempting to merge from a dead region");
 +            }
 +
-+            for (LongIterator iterator = this.coordinates.iterator(); iterator.hasNext();) {
-+                region.addChunk(iterator.nextLong());
++            for (final LongIterator iterator = this.coordinates.iterator(); iterator.hasNext();) {
++                final long coordinate = iterator.nextLong();
++                if (!region.addChunk(coordinate)) {
++                    throw new IllegalStateException("Regions cannot share chunks");
++                }
 +            }
 +
-+            // forward our old region holders
-+            for (final ChunkRegionHolder regionHolder : this.regionHolders) {
-+                regionHolder.region = region;
++            for (final LongIterator iterator = this.sections.iterator(); iterator.hasNext();) {
++                regionManager.regionsBySection.replace(iterator.nextLong(), region);
 +            }
 +
 +            this.dead = true;
 +        }
 +
-+        void addChunk(final long coordinate) {
-+            this.addChunk(MCUtil.getCoordinateX(coordinate), MCUtil.getCoordinateZ(coordinate), coordinate);
++        boolean addSection(final long sectionPos) {
++            return this.sections.add(sectionPos);
 +        }
 +
-+        void addChunk(final int chunkX, final int chunkZ) {
-+            this.addChunk(chunkX, chunkZ, MCUtil.getCoordinateKey(chunkX, chunkZ));
++        boolean removeSection(final long sectionPos) {
++            return this.sections.remove(sectionPos);
 +        }
 +
-+        boolean addChunk(final int chunkX, final int chunkZ, final long coordinate) {
-+            if (!this.coordinates.add(coordinate)) {
-+                return false;
-+            }
++        boolean addChunk(final long coordinate) {
++            return this.coordinates.add(coordinate);
++        }
 +
-+            if (this.coordinates.size() == 1) {
-+                this.lowerX = this.upperX = chunkX;
-+                this.lowerZ = this.upperZ = chunkZ;
-+            } else {
-+                if (chunkX < this.lowerX) {
-+                    this.lowerX = chunkX;
-+                } else if (chunkX > this.upperX) {
-+                    this.upperX = chunkX;
-+                }
-+                if (chunkZ < this.lowerZ) {
-+                    this.lowerZ = chunkZ;
-+                } else if (chunkZ > this.upperZ) {
-+                    this.upperZ = chunkZ;
-+                }
-+            }
-+
-+            return true;
++        boolean removeChunk(final long coordinate) {
++            return this.coordinates.remove(coordinate);
 +        }
 +    }
 +}
