@@ -5,7 +5,7 @@ Subject: [PATCH] Util patch
 
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 8ca6adbac2d2e43bf597c405134c1c5c1b430e63..9a4d092402a058949c7d099909ed5f8ab07824fd 100644
+index 8ca6adbac2d2e43bf597c405134c1c5c1b430e63..3e1a800bd1c12eac1e3352be9f3202c13ea3a058 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -118,7 +118,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -17,7 +17,7 @@ index 8ca6adbac2d2e43bf597c405134c1c5c1b430e63..9a4d092402a058949c7d099909ed5f8a
  
      public void getEntityTickingChunkAsync(int x, int z, java.util.function.Consumer<Chunk> onLoad) {
          if (Thread.currentThread() != this.serverThread) {
-@@ -207,6 +207,149 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -207,6 +207,163 @@ public class ChunkProviderServer extends IChunkProvider {
      }
      // Paper end - rewrite ticklistserver
  
@@ -34,6 +34,20 @@ index 8ca6adbac2d2e43bf597c405134c1c5c1b430e63..9a4d092402a058949c7d099909ed5f8a
 +            return empty;
 +        }
 +        return this.getChunkAt(chunkX, chunkZ, ChunkStatus.FULL, true);
++    }
++
++    public final IChunkAccess getFullStatusChunkAtIfLoaded(int chunkX, int chunkZ) {
++        Chunk ifLoaded = this.getChunkAtIfLoadedImmediately(chunkX, chunkZ);
++        if (ifLoaded != null) {
++            return ifLoaded;
++        }
++
++        IChunkAccess ret = this.getChunkAtImmediately(chunkX, chunkZ);
++        if (ret != null && ret.getChunkStatus() == ChunkStatus.FULL) {
++            return ret;
++        } else {
++            return null;
++        }
 +    }
 +
 +    void getChunkAtAsynchronously(int chunkX, int chunkZ, int ticketLevel,
