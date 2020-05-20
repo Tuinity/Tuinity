@@ -7,10 +7,10 @@ The behaviour is tricky to get right and I'm tired of dealing
 with issues related with this.
 
 diff --git a/src/main/java/net/minecraft/server/ICollisionAccess.java b/src/main/java/net/minecraft/server/ICollisionAccess.java
-index 72d0840c4f8ca85645fb659a7ec642a9af2bbf15..12ccf812271f78195654bd88494621856bd980dc 100644
+index dae8dd67bb7a94132ff421eff40fed73aa649c67..8fece1795c6e3c8e76117d0c97b4dad1d2738c0c 100644
 --- a/src/main/java/net/minecraft/server/ICollisionAccess.java
 +++ b/src/main/java/net/minecraft/server/ICollisionAccess.java
-@@ -110,23 +110,15 @@ public interface ICollisionAccess extends IBlockAccess {
+@@ -115,26 +115,15 @@ public interface ICollisionAccess extends IBlockAccess {
                      int j2 = cursorposition.e();
  
                      if (j2 != 3) {
@@ -21,7 +21,7 @@ index 72d0840c4f8ca85645fb659a7ec642a9af2bbf15..12ccf812271f78195654bd8849462185
 -                        blockposition_mutableblockposition.setValues(x, y, z);
 -
 -                        boolean isRegionLimited = ICollisionAccess.this instanceof RegionLimitedWorldAccess;
--                        IBlockData iblockdata = isRegionLimited ? Blocks.VOID_AIR.getBlockData() : (!far && entity instanceof EntityPlayer
+-                        IBlockData iblockdata = isRegionLimited ? Blocks.VOID_AIR.getBlockData() : ((!far && entity instanceof EntityPlayer) || (entity != null && entity.collisionLoadChunks)
 -                            ? ICollisionAccess.this.getType(blockposition_mutableblockposition)
 -                            : ICollisionAccess.this.getTypeIfLoaded(blockposition_mutableblockposition)
 -                        );
@@ -31,6 +31,9 @@ index 72d0840c4f8ca85645fb659a7ec642a9af2bbf15..12ccf812271f78195654bd8849462185
 -                                if (returnFast) return collisions;
 -                            }
 -                        } else {
+-                            //blockposition_mutableblockposition.d(k1, l1, i2); // moved up
+-                            //IBlockData iblockdata = iblockaccess.getType(blockposition_mutableblockposition); // moved up
+-                            // Paper end
 +                        // Tuinity start - revert to vanilla
 +                        int k2 = k1 >> 4;
 +                        int l2 = i2 >> 4;
@@ -40,6 +43,6 @@ index 72d0840c4f8ca85645fb659a7ec642a9af2bbf15..12ccf812271f78195654bd8849462185
 +                            blockposition_mutableblockposition.d(k1, l1, i2);
 +                            IBlockData iblockdata = iblockaccess.getType(blockposition_mutableblockposition);
 +                            // Tuinity end - revert to vanilla
-                             //blockposition_mutableblockposition.d(k1, l1, i2); // moved up
-                             //IBlockData iblockdata = iblockaccess.getType(blockposition_mutableblockposition); // moved up
-                             // Paper end
+ 
+                             if (!iblockdata.isAir() && (j2 != 1 || iblockdata.f()) && (j2 != 2 || iblockdata.getBlock() == Blocks.MOVING_PISTON)) { // Paper - fast track air
+                                 VoxelShape voxelshape2 = iblockdata.b((IBlockAccess) ICollisionAccess.this, blockposition_mutableblockposition, voxelshapecollision);
