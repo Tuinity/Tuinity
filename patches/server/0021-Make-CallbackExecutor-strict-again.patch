@@ -19,7 +19,7 @@ This patch also reverts incorrect use(s) of the class by paper.
   any exception thrown from it.
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index c96bf4faa68b7e5639c91d9eecb7c6ce44077e8a..9eceecf89885410a507326447815e07a8facc4e7 100644
+index e24ea6f051c130b866ec07196bc67c9b21144f3a..2ccbe4edc8c71c821a8df83f27ae3e01b3868a38 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -180,9 +180,9 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -35,10 +35,10 @@ index c96bf4faa68b7e5639c91d9eecb7c6ce44077e8a..9eceecf89885410a507326447815e07a
                  } catch (Throwable thr) {
                      if (thr instanceof ThreadDeath) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 436c4a0f2c931719e8204937c2e92e3c4b7f8d5a..0968e0bc64d686e6d3dcb4e491a6a6288a8c6d7e 100644
+index dcb50b03e9097a28c2e3e88d399d2c9ec72dd01c..25efadb32d1d759b42b3327410cf48a88dd49d5c 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -92,29 +92,26 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -116,31 +116,28 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      // CraftBukkit start - recursion-safe executor for Chunk loadCallback() and unloadCallback()
      public final CallbackExecutor callbackExecutor = new CallbackExecutor();
      public static final class CallbackExecutor implements java.util.concurrent.Executor, Runnable {
@@ -52,6 +52,7 @@ index 436c4a0f2c931719e8204937c2e92e3c4b7f8d5a..0968e0bc64d686e6d3dcb4e491a6a628
  
          @Override
          public void execute(Runnable runnable) {
+             AsyncCatcher.catchOp("Callback Executor execute");
 -            if (queued == null) {
 -                queued = new java.util.ArrayDeque<>();
 +            if (queued != null) {
@@ -65,6 +66,7 @@ index 436c4a0f2c931719e8204937c2e92e3c4b7f8d5a..0968e0bc64d686e6d3dcb4e491a6a628
  
          @Override
          public void run() {
+             AsyncCatcher.catchOp("Callback Executor run");
 -            if (queued == null) {
 -                return;
 -            }
