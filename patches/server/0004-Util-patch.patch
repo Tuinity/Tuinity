@@ -225,10 +225,10 @@ index b8fe42e8123e972b1ec97b048c35d90118076e66..01eada718d7829829d0640771b79c161
          int i = chunkstatus.c();
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 9e32e2db10f5faaa3c5f4adc5cbc2c1a2e4d3073..9efd87d161374304e459cb1c36404782c7e51c20 100644
+index 9e32e2db10f5faaa3c5f4adc5cbc2c1a2e4d3073..975a97dfdc669c9f799d834ec9e81bf1d8f4ed45 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -189,6 +189,115 @@ public class WorldServer extends World {
+@@ -189,6 +189,121 @@ public class WorldServer extends World {
      }
      // Paper end - rewrite ticklistserver
  
@@ -286,6 +286,12 @@ index 9e32e2db10f5faaa3c5f4adc5cbc2c1a2e4d3073..9efd87d161374304e459cb1c36404782
 +
 +    public final void loadChunksForMoveAsync(AxisAlignedBB axisalignedbb, double toX, double toZ,
 +                                             java.util.function.Consumer<List<IChunkAccess>> onLoad) {
++        if (Thread.currentThread() != this.serverThread) {
++            this.getChunkProvider().serverThreadQueue.execute(() -> {
++                this.loadChunksForMoveAsync(axisalignedbb, toX, toZ, onLoad);
++            });
++            return;
++        }
 +        List<IChunkAccess> ret = new java.util.ArrayList<>();
 +        it.unimi.dsi.fastutil.ints.IntArrayList ticketLevels = new it.unimi.dsi.fastutil.ints.IntArrayList();
 +
