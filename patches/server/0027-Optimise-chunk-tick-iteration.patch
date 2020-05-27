@@ -6,7 +6,7 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index ed6a810b909e191ee31bfbcf46a49714279084b9..f5896956eaa13f0c4d6da3d32c49b5c7736bbeda 100644
+index 3bab9090952593fda07b91a5c0d68a5a864a37a2..34849ccfcbaeec7089bf1b62904551be45a3390a 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -895,6 +895,16 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -26,10 +26,10 @@ index ed6a810b909e191ee31bfbcf46a49714279084b9..f5896956eaa13f0c4d6da3d32c49b5c7
      private void tickChunks() {
          long i = this.world.getTime();
          long j = i - this.lastTickTime;
-@@ -970,11 +980,12 @@ public class ChunkProviderServer extends IChunkProvider {
-             this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
+@@ -971,11 +981,12 @@ public class ChunkProviderServer extends IChunkProvider {
              this.world.getMethodProfiler().exit();
              // Paper - replaced by above
+             final long time = world.getTime(); // Paper
 -            final int[] chunksTicked = {0}; this.playerChunkMap.forEachVisibleChunk((playerchunk) -> { // Paper - safe iterator incase chunk loads, also no wrapping
 -                Optional<Chunk> optional = ((Either) playerchunk.b().getNow(PlayerChunk.UNLOADED_CHUNK)).left();
 -
@@ -44,30 +44,14 @@ index ed6a810b909e191ee31bfbcf46a49714279084b9..f5896956eaa13f0c4d6da3d32c49b5c7
  
                      this.world.getMethodProfiler().enter("broadcast");
                      this.world.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
-@@ -1057,7 +1068,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1056,8 +1067,24 @@ public class ChunkProviderServer extends IChunkProvider {
+                         this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
+                         MinecraftServer.getServer().executeMidTickTasks(); // Tuinity - exec chunk tasks during world tick
                      }
-                 }
-                 // Paper start - remove inaccessible chunks leaked
--                else if (playerchunk.getTicketLevel() == playerchunk.oldTicketLevel &&
-+                else if (false && playerchunk.getTicketLevel() == playerchunk.oldTicketLevel && // Tuinity - due to our changes this entire branch can't do its job
-                     playerChunkMap.unloadQueue.size() < 100 &&
-                     (playerchunk.lastActivity == 0 || world.getTime() - playerchunk.lastActivity > 20*180) &&
-                     PlayerChunk.getChunkState(playerchunk.getTicketLevel()) == PlayerChunk.State.INACCESSIBLE
-@@ -1072,7 +1083,7 @@ public class ChunkProviderServer extends IChunkProvider {
-                         return;
-                     }
-                     playerchunk.lastActivity = world.getTime();
--                    Chunk chunk = playerchunk.getChunk();
-+                    //Chunk chunk = playerchunk.getChunk(); // Tuinity - we define elsewhere
-                     if ((chunk != null && chunk.isAnyNeighborsLoaded()) || !playerchunk.neighborPriorities.isEmpty()) {
-                         return;
-                     }
-@@ -1083,7 +1094,23 @@ public class ChunkProviderServer extends IChunkProvider {
-                     }
-                     // Paper end
-                 }
+-                } else { checkInactiveChunk(playerchunk, time); } // Paper - check inaccessible chunks
 -            });
-+            }; // Tuinity start - optimise chunk tick iteration
++                } else if (false) { checkInactiveChunk(playerchunk, time); } // Paper - check inaccessible chunks // Tuinity - due to our changes this entire branch is can't do its job
++            } // Tuinity start - optimise chunk tick iteration
 +            this.isTickingChunks = false;
 +            if (!this.pendingEntityTickingChunkChanges.isEmpty()) {
 +                // iterate backwards: fastutil maps have better remove times when iterating backwards
