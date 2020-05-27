@@ -5,7 +5,7 @@ Subject: [PATCH] Util patch
 
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 1209fbf1c906511954bc61ffb1a8882498855ba4..d44f54ea6e1d18b9152aafb5b0106701bc805c6d 100644
+index 1209fbf1c906511954bc61ffb1a8882498855ba4..530ce8d725937bf46ef5f2a59b25c2ca0c05c5ca 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -118,7 +118,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -159,11 +159,11 @@ index 1209fbf1c906511954bc61ffb1a8882498855ba4..d44f54ea6e1d18b9152aafb5b0106701
 +            }
 +
 +            if (!chunk.getChunkStatus().isAtLeastStatus(status)) {
-+                if (!gen) {
-+                    ChunkProviderServer.this.chunkLoadAccept(chunkX, chunkZ, null, onLoad);
++                if (gen) {
++                    this.getChunkAtAsynchronously(chunkX, chunkZ, chunkStatusTicketLevel, onLoad);
 +                    return;
-+                } else { // already check gen && !allowSubTicketLevel, so if gen is true then allowSubTicketLevel == true
-+                    ChunkProviderServer.this.chunkLoadAccept(chunkX, chunkZ, chunk, onLoad);
++                } else {
++                    ChunkProviderServer.this.chunkLoadAccept(chunkX, chunkZ, null, onLoad);
 +                    return;
 +                }
 +            } else {
@@ -225,10 +225,10 @@ index ecac7b72759a3884020b9c19c58d3db3338e0fc3..201da534eb618aaed9d27d0e9610ce5c
          int i = chunkstatus.c();
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 854c97bddb711ed252c2ae8398247641fdfb10be..f16051894d319eb994a024bce1ffdf1f248c3fef 100644
+index 854c97bddb711ed252c2ae8398247641fdfb10be..d9eb56097bb40592abd2e56b627975d767e7701b 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -190,6 +190,121 @@ public class WorldServer extends World {
+@@ -190,6 +190,99 @@ public class WorldServer extends World {
      }
      // Paper end - rewrite ticklistserver
  
@@ -260,28 +260,6 @@ index 854c97bddb711ed252c2ae8398247641fdfb10be..f16051894d319eb994a024bce1ffdf1f
 +        }
 +
 +        return true;
-+    }
-+
-+    public final void loadChunksForMove(AxisAlignedBB axisalignedbb) {
-+        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 3;
-+        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 3;
-+
-+        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 3;
-+        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 3;
-+
-+        int minChunkX = minBlockX >> 4;
-+        int maxChunkX = maxBlockX >> 4;
-+
-+        int minChunkZ = minBlockZ >> 4;
-+        int maxChunkZ = maxBlockZ >> 4;
-+
-+        ChunkProviderServer chunkProvider = this.getChunkProvider();
-+
-+        for (int cx = minChunkX; cx <= maxChunkX; ++cx) {
-+            for (int cz = minChunkZ; cz <= maxChunkZ; ++cz) {
-+                chunkProvider.getChunkAt(cx, cz, ChunkStatus.FULL, true);
-+            }
-+        }
 +    }
 +
 +    public final void loadChunksForMoveAsync(AxisAlignedBB axisalignedbb, double toX, double toZ,
