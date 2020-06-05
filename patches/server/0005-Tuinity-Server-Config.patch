@@ -4,6 +4,20 @@ Date: Sun, 3 Mar 2019 18:25:06 -0800
 Subject: [PATCH] Tuinity Server Config
 
 
+diff --git a/src/main/java/co/aikar/timings/TimingsExport.java b/src/main/java/co/aikar/timings/TimingsExport.java
+index a3b41ce5fc70948d4804659a472cb622bb9bbc07..b09981e9bd2d24a0f0e291fabfbbbf0b3887a80b 100644
+--- a/src/main/java/co/aikar/timings/TimingsExport.java
++++ b/src/main/java/co/aikar/timings/TimingsExport.java
+@@ -229,7 +229,8 @@ public class TimingsExport extends Thread {
+         parent.put("config", createObject(
+             pair("spigot", mapAsJSON(Bukkit.spigot().getSpigotConfig(), null)),
+             pair("bukkit", mapAsJSON(Bukkit.spigot().getBukkitConfig(), null)),
+-            pair("paper", mapAsJSON(Bukkit.spigot().getPaperConfig(), null))
++            pair("paper", mapAsJSON(Bukkit.spigot().getPaperConfig(), null)), // Tuinity - add config to timings report
++            pair("tuinity", mapAsJSON(Bukkit.spigot().getTuinityConfig(), null)) // Tuinity - add config to timings report
+         ));
+ 
+         new TimingsExport(listeners, parent, history).start();
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..775e7dbc5af5ba6245d1486ca686b29013ee72da
@@ -242,7 +256,7 @@ index b07c49f1b48cc6dedd7c2057da0ec4f6f6d446e6..c33e13bcf15757abff8b6b74437def37
          this.setSpawnAnimals(dedicatedserverproperties.spawnAnimals);
          this.setSpawnNPCs(dedicatedserverproperties.spawnNpcs);
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 561b42472261a973fea6344d76ca7ea1993aee27..6739ff797f4a2ce57bb638ec2269b84f5ba22782 100644
+index 9de505d01fa30f31f2528265cb0d6af7ff59961f..00b9c353eba12198c5195beb82455b8c1f33844b 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -88,6 +88,8 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
@@ -260,7 +274,7 @@ index 561b42472261a973fea6344d76ca7ea1993aee27..6739ff797f4a2ce57bb638ec2269b84f
          this.chunkPacketBlockController = this.paperConfig.antiXray ? new ChunkPacketBlockControllerAntiXray(this.paperConfig) : ChunkPacketBlockController.NO_OPERATION_INSTANCE; // Paper - Anti-Xray
 +        this.tuinityConfig = new com.tuinity.tuinity.config.TuinityConfig.WorldConfig(worlddata.getName()); // Tuinity - Server Config
          this.generator = gen;
-         dimensionmanager.world = (WorldServer) this; // Paper
+         if (dimensionmanager.world == null) dimensionmanager.world = (WorldServer) this; // Paper
          this.world = new CraftWorld((WorldServer) this, gen, env);
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 index 0983bd5c48c89fc4daafede330dc828d2b2fa72d..fbf2f4ccb775a1d6e29cde85c6140c82dca834a4 100644

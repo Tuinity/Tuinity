@@ -7,10 +7,10 @@ Should limit build up of I/O tasks, or at least properly
 indicate to server owners that I/O is falling behind
 
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index f10e78b7cc4fbb8a609aec2dc60b3a81ea950cab..ab92c0938abd8db46ebcd6222b575940ed6dc645 100644
+index ef5906a268ee4be04090345b50f582d44e0756b4..f0619a9be421a84d4205679a54a640883ecd64cc 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -916,7 +916,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -939,7 +939,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          }
  
          com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE.scheduleSave(this.world, chunkPos.x, chunkPos.z,
@@ -19,7 +19,7 @@ index f10e78b7cc4fbb8a609aec2dc60b3a81ea950cab..ab92c0938abd8db46ebcd6222b575940
  
          if (!chunk.isNeedsSaving()) {
              return;
-@@ -950,7 +950,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -973,7 +973,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              asyncSaveData = ChunkRegionLoader.getAsyncSaveData(this.world, chunk);
          }
  
@@ -28,17 +28,8 @@ index f10e78b7cc4fbb8a609aec2dc60b3a81ea950cab..ab92c0938abd8db46ebcd6222b575940
              asyncSaveData, chunk);
  
          chunk.setLastSaved(this.world.getTime());
-@@ -1358,7 +1358,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-     // Paper start - async chunk io
-     private boolean writeDataAsync(ChunkCoordIntPair chunkPos, NBTTagCompound poiData, NBTTagCompound chunkData, boolean async) {
-         com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE.scheduleSave(this.world, chunkPos.x, chunkPos.z,
--            poiData, chunkData, !async ? com.destroystokyo.paper.io.PrioritizedTaskQueue.HIGHEST_PRIORITY : com.destroystokyo.paper.io.PrioritizedTaskQueue.LOW_PRIORITY);
-+            poiData, chunkData, !async ? com.destroystokyo.paper.io.PrioritizedTaskQueue.HIGHEST_PRIORITY : com.destroystokyo.paper.io.PrioritizedTaskQueue.NORMAL_PRIORITY); // Tuinity - use normal priority
- 
-         if (async) {
-             return true;
 diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
-index b59ef1a63338aa150d39e8014e12b2275da26d50..f0702969c366be067af61be777e64509d923d081 100644
+index 1a5ec6152c15a6ece227d4bac00c3b02bd9c5c95..5b52b380e22971ac81407f9ca501773743568745 100644
 --- a/src/main/java/net/minecraft/server/VillagePlace.java
 +++ b/src/main/java/net/minecraft/server/VillagePlace.java
 @@ -150,7 +150,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {

@@ -18,10 +18,10 @@ index 2dfda90acfab087f4b7c25130c14e23b9debb9e7..a08bfb4b3b02e998d3a6f519107e522f
                      // re-schedule eventually
                      toTick.tickState = STATE_SCHEDULED;
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 423e41f646ef5abab85b0f6160c5325e6fbd97c1..ee13f3c957187695eab732ea71f61cd44f330390 100644
+index ff4926f1164f4c5f89c44845c68005e3e2b55e8a..79516db02fcda94184d137c7509ed4b0843572fd 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -879,7 +879,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -878,7 +878,7 @@ public class ChunkProviderServer extends IChunkProvider {
          this.world.getMethodProfiler().enter("purge");
          this.world.timings.doChunkMap.startTiming(); // Spigot
          this.chunkMapDistance.purgeTickets();
@@ -30,7 +30,7 @@ index 423e41f646ef5abab85b0f6160c5325e6fbd97c1..ee13f3c957187695eab732ea71f61cd4
          this.tickDistanceManager();
          this.world.timings.doChunkMap.stopTiming(); // Spigot
          this.world.getMethodProfiler().exitEnter("chunks");
-@@ -889,7 +889,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -888,7 +888,7 @@ public class ChunkProviderServer extends IChunkProvider {
          this.world.timings.doChunkUnload.startTiming(); // Spigot
          this.world.getMethodProfiler().exitEnter("unload");
          this.playerChunkMap.unloadChunks(booleansupplier);
@@ -39,16 +39,16 @@ index 423e41f646ef5abab85b0f6160c5325e6fbd97c1..ee13f3c957187695eab732ea71f61cd4
          this.world.timings.doChunkUnload.stopTiming(); // Spigot
          this.world.getMethodProfiler().exit();
          this.clearCache();
-@@ -1054,7 +1054,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1052,7 +1052,7 @@ public class ChunkProviderServer extends IChunkProvider {
                          this.world.timings.chunkTicks.startTiming(); // Spigot // Paper
                          this.world.a(chunk, k);
                          this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
 -                        if (chunksTicked[0]++ % 10 == 0) this.world.getMinecraftServer().midTickLoadChunks(); // Paper
 +                        MinecraftServer.getServer().executeMidTickTasks(); // Tuinity - exec chunk tasks during world tick
                      }
-                 } else { checkInactiveChunk(playerchunk, time); } // Paper - check inaccessible chunks
+                 }
              });
-@@ -1226,41 +1226,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1193,41 +1193,7 @@ public class ChunkProviderServer extends IChunkProvider {
              ChunkProviderServer.this.world.getMethodProfiler().c("runTask");
              super.executeTask(runnable);
          }
@@ -92,7 +92,7 @@ index 423e41f646ef5abab85b0f6160c5325e6fbd97c1..ee13f3c957187695eab732ea71f61cd4
          @Override
          protected boolean executeNext() {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index a7608ad306e0c904bb21507e94a1f5dc595d1486..ecca60403038ca2eef92efef4022bc3e8b5781f9 100644
+index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca9352a43b 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
 @@ -946,7 +946,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
