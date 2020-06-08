@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Sun, 7 Jun 2020 18:27:25 -0700
+Subject: [PATCH] Fix newer jdk compile
+
+
+diff --git a/src/main/java/net/minecraft/server/RegionFile.java b/src/main/java/net/minecraft/server/RegionFile.java
+index f9c8fbebea17bd8ec14fc25de0baf3be17304532..ab7fb3894de76185a4956771754e4d969ce65731 100644
+--- a/src/main/java/net/minecraft/server/RegionFile.java
++++ b/src/main/java/net/minecraft/server/RegionFile.java
+@@ -884,10 +884,29 @@ public class RegionFile implements AutoCloseable {
+             }
+         } catch (java.lang.NoSuchMethodException e) {}
+         if (cleaner == null && getVersion() <= 8) {
+-            cleaner = (buf) -> {
+-                ((sun.nio.ch.DirectBuffer) buf).cleaner().clean();
++            // Tuinity start - fix jdk11 compile
++            try {
++            Class<?> directbufferClass = Class.forName("sun.nio.ch.DirectBuffer");
++            Class<?> cleanerClass = Class.forName("sun.misc.Cleaner");
++            java.lang.reflect.Method getCleaner = directbufferClass.getMethod("cleaner");
++            java.lang.reflect.Method clean = cleanerClass.getMethod("clean");
++            cleaner = (ByteBuffer buf) -> {
++                try {
++                    Object cleaner = getCleaner.invoke(buf);
++                    clean.invoke(cleaner);
++                } catch (Throwable thr) {
++                    com.destroystokyo.paper.util.SneakyThrow.sneaky(thr);
++                }
++                // Tuinity end - fix jdk11 compile
+             };
+             LOGGER.info("[RegionFile] Using Java 8 DirectByteBuffer cleanup method");
++            } catch (Throwable thr) { // Tuinity start - fix jdk11 compile
++                if (thr instanceof ThreadDeath) {
++                    throw (ThreadDeath)thr;
++                }
++                LOGGER.warn("Failed to initialise Java 8 DirectByteBuffer cleanup method", thr);
++            }
++            // Tuinity end - fix jdk11 compile
+         }
+     }
+     public static void cleanDirectByteBuffer(ByteBuffer toBeDestroyed) {
