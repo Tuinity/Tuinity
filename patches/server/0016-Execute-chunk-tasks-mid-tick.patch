@@ -18,7 +18,7 @@ index 2dfda90acfab087f4b7c25130c14e23b9debb9e7..a08bfb4b3b02e998d3a6f519107e522f
                      // re-schedule eventually
                      toTick.tickState = STATE_SCHEDULED;
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index ff4926f1164f4c5f89c44845c68005e3e2b55e8a..79516db02fcda94184d137c7509ed4b0843572fd 100644
+index 3fec027f3002ae1317e29edaaf5a6239e3506495..38c0fb0b821ab2982fff2d1cf54be84dfa646f8f 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -878,7 +878,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -92,10 +92,10 @@ index ff4926f1164f4c5f89c44845c68005e3e2b55e8a..79516db02fcda94184d137c7509ed4b0
          @Override
          protected boolean executeNext() {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca9352a43b 100644
+index 1e9c2c4e8dd76399aeb292bf624fa07464b41c6a..5443f70d61234f328ec62e3d3c632ce3fd575dc2 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -946,7 +946,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -953,7 +953,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
                          // Paper end
                          tickSection = curTime;
                      }
@@ -104,7 +104,7 @@ index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca
                      // Spigot end
  
                      //MinecraftServer.currentTick = (int) (System.currentTimeMillis() / 50); // CraftBukkit // Paper - don't overwrite current tick time
-@@ -1040,6 +1040,78 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1047,6 +1047,78 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
      }
      // Paper end
  
@@ -183,7 +183,7 @@ index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca
      private void executeModerately() {
          this.executeAll();
          java.util.concurrent.locks.LockSupport.parkNanos("executing tasks", 1000L);
-@@ -1053,22 +1125,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1060,22 +1132,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          });
      }
  
@@ -191,7 +191,7 @@ index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca
 -    public int midTickChunksTasksRan = 0;
 -    private long midTickLastRan = 0;
 -    public void midTickLoadChunks() {
--        if (!isMainThread() || System.nanoTime() - midTickLastRan < 200000) {
+-        if (!isMainThread() || System.nanoTime() - midTickLastRan < 1000000) {
 -            // only check once per 0.25ms incase this code is called in a hot method
 -            return;
 -        }
@@ -207,7 +207,7 @@ index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca
  
      @Override
      protected TickTask postToMainThread(Runnable runnable) {
-@@ -1095,6 +1152,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1102,6 +1159,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
  
      private boolean ba() {
          if (super.executeNext()) {
@@ -215,7 +215,7 @@ index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca
              return true;
          } else {
              if (this.canSleepForTick()) {
-@@ -1162,7 +1220,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1169,7 +1227,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          // Paper start - move oversleep into full server tick
          isOversleep = true;MinecraftTimings.serverOversleep.startTiming();
          this.awaitTasks(() -> {
@@ -224,7 +224,7 @@ index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca
              return !this.canOversleep();
          });
          isOversleep = false;MinecraftTimings.serverOversleep.stopTiming();
-@@ -1251,16 +1309,16 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1258,16 +1316,16 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
      }
  
      protected void b(BooleanSupplier booleansupplier) {
@@ -244,7 +244,7 @@ index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca
          this.methodProfiler.exitEnter("levels");
          Iterator iterator = this.getWorlds().iterator();
  
-@@ -1271,7 +1329,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1278,7 +1336,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
              processQueue.remove().run();
          }
          MinecraftTimings.processQueueTimer.stopTiming(); // Spigot
@@ -253,7 +253,7 @@ index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca
          MinecraftTimings.timeUpdateTimer.startTiming(); // Spigot // Paper
          // Send time updates to everyone, it will get the right time from the world the player is in.
          // Paper start - optimize time updates
-@@ -1314,11 +1372,11 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1321,11 +1379,11 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
                  this.methodProfiler.enter("tick");
  
                  try {
@@ -266,9 +266,9 @@ index ccaaf459f55ed8ee5c732fc1836f994919e6ed0d..651f4e5aa664d1e943e6ff4345c8a8ca
 +                    // Tuinity - replace logic
                  } catch (Throwable throwable) {
                      // Spigot Start
-                     CrashReport crashreport;
+                     if (throwable instanceof ThreadDeath) { throw throwable; } // Paper
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index c300ab70d7f6c6eaac4beaf97a2774c2fd81996f..7cc96141d3cdd6f5d22b58fa6bd1880a3e3675cb 100644
+index 668e23eb941d200696e4b08fbaa9f3a857b36a30..53aab5433f616fd53a9c4ab4dacfe923f7cdd964 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -280,6 +280,10 @@ public class WorldServer extends World {
@@ -282,7 +282,7 @@ index c300ab70d7f6c6eaac4beaf97a2774c2fd81996f..7cc96141d3cdd6f5d22b58fa6bd1880a
      // Add env and gen to constructor
      public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(worlddata, dimensionmanager, (world, worldprovider) -> {
-@@ -535,7 +539,7 @@ public class WorldServer extends World {
+@@ -536,7 +540,7 @@ public class WorldServer extends World {
          }
          timings.scheduledBlocks.stopTiming(); // Spigot
  
@@ -291,7 +291,7 @@ index c300ab70d7f6c6eaac4beaf97a2774c2fd81996f..7cc96141d3cdd6f5d22b58fa6bd1880a
          gameprofilerfiller.exitEnter("raid");
          this.timings.raids.startTiming(); // Paper - timings
          this.persistentRaid.a();
-@@ -548,7 +552,7 @@ public class WorldServer extends World {
+@@ -549,7 +553,7 @@ public class WorldServer extends World {
          timings.doSounds.startTiming(); // Spigot
          this.ad();
          timings.doSounds.stopTiming(); // Spigot
@@ -300,7 +300,7 @@ index c300ab70d7f6c6eaac4beaf97a2774c2fd81996f..7cc96141d3cdd6f5d22b58fa6bd1880a
          this.ticking = false;
          gameprofilerfiller.exitEnter("entities");
          boolean flag3 = true || !this.players.isEmpty() || !this.getForceLoadedChunks().isEmpty(); // CraftBukkit - this prevents entity cleanup, other issues on servers with no players
-@@ -644,7 +648,7 @@ public class WorldServer extends World {
+@@ -645,7 +649,7 @@ public class WorldServer extends World {
              }
              this.afterEntityTickingTasks.clear();
              // Paper end
@@ -309,7 +309,7 @@ index c300ab70d7f6c6eaac4beaf97a2774c2fd81996f..7cc96141d3cdd6f5d22b58fa6bd1880a
  
              try (co.aikar.timings.Timing ignored = this.timings.newEntities.startTiming()) { // Paper - timings
              while ((entity = (Entity) this.entitiesToAdd.poll()) != null) {
-@@ -655,7 +659,7 @@ public class WorldServer extends World {
+@@ -656,7 +660,7 @@ public class WorldServer extends World {
  
              gameprofilerfiller.exit();
              timings.tickEntities.stopTiming(); // Spigot

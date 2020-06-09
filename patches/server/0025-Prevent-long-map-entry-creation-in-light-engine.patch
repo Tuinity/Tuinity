@@ -6,59 +6,25 @@ Subject: [PATCH] Prevent long map entry creation in light engine
 Use fastiterator to prevent it
 
 diff --git a/src/main/java/net/minecraft/server/LightEngineStorage.java b/src/main/java/net/minecraft/server/LightEngineStorage.java
-index fa8039d38d5b3110fd85abf850248ba7948374c3..cdd4c6fa1f15770984a61ecbcd7c85d02f3bac23 100644
+index 84a2589ef0bbb2c5d8b5d4808277916a2323447f..cd30c8e403f91e8cdf87f2f766d4738b35984cdc 100644
 --- a/src/main/java/net/minecraft/server/LightEngineStorage.java
 +++ b/src/main/java/net/minecraft/server/LightEngineStorage.java
 @@ -23,7 +23,8 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
-     protected final M f; // Paper - diff on change, should be "updating"
+     protected final M f; protected final M updating; // Paper - diff on change, should be "updating"
      protected final LongSet g = new LongOpenHashSet();
-     protected final LongSet h = new LongOpenHashSet();
+     protected final LongSet h = new LongOpenHashSet(); LongSet dirty = h; // Paper - OBFHELPER
 -    protected final Long2ObjectMap<NibbleArray> i = Long2ObjectMaps.synchronize(new Long2ObjectOpenHashMap());
 +    protected final Long2ObjectOpenHashMap<NibbleArray> i_synchronized_map_real = new Long2ObjectOpenHashMap<>(); // Tuinity - store wrapped map, we need fastIterator
 +    protected final Long2ObjectMap<NibbleArray> i = Long2ObjectMaps.synchronize(this.i_synchronized_map_real); // Tuinity - store wrapped map, we need fastIterator
      private final LongSet n = new LongOpenHashSet();
      private final LongSet o = new LongOpenHashSet();
      protected volatile boolean j;
-@@ -186,7 +187,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
-             NibbleArray nibblearray;
- 
-             while (longiterator.hasNext()) {
--                i = (Long) longiterator.next();
-+                i = longiterator.nextLong(); // Tuinity - use nextLong
-                 this.a(lightenginelayer, i);
-                 NibbleArray nibblearray1 = (NibbleArray) this.i.remove(i);
- 
-@@ -204,13 +205,13 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
-             longiterator = this.o.iterator();
- 
-             while (longiterator.hasNext()) {
--                i = (Long) longiterator.next();
-+                i = longiterator.nextLong(); // Tuinity - use nextLong
-                 this.l(i);
-             }
+@@ -245,7 +246,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
  
              this.o.clear();
              this.j = false;
--            ObjectIterator objectiterator = this.i.long2ObjectEntrySet().iterator();
-+            ObjectIterator objectiterator = this.i_synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to reduce entry creation
+-            ObjectIterator<Long2ObjectMap.Entry<NibbleArray>> objectiterator = Long2ObjectMaps.fastIterator(this.i); // Paper
++            ObjectIterator objectiterator = this.i_synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to reduce entry creation - remove paper diff, it's ineffective
  
              Entry entry;
              long j;
-@@ -233,7 +234,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
-                 longiterator = this.i.keySet().iterator();
- 
-                 while (longiterator.hasNext()) {
--                    i = (Long) longiterator.next();
-+                    i = longiterator.nextLong(); // Tuinity - use nextLong
-                     if (this.g(i)) {
-                         int k = SectionPosition.c(SectionPosition.b(i));
-                         int l = SectionPosition.c(SectionPosition.c(i));
-@@ -287,7 +288,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
-                 }
-             }
- 
--            objectiterator = this.i.long2ObjectEntrySet().iterator();
-+            objectiterator = this.i_synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to avoid entry creation
- 
-             while (objectiterator.hasNext()) {
-                 entry = (Entry) objectiterator.next();
