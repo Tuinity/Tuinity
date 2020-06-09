@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Tue, 9 Jun 2020 14:02:06 -0700
+Subject: [PATCH] Revert getChunkAt(Async) retaining chunks for long periods of
+ time
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+index 0cf944c3f490e66df0138ee97e97fc71ff5cfa06..796073ecfad3efbfc38768bab668d983b18c6bc5 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+@@ -406,7 +406,7 @@ public class CraftWorld implements World {
+ 
+     @Override
+     public Chunk getChunkAt(int x, int z) {
+-        world.getChunkProvider().addTicket(TicketType.PLUGIN, new ChunkCoordIntPair(x, z), 0, Unit.INSTANCE); // Paper
++        //world.getChunkProvider().addTicket(TicketType.PLUGIN, new ChunkCoordIntPair(x, z), 0, Unit.INSTANCE); // Paper // Tuinity - revert
+         return this.world.getChunkProvider().getChunkAt(x, z, true).bukkitChunk;
+     }
+ 
+@@ -2486,7 +2486,7 @@ public class CraftWorld implements World {
+                     if (err != null) {
+                         future.completeExceptionally(err);
+                     } else {
+-                        world.getChunkProvider().addTicket(TicketType.PLUGIN, new ChunkCoordIntPair(x, z), 0, Unit.INSTANCE); // Paper
++                        //world.getChunkProvider().addTicket(TicketType.PLUGIN, new ChunkCoordIntPair(x, z), 0, Unit.INSTANCE); // Paper // Tuinity - revert
+                         future.complete(chunk);
+                     }
+                 });
