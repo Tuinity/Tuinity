@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Sun, 14 Jun 2020 03:16:33 -0700
+Subject: [PATCH] Port paper pr 3550 - the piston patch
+
+Required for pushable TE's...
+
+diff --git a/src/main/java/net/minecraft/server/BlockPiston.java b/src/main/java/net/minecraft/server/BlockPiston.java
+index 880aa8c86d1724cd9ef68e0abfff8bb38f389462..0afe798dc5793b4ab45651ba0e14e7c99fab4213 100644
+--- a/src/main/java/net/minecraft/server/BlockPiston.java
++++ b/src/main/java/net/minecraft/server/BlockPiston.java
+@@ -363,12 +363,14 @@ public class BlockPiston extends BlockDirectional {
+             }
+ 
+             for (k = list.size() - 1; k >= 0; --k) {
+-                blockposition3 = (BlockPosition) list.get(k);
+-                iblockdata1 = world.getType(blockposition3); map.replace(blockposition3, iblockdata1); // Paper - fix piston physics inconsistency
++                BlockPosition oldPos = blockposition3 = (BlockPosition) list.get(k); // Paper
++                iblockdata1 = null; // Paper - explode if usage changes
+                 blockposition3 = blockposition3.shift(enumdirection1);
+                 map.remove(blockposition3);
+                 world.setTypeAndData(blockposition3, (IBlockData) Blocks.MOVING_PISTON.getBlockData().set(BlockPiston.FACING, enumdirection), 68);
++                iblockdata1 = world.getType(oldPos); map.replace(oldPos, iblockdata1); // Paper - fix piston physics inconsistency - move after the physics update
+                 world.setTileEntity(blockposition3, BlockPistonMoving.a(iblockdata1, enumdirection, flag, false)); // Paper - fix piston physics inconsistency
++                world.setTypeAndData(oldPos, Blocks.AIR.getBlockData(), 68); // Paper - set air to prevent later physics updates from seeing this block
+                 --j;
+                 aiblockdata[j] = iblockdata1;
+             }

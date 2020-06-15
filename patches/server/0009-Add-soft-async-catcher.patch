@@ -156,7 +156,7 @@ index d7beb47d9e07707e5875c50932dfe4698cb6ad72..1c5137632ae78da6790664275dbf16be
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 7eb14c2e3a13a9d2d6c5e699eca3ce60b50e9188..5ea441ecefc3384e2c67119f0f22ed5b6e82a2a2 100644
+index ee76ba3a31da1146fb791cdcf88e8bca5d14d2e1..fbe67ea6b97b6a06909e3af317ff644dd370145b 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -65,6 +65,7 @@ public abstract class ChunkMapDistance {
@@ -175,7 +175,7 @@ index 7eb14c2e3a13a9d2d6c5e699eca3ce60b50e9188..5ea441ecefc3384e2c67119f0f22ed5b
          //this.f.a(); // Paper - no longer used
          AsyncCatcher.catchOp("DistanceManagerTick");
          this.g.a();
-@@ -318,6 +320,7 @@ public abstract class ChunkMapDistance {
+@@ -350,6 +352,7 @@ public abstract class ChunkMapDistance {
      }
  
      private ArraySetSorted<Ticket<?>> e(long i) {
@@ -183,7 +183,7 @@ index 7eb14c2e3a13a9d2d6c5e699eca3ce60b50e9188..5ea441ecefc3384e2c67119f0f22ed5b
          return (ArraySetSorted) this.tickets.computeIfAbsent(i, (j) -> {
              return ArraySetSorted.a(4);
          });
-@@ -335,6 +338,7 @@ public abstract class ChunkMapDistance {
+@@ -367,6 +370,7 @@ public abstract class ChunkMapDistance {
      }
  
      public void a(SectionPosition sectionposition, EntityPlayer entityplayer) {
@@ -191,15 +191,15 @@ index 7eb14c2e3a13a9d2d6c5e699eca3ce60b50e9188..5ea441ecefc3384e2c67119f0f22ed5b
          long i = sectionposition.u().pair();
  
          ((ObjectSet) this.c.computeIfAbsent(i, (j) -> {
-@@ -345,6 +349,7 @@ public abstract class ChunkMapDistance {
+@@ -377,6 +381,7 @@ public abstract class ChunkMapDistance {
      }
  
      public void b(SectionPosition sectionposition, EntityPlayer entityplayer) {
 +        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async player remove"); // Tuinity
          long i = sectionposition.u().pair();
          ObjectSet<EntityPlayer> objectset = (ObjectSet) this.c.get(i);
-         if (objectset == null) return; // Paper - mitigate weird state mismatch that this chunk isn't tracked.
-@@ -395,6 +400,7 @@ public abstract class ChunkMapDistance {
+ 
+@@ -426,6 +431,7 @@ public abstract class ChunkMapDistance {
  
      // CraftBukkit start
      public <T> void removeAllTicketsFor(TicketType<T> ticketType, int ticketLevel, T ticketIdentifier) {
@@ -208,10 +208,10 @@ index 7eb14c2e3a13a9d2d6c5e699eca3ce60b50e9188..5ea441ecefc3384e2c67119f0f22ed5b
  
          for (java.util.Iterator<Entry<ArraySetSorted<Ticket<?>>>> iterator = this.tickets.long2ObjectEntrySet().fastIterator(); iterator.hasNext();) {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index ac0e0e8b617f6386c165896b82945478af701df9..3fec027f3002ae1317e29edaaf5a6239e3506495 100644
+index 477d1a23b038f1faa53ad88c936123a964ada85d..e713fc757d8707e01709a3accc3042af59def2fc 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -1231,6 +1231,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1240,6 +1240,7 @@ public class ChunkProviderServer extends IChunkProvider {
  
          @Override
          protected boolean executeNext() {
@@ -232,7 +232,7 @@ index 5cc89c0cf9e9e632212a9653391437cbe9b15031..1bd70384840b1a9e5ddce1e2fd504336
  
          if (!list.equals(this.p)) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index c58c38c8359044c814c0b724389956cae9f63b9f..b1120d18ac1eb9c735e1b800c4005853b5a1f0c7 100644
+index 8abf276a325cbc3a863fb89276526790c4de2692..bc35e6f4edae1fab8833b5a21ed3ddf5a6a943b3 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -192,6 +192,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -259,7 +259,7 @@ index c58c38c8359044c814c0b724389956cae9f63b9f..b1120d18ac1eb9c735e1b800c4005853
          int chunkX = MCUtil.getChunkCoordinate(player.locX());
          int chunkZ = MCUtil.getChunkCoordinate(player.locZ());
          // Note: players need to be explicitly added to distance maps before they can be updated
-@@ -723,6 +726,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -722,6 +725,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      @Nullable
      private PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k) {
@@ -267,7 +267,7 @@ index c58c38c8359044c814c0b724389956cae9f63b9f..b1120d18ac1eb9c735e1b800c4005853
          if (k > PlayerChunkMap.GOLDEN_TICKET && j > PlayerChunkMap.GOLDEN_TICKET) {
              return playerchunk;
          } else {
-@@ -1025,6 +1029,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1024,6 +1028,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      protected boolean b() {
@@ -275,7 +275,7 @@ index c58c38c8359044c814c0b724389956cae9f63b9f..b1120d18ac1eb9c735e1b800c4005853
          if (!this.updatingChunksModified) {
              return false;
          } else {
-@@ -1430,6 +1435,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1429,6 +1434,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public final void setViewDistance(int i) { // Paper - public
@@ -283,7 +283,7 @@ index c58c38c8359044c814c0b724389956cae9f63b9f..b1120d18ac1eb9c735e1b800c4005853
          int j = MathHelper.clamp(i + 1, 3, 33); // Paper - diff on change, these make the lower view distance limit 2 and the upper 32
  
          if (j != this.viewDistance) {
-@@ -1443,6 +1449,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1442,6 +1448,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      // Paper start - no-tick view distance
      public final void setNoTickViewDistance(int viewDistance) {
