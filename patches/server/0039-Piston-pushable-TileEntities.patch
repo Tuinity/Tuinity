@@ -46,7 +46,7 @@ index 72fb92f7c379cb84425b6b03ddf8aad29388c0ae..8688ff0f8fb1e0abecff0dc0d21d8d2b
      protected static final VoxelShape e = Block.a(1.0D, 0.0D, 0.0D, 15.0D, 14.0D, 15.0D);
      protected static final VoxelShape f = Block.a(1.0D, 0.0D, 1.0D, 15.0D, 14.0D, 16.0D);
 diff --git a/src/main/java/net/minecraft/server/BlockPiston.java b/src/main/java/net/minecraft/server/BlockPiston.java
-index 0afe798dc5793b4ab45651ba0e14e7c99fab4213..8cfe54791cb8e04ae1ac4452783e4f38fd506cda 100644
+index 0afe798dc5793b4ab45651ba0e14e7c99fab4213..2c4658ec1620d89870ce5b94d5ab50496034b05b 100644
 --- a/src/main/java/net/minecraft/server/BlockPiston.java
 +++ b/src/main/java/net/minecraft/server/BlockPiston.java
 @@ -266,8 +266,10 @@ public class BlockPiston extends BlockDirectional {
@@ -56,13 +56,13 @@ index 0afe798dc5793b4ab45651ba0e14e7c99fab4213..8cfe54791cb8e04ae1ac4452783e4f38
 -
 -                return !block.isTileEntity();
 +                // Tuinity start - pushable TE's
-+                TileEntity tileEntity = world.getTileEntity(blockposition);
-+                return !block.isTileEntity() || (tileEntity != null && tileEntity.isPushable());
++                TileEntity tileEntity;
++                return !block.isTileEntity() || ((tileEntity = world.getTileEntity(blockposition)) != null && tileEntity.isPushable());
 +                // Tuinity end - pushable TE's
              } else {
                  return false;
              }
-@@ -369,8 +371,30 @@ public class BlockPiston extends BlockDirectional {
+@@ -369,8 +371,27 @@ public class BlockPiston extends BlockDirectional {
                  map.remove(blockposition3);
                  world.setTypeAndData(blockposition3, (IBlockData) Blocks.MOVING_PISTON.getBlockData().set(BlockPiston.FACING, enumdirection), 68);
                  iblockdata1 = world.getType(oldPos); map.replace(oldPos, iblockdata1); // Paper - fix piston physics inconsistency - move after the physics update
@@ -86,12 +86,9 @@ index 0afe798dc5793b4ab45651ba0e14e7c99fab4213..8cfe54791cb8e04ae1ac4452783e4f38
 +                        tileEntity = tileEntity.createCopyForPush((WorldServer)world, oldPos, blockposition3, iblockdata1);
 +                    }
 +                }
-+                // removing the old pos TE is an ugly hack to prevent containers from dropping items
-+                // when they're moved.
-+                world.removeTileEntity(oldPos);
++                world.setTypeAndDataRaw(oldPos, Blocks.AIR.getBlockData(), null);
 +                world.setTileEntity(blockposition3, BlockPistonMoving.createPistonTile(iblockdata1, enumdirection, flag, false, tileEntity)); // Paper - fix piston physics inconsistency
 +                // Tuinity end - pushable TE's
-+                world.setTypeAndData(oldPos, Blocks.AIR.getBlockData(), 2 | 16 | 1024); // Paper - set air to prevent later physics updates from seeing this block
                  --j;
                  aiblockdata[j] = iblockdata1;
              }
@@ -114,11 +111,34 @@ index 809ee9f9a69d86d891d25efa04b1af4d5f04f185..805fc6b8827afac2a84c52cc442798e0
  
      @Override
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 1c5137632ae78da6790664275dbf16be9435f54c..c4a371daedb75abc08ba857259872a1785a4bb1d 100644
+index 1c5137632ae78da6790664275dbf16be9435f54c..5a360fdca93c6e5b94963c6ca3ff66315c265edf 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -511,6 +511,12 @@ public class Chunk implements IChunkAccess {
+@@ -509,8 +509,35 @@ public class Chunk implements IChunkAccess {
+         return this.setType(blockposition, iblockdata, flag, true);
+     }
  
++    // Tuinity start
++    final void setTypeAndDataRaw(BlockPosition blockposition, IBlockData iblockdata) {
++        // copied from setType
++        int i = blockposition.getX() & 15;
++        int j = blockposition.getY();
++        int k = blockposition.getZ() & 15;
++        ChunkSection chunksection = this.sections[j >> 4];
++
++        if (chunksection == Chunk.a) {
++            if (iblockdata.isAir()) {
++                return;
++            }
++
++            chunksection = new ChunkSection(j >> 4 << 4, this, this.world, true); // Paper - Anti-Xray - Add parameters
++            this.sections[j >> 4] = chunksection;
++        }
++
++        chunksection.setType(i, j & 15, k, iblockdata);
++    }
++    // Tuinity end
++
      @Nullable
      public IBlockData setType(BlockPosition blockposition, IBlockData iblockdata, boolean flag, boolean doPlace) {
 +        // Tuinity start - add tileEntity parameter
@@ -130,7 +150,7 @@ index 1c5137632ae78da6790664275dbf16be9435f54c..c4a371daedb75abc08ba857259872a17
          // CraftBukkit end
          int i = blockposition.getX() & 15;
          int j = blockposition.getY();
-@@ -569,6 +575,10 @@ public class Chunk implements IChunkAccess {
+@@ -569,6 +596,10 @@ public class Chunk implements IChunkAccess {
                  }
  
                  if (block instanceof ITileEntity) {
@@ -141,7 +161,7 @@ index 1c5137632ae78da6790664275dbf16be9435f54c..c4a371daedb75abc08ba857259872a17
                      tileentity = this.a(blockposition, Chunk.EnumTileEntityState.CHECK);
                      if (tileentity == null) {
                          tileentity = ((ITileEntity) block).createTile(this.world);
-@@ -576,6 +586,7 @@ public class Chunk implements IChunkAccess {
+@@ -576,6 +607,7 @@ public class Chunk implements IChunkAccess {
                      } else {
                          tileentity.invalidateBlockCache();
                      }
@@ -369,7 +389,7 @@ index 441157cf7fc944048d33617dd4da7b9be406a1a4..438d14dd2365bfaf55fd535b23e8d264
      protected IChatBaseComponent getContainerName() {
          return new ChatMessage("container.brewing", new Object[0]);
 diff --git a/src/main/java/net/minecraft/server/TileEntityChest.java b/src/main/java/net/minecraft/server/TileEntityChest.java
-index 9a5f2da8c073f9b249edac98b0990615a9efb0e2..deff67d68fda322be30a1ed2210e4e83b533a3bd 100644
+index 9a5f2da8c073f9b249edac98b0990615a9efb0e2..50a8d59da6df62f0ec7158d563fe7a8517a61847 100644
 --- a/src/main/java/net/minecraft/server/TileEntityChest.java
 +++ b/src/main/java/net/minecraft/server/TileEntityChest.java
 @@ -45,6 +45,22 @@ public class TileEntityChest extends TileEntityLootable { // Paper - Remove ITic
@@ -383,7 +403,7 @@ index 9a5f2da8c073f9b249edac98b0990615a9efb0e2..deff67d68fda322be30a1ed2210e4e83
 +            return false;
 +        }
 +        // what should happen when a double chest is moved is generally just a mess to deal with in the current
-+        // codebase. TODO try and figure it out
++        // codebase.
 +        IBlockData type = this.getBlock();
 +        if (type.getBlock() == Blocks.CHEST || type.getBlock() == Blocks.TRAPPED_CHEST) {
 +            return type.get(BlockChest.getChestTypeEnum()) == BlockPropertyChestType.SINGLE;
@@ -577,7 +597,7 @@ index 6c2b48bdbe2ae09649a483b106e860f4e67ec0ac..c3b854b6a2ced313072b914fe8f5daa9
          super(TileEntityTypes.LECTERN);
          this.book = ItemStack.a;
 diff --git a/src/main/java/net/minecraft/server/TileEntityPiston.java b/src/main/java/net/minecraft/server/TileEntityPiston.java
-index 946522f6362638f518fba15172fb7f676d46b67c..1f2b57e28bc55a3c81c4ec51601818d26e9ab7b3 100644
+index 946522f6362638f518fba15172fb7f676d46b67c..847c9c104d09d96600f351629c8da459499ceb24 100644
 --- a/src/main/java/net/minecraft/server/TileEntityPiston.java
 +++ b/src/main/java/net/minecraft/server/TileEntityPiston.java
 @@ -5,10 +5,10 @@ import java.util.List;
@@ -630,7 +650,7 @@ index 946522f6362638f518fba15172fb7f676d46b67c..1f2b57e28bc55a3c81c4ec51601818d2
      }
  
      public boolean d() {
-@@ -257,7 +272,22 @@ public class TileEntityPiston extends TileEntity implements ITickable {
+@@ -257,7 +272,25 @@ public class TileEntityPiston extends TileEntity implements ITickable {
                      iblockdata = Block.b(this.a, (GeneratorAccess) this.world, this.position);
                  }
  
@@ -645,6 +665,9 @@ index 946522f6362638f518fba15172fb7f676d46b67c..1f2b57e28bc55a3c81c4ec51601818d2
 +                    this.world.setAir(this.position, false);
 +                    Block.dropItems(this.getBlockData(), this.world, this.position, null, null, ItemStack.NULL_ITEM);
 +                } else {
++                    // need to set to air before else the setTypeAndData call will create a new TE and override
++                    // the old one
++                    this.world.setTypeAndDataRaw(this.position, Blocks.AIR.getBlockData(), null);
 +                    this.world.setTypeAndData(this.position, iblockdata, 3, iblockdata.getBlock() == this.getBlockData().getBlock() ? this.tileEntity : null);
 +                }
 +                if (this.tileEntity != null && this.world.getType(this.position).getBlock() == this.getBlockData().getBlock()) {
@@ -654,7 +677,7 @@ index 946522f6362638f518fba15172fb7f676d46b67c..1f2b57e28bc55a3c81c4ec51601818d2
                  this.world.a(this.position, iblockdata.getBlock(), this.position);
              }
          }
-@@ -282,7 +312,12 @@ public class TileEntityPiston extends TileEntity implements ITickable {
+@@ -282,7 +315,12 @@ public class TileEntityPiston extends TileEntity implements ITickable {
                          iblockdata = (IBlockData) iblockdata.set(BlockProperties.C, false);
                      }
  
@@ -668,7 +691,7 @@ index 946522f6362638f518fba15172fb7f676d46b67c..1f2b57e28bc55a3c81c4ec51601818d2
                      this.world.a(this.position, iblockdata.getBlock(), this.position);
                  }
              }
-@@ -309,16 +344,34 @@ public class TileEntityPiston extends TileEntity implements ITickable {
+@@ -309,16 +347,34 @@ public class TileEntityPiston extends TileEntity implements ITickable {
          this.j = this.i;
          this.c = nbttagcompound.getBoolean("extending");
          this.g = nbttagcompound.getBoolean("source");
@@ -704,26 +727,38 @@ index 946522f6362638f518fba15172fb7f676d46b67c..1f2b57e28bc55a3c81c4ec51601818d2
      }
  
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 3074b40c87ba9b6eadcea3840a4f56e3529d6c58..533d161cd6da27b95242c0691946c48379662ed0 100644
+index 3074b40c87ba9b6eadcea3840a4f56e3529d6c58..9ed623de55d6735724aa9d6786205404267ae7e3 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -343,6 +343,15 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -341,8 +341,27 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+         }
+     }
  
++    // Tuinity start
++    // Does not affect TE. This simply just a raw set type - runs no logic.
++    final void setTypeAndDataRaw(final BlockPosition pos, final IBlockData blockData, final TileEntity tileEntity) {
++        this.getChunkAt(pos.getX() >> 4, pos.getZ() >> 4).setTypeAndDataRaw(pos, blockData);
++        if (tileEntity == null) {
++            this.removeTileEntity(pos);
++        } else {
++            this.setTileEntity(pos, tileEntity);
++        }
++        ((WorldServer)this).getChunkProvider().flagDirty(pos);
++    }
++    // Tuinity end
++
      @Override
      public boolean setTypeAndData(BlockPosition blockposition, IBlockData iblockdata, int i) {
 +        // Tuinity start - add tileEntity parameter
 +        return this.setTypeAndData(blockposition, iblockdata, i, null);
 +    }
++    // Up to the caller to handle previous tile state.
 +    public boolean setTypeAndData(BlockPosition blockposition, IBlockData iblockdata, int i, TileEntity tileEntity) {
-+        if (tileEntity != null) {
-+            // even though we set it later in the call, some calls actually remove it / check it.
-+            this.setTileEntity(blockposition, tileEntity);
-+        }
 +        // Tuinity end - add tileEntity parameter
          com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async set type call"); // Tuinity
          // CraftBukkit start - tree generation
          if (this.captureTreeGeneration) {
-@@ -376,7 +385,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -376,7 +395,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
              }
              // CraftBukkit end
  
@@ -732,7 +767,7 @@ index 3074b40c87ba9b6eadcea3840a4f56e3529d6c58..533d161cd6da27b95242c0691946c483
              this.chunkPacketBlockController.onBlockChange(this, blockposition, iblockdata, iblockdata1, i); // Paper - Anti-Xray
  
              if (iblockdata1 == null) {
-@@ -1113,7 +1122,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1113,7 +1132,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
                      while (iterator.hasNext()) {
                          TileEntity tileentity1 = (TileEntity) iterator.next();
  
