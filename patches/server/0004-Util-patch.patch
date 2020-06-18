@@ -4,6 +4,277 @@ Date: Sat, 18 May 2019 12:25:19 -0700
 Subject: [PATCH] Util patch
 
 
+diff --git a/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..e12d096456965c0f9e152a31f4c2c602184dd7fa
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
+@@ -0,0 +1,265 @@
++package com.tuinity.tuinity.util.maplist;
++
++import it.unimi.dsi.fastutil.objects.Reference2IntLinkedOpenHashMap;
++import it.unimi.dsi.fastutil.objects.Reference2IntMap;
++import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
++import java.util.Arrays;
++import java.util.NoSuchElementException;
++
++public final class IteratorSafeOrderedReferenceSet<E> {
++
++    protected final Reference2IntLinkedOpenHashMap<E> indexMap;
++    protected int firstInvalidIndex = -1;
++
++    protected final ReferenceLinkedOpenHashSet<E> pendingAdditions;
++
++    /* list impl */
++    protected E[] listElements;
++    protected int listSize;
++
++    protected final double maxFragFactor;
++
++    protected int iteratorCount;
++
++    public IteratorSafeOrderedReferenceSet() {
++        this(16, 0.75f, 16, 0.2);
++    }
++
++    public IteratorSafeOrderedReferenceSet(final int setCapacity, final float setLoadFactor, final int arrayCapacity, final double maxFragFactor) {
++        this.indexMap = new Reference2IntLinkedOpenHashMap<>(setCapacity, setLoadFactor);
++        this.indexMap.defaultReturnValue(-1);
++        this.pendingAdditions = new ReferenceLinkedOpenHashSet<>();
++        this.maxFragFactor = maxFragFactor;
++        this.listElements = (E[])new Object[arrayCapacity];
++    }
++
++    protected final double getFragFactor() {
++        return 1.0 - ((double)this.indexMap.size() / (double)this.listSize);
++    }
++
++    public int createRawIterator() {
++        ++this.iteratorCount;
++        if (this.indexMap.isEmpty()) {
++            return -1;
++        } else {
++            return this.firstInvalidIndex == 0 ? this.indexMap.getInt(this.indexMap.firstKey()) : 0;
++        }
++    }
++
++    public int advanceRawIterator(final int index) {
++        final E[] elements = this.listElements;
++        int ret = index + 1;
++        for (int len = this.listSize; ret < len; ++ret) {
++            if (elements[ret] != null) {
++                return ret;
++            }
++        }
++
++        return -1;
++    }
++
++    public void finishRawIterator() {
++        if (--this.iteratorCount == 0) {
++            if (this.getFragFactor() >= this.maxFragFactor) {
++                this.defrag();
++            }
++            if (!this.pendingAdditions.isEmpty()) {
++                int index = this.listSize;
++                int neededLen = index + this.pendingAdditions.size();
++
++                if (neededLen < 0) {
++                    throw new IllegalStateException("Too large");
++                }
++
++                if (neededLen > this.listElements.length) {
++                    this.listElements = Arrays.copyOf(this.listElements, neededLen * 2);
++                }
++
++                final E[] elements = this.listElements;
++                java.util.Iterator<E> iterator = this.pendingAdditions.iterator();
++                for (int i = index; i < neededLen; ++i) {
++                    final E element = iterator.next();
++                    elements[i] = element;
++                    this.indexMap.put(element, i);
++                }
++
++                this.pendingAdditions.clear();
++                this.listSize = neededLen;
++            }
++        }
++    }
++
++    public boolean remove(final E element) {
++        final int index = this.indexMap.removeInt(element);
++        if (index >= 0) {
++            if (this.firstInvalidIndex < 0 || index < this.firstInvalidIndex) {
++                this.firstInvalidIndex = index;
++            }
++            this.listElements[index] = null;
++            return true;
++        } else {
++            return this.pendingAdditions.remove(element);
++        }
++    }
++
++    public boolean add(final E element) {
++        if (this.iteratorCount > 0) {
++            if (this.indexMap.containsKey(element)) {
++                return true;
++            }
++            return this.pendingAdditions.add(element);
++        } else {
++            final int listSize = this.listSize;
++
++            final int previous = this.indexMap.putIfAbsent(element, listSize);
++            if (previous != -1) {
++                return false;
++            }
++
++            if (listSize >= this.listElements.length) {
++                this.listElements = Arrays.copyOf(this.listElements, listSize * 2);
++            }
++            this.listElements[listSize] = element;
++            this.listSize = listSize + 1;
++
++            return true;
++        }
++    }
++
++    protected void defrag() {
++        if (this.firstInvalidIndex < 0) {
++            return; // nothing to do
++        }
++
++        if (this.indexMap.isEmpty()) {
++            Arrays.fill(this.listElements, 0, this.listSize, null);
++            this.listSize = 0;
++            this.firstInvalidIndex = -1;
++            return;
++        }
++
++        final E[] backingArray = this.listElements;
++
++        int lastValidIndex;
++        java.util.Iterator<Reference2IntMap.Entry<E>> iterator;
++
++        if (this.firstInvalidIndex == 0) {
++            iterator = this.indexMap.reference2IntEntrySet().fastIterator();
++            lastValidIndex = 0;
++        } else {
++            lastValidIndex = this.firstInvalidIndex;
++            final E key = backingArray[lastValidIndex - 1];
++            iterator = this.indexMap.reference2IntEntrySet().fastIterator(new Reference2IntMap.Entry<E>() {
++                @Override
++                public int getIntValue() {
++                    throw new UnsupportedOperationException();
++                }
++
++                @Override
++                public int setValue(int i) {
++                    throw new UnsupportedOperationException();
++                }
++
++                @Override
++                public E getKey() {
++                    return key;
++                }
++            });
++        }
++
++        while (iterator.hasNext()) {
++            final Reference2IntMap.Entry<E> entry = iterator.next();
++
++            final int newIndex = lastValidIndex++;
++            backingArray[newIndex] = entry.getKey();
++            entry.setValue(newIndex);
++        }
++
++        // cleanup end
++        Arrays.fill(backingArray, lastValidIndex, this.listSize, null);
++        this.listSize = lastValidIndex;
++        this.firstInvalidIndex = -1;
++    }
++
++    public E rawGet(final int index) {
++        return this.listElements[index];
++    }
++
++    public int size() {
++        // always returns the correct amount - listSize can be different
++        return this.indexMap.size();
++    }
++
++    public IteratorSafeOrderedReferenceSet.Iterator<E> iterator() {
++        ++this.iteratorCount;
++        return new BaseIterator<>(this);
++    }
++
++    public static interface Iterator<E> extends java.util.Iterator<E> {
++
++        public void finishedIterating();
++
++    }
++
++    protected static final class BaseIterator<E> implements IteratorSafeOrderedReferenceSet.Iterator<E> {
++
++        protected final IteratorSafeOrderedReferenceSet<E> set;
++        protected int nextIndex;
++        protected E currentValue;
++        protected boolean finished;
++
++        protected BaseIterator(final IteratorSafeOrderedReferenceSet<E> set) {
++            this.set = set;
++        }
++
++        @Override
++        public boolean hasNext() {
++            if (this.finished) {
++                return false;
++            }
++            if (this.currentValue != null) {
++                return true;
++            }
++
++            final E[] elements = this.set.listElements;
++            int index, len;
++            for (index = this.nextIndex, len = this.set.listSize; index < len; ++index) {
++                final E element = elements[index];
++                if (element != null) {
++                    this.currentValue = element;
++                    this.nextIndex = index + 1;
++                    return true;
++                }
++            }
++
++            this.nextIndex = index;
++            return false;
++        }
++
++        @Override
++        public E next() {
++            if (!this.hasNext()) {
++                throw new NoSuchElementException();
++            }
++            final E ret = this.currentValue;
++
++            this.currentValue = null;
++
++            return ret;
++        }
++
++        @Override
++        public void remove() {
++            throw new UnsupportedOperationException();
++        }
++
++        @Override
++        public void finishedIterating() {
++            if (this.finished) {
++                throw new IllegalStateException();
++            }
++            this.finished = true;
++            this.set.finishRawIterator();
++        }
++    }
++}
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 index d07fcc0c51679104506d81acfdee6f391f30c0a0..477d1a23b038f1faa53ad88c936123a964ada85d 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
