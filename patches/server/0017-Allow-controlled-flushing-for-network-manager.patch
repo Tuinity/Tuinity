@@ -9,7 +9,7 @@ This patch will be used to optimise out flush calls in later
 patches.
 
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 94c25c542dd18396fa792af944794bdb2436d2fd..f1dead99855c07309931f306fd87cec82e39715c 100644
+index 94c25c542dd18396fa792af944794bdb2436d2fd..90f5e59d1fccf0f64040c20e0d07a4bb31adb1ed 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -70,6 +70,39 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -52,6 +52,15 @@ index 94c25c542dd18396fa792af944794bdb2436d2fd..f1dead99855c07309931f306fd87cec8
      public NetworkManager(EnumProtocolDirection enumprotocoldirection) {
          this.h = enumprotocoldirection;
      }
+@@ -217,7 +250,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+             MCUtil.isMainThread() && packet.isReady() && this.packetQueue.isEmpty() &&
+             (packet.getExtraPackets() == null || packet.getExtraPackets().isEmpty())
+         ))) {
+-            this.dispatchPacket(packet, genericfuturelistener);
++            this.writePacket(packet, genericfuturelistener, null); // Tuinity
+             return;
+         }
+         // write the packets to the queue, then flush - antixray hooks there already
 @@ -243,6 +276,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
  
      private void dispatchPacket(Packet<?> packet, @Nullable GenericFutureListener<? extends Future<? super Void>> genericFutureListener) { this.b(packet, genericFutureListener); } // Paper - OBFHELPER
