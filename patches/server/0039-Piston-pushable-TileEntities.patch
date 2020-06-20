@@ -46,10 +46,10 @@ index 72fb92f7c379cb84425b6b03ddf8aad29388c0ae..8688ff0f8fb1e0abecff0dc0d21d8d2b
      protected static final VoxelShape e = Block.a(1.0D, 0.0D, 0.0D, 15.0D, 14.0D, 15.0D);
      protected static final VoxelShape f = Block.a(1.0D, 0.0D, 1.0D, 15.0D, 14.0D, 16.0D);
 diff --git a/src/main/java/net/minecraft/server/BlockPiston.java b/src/main/java/net/minecraft/server/BlockPiston.java
-index 0afe798dc5793b4ab45651ba0e14e7c99fab4213..2c4658ec1620d89870ce5b94d5ab50496034b05b 100644
+index d740027140804cb6f57407a11fb7376ddedb2edc..73271a56183d1d77f9feb57d5f39b9d09fe899c8 100644
 --- a/src/main/java/net/minecraft/server/BlockPiston.java
 +++ b/src/main/java/net/minecraft/server/BlockPiston.java
-@@ -266,8 +266,10 @@ public class BlockPiston extends BlockDirectional {
+@@ -279,8 +279,10 @@ public class BlockPiston extends BlockDirectional {
                  } else if ((Boolean) iblockdata.get(BlockPiston.EXTENDED)) {
                      return false;
                  }
@@ -62,12 +62,20 @@ index 0afe798dc5793b4ab45651ba0e14e7c99fab4213..2c4658ec1620d89870ce5b94d5ab5049
              } else {
                  return false;
              }
-@@ -369,8 +371,27 @@ public class BlockPiston extends BlockDirectional {
-                 map.remove(blockposition3);
-                 world.setTypeAndData(blockposition3, (IBlockData) Blocks.MOVING_PISTON.getBlockData().set(BlockPiston.FACING, enumdirection), 68);
-                 iblockdata1 = world.getType(oldPos); map.replace(oldPos, iblockdata1); // Paper - fix piston physics inconsistency - move after the physics update
--                world.setTileEntity(blockposition3, BlockPistonMoving.a(iblockdata1, enumdirection, flag, false)); // Paper - fix piston physics inconsistency
--                world.setTypeAndData(oldPos, Blocks.AIR.getBlockData(), 68); // Paper - set air to prevent later physics updates from seeing this block
+@@ -377,7 +379,7 @@ public class BlockPiston extends BlockDirectional {
+ 
+             for (k = list.size() - 1; k >= 0; --k) {
+                 // Paper start - fix a variety of piston desync dupes
+-                boolean allowDesync = com.destroystokyo.paper.PaperConfig.allowTntDuplication;
++                boolean allowDesync = com.destroystokyo.paper.PaperConfig.allowTntDuplication && !list1.get(k).getBlock().isTileEntity(); // Tuinity - pushable TE's
+                 BlockPosition oldPos = blockposition3 = (BlockPosition) list.get(k);
+                 iblockdata1 = allowDesync ? world.getType(oldPos) : null;
+                 // Paper end - fix a variety of piston desync dupes
+@@ -389,10 +391,29 @@ public class BlockPiston extends BlockDirectional {
+                     iblockdata1 = world.getType(oldPos);
+                     map.replace(oldPos, iblockdata1);
+                 }
+-                world.setTileEntity(blockposition3, BlockPistonMoving.a(allowDesync ? list1.get(k) : iblockdata1, enumdirection, flag, false));
 +                // Tuinity start - pushable TE's
 +                TileEntity tileEntity = world.getTileEntity(oldPos);
 +                if (tileEntity != null) {
@@ -86,12 +94,15 @@ index 0afe798dc5793b4ab45651ba0e14e7c99fab4213..2c4658ec1620d89870ce5b94d5ab5049
 +                        tileEntity = tileEntity.createCopyForPush((WorldServer)world, oldPos, blockposition3, iblockdata1);
 +                    }
 +                }
-+                world.setTypeAndDataRaw(oldPos, Blocks.AIR.getBlockData(), null);
-+                world.setTileEntity(blockposition3, BlockPistonMoving.createPistonTile(iblockdata1, enumdirection, flag, false, tileEntity)); // Paper - fix piston physics inconsistency
 +                // Tuinity end - pushable TE's
+                 if (!allowDesync) {
+-                    world.setTypeAndData(oldPos, Blocks.AIR.getBlockData(), 4 | 16 | 1024); // set air to prevent later physics updates from seeing this block
++                    world.setTypeAndDataRaw(oldPos, Blocks.AIR.getBlockData(), null); // Tuinity - don't fire logic for removing the old block
+                 }
++                world.setTileEntity(blockposition3, BlockPistonMoving.createPistonTile(allowDesync ? list1.get(k) : iblockdata1, enumdirection, flag, false, tileEntity)); // Tuinity - pushable TE's
+                 // Paper end - fix a variety of piston desync dupes
                  --j;
                  aiblockdata[j] = iblockdata1;
-             }
 diff --git a/src/main/java/net/minecraft/server/BlockPistonMoving.java b/src/main/java/net/minecraft/server/BlockPistonMoving.java
 index 809ee9f9a69d86d891d25efa04b1af4d5f04f185..805fc6b8827afac2a84c52cc442798e030061c30 100644
 --- a/src/main/java/net/minecraft/server/BlockPistonMoving.java
@@ -597,7 +608,7 @@ index 6c2b48bdbe2ae09649a483b106e860f4e67ec0ac..c3b854b6a2ced313072b914fe8f5daa9
          super(TileEntityTypes.LECTERN);
          this.book = ItemStack.a;
 diff --git a/src/main/java/net/minecraft/server/TileEntityPiston.java b/src/main/java/net/minecraft/server/TileEntityPiston.java
-index 946522f6362638f518fba15172fb7f676d46b67c..847c9c104d09d96600f351629c8da459499ceb24 100644
+index 634e37843097cdb08bab3a800565b42a58dce1d8..0c955cb8e34c399d2c5ed70a98b219a186c9cf3e 100644
 --- a/src/main/java/net/minecraft/server/TileEntityPiston.java
 +++ b/src/main/java/net/minecraft/server/TileEntityPiston.java
 @@ -5,10 +5,10 @@ import java.util.List;

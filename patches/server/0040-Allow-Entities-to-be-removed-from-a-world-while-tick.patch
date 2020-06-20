@@ -9,7 +9,7 @@ issues where teleporting players across worlds while ticking.
 Also allows us to run mid tick while ticking entities.
 
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0536d1781 100644
+index 8bfe482924f0389acda682c05b93168ab259dd73..24cd10c960a5460aef769d2937d02e7921dec9ce 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -55,7 +55,7 @@ public class WorldServer extends World {
@@ -64,7 +64,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
              this.tickingEntities = false;
              // Paper start
              for (java.lang.Runnable run : this.afterEntityTickingTasks) {
-@@ -1800,7 +1800,7 @@ public class WorldServer extends World {
+@@ -1801,7 +1801,7 @@ public class WorldServer extends World {
                  Entity entity = (Entity) iterator.next();
  
                  if (!(entity instanceof EntityPlayer)) {
@@ -73,7 +73,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
                          throw (IllegalStateException) SystemUtils.c(new IllegalStateException("Removing entity while ticking!"));
                      }
  
-@@ -1828,6 +1828,7 @@ public class WorldServer extends World {
+@@ -1829,6 +1829,7 @@ public class WorldServer extends World {
  
      public void unregisterEntity(Entity entity) {
          org.spigotmc.AsyncCatcher.catchOp("entity unregister"); // Spigot
@@ -81,7 +81,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
          // Paper start - fix entity registration issues
          if (entity instanceof EntityComplexPart) {
              // Usually this is a no-op for complex parts, and ID's should be removed, but go ahead and remove it anyways
-@@ -1894,12 +1895,16 @@ public class WorldServer extends World {
+@@ -1895,12 +1896,16 @@ public class WorldServer extends World {
          this.getScoreboard().a(entity);
          // CraftBukkit start - SPIGOT-5278
          if (entity instanceof EntityDrowned) {
@@ -101,7 +101,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
          }
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
          entity.valid = false; // CraftBukkit
-@@ -1915,7 +1920,7 @@ public class WorldServer extends World {
+@@ -1916,7 +1921,7 @@ public class WorldServer extends World {
              return;
          }
          // Paper end
@@ -110,7 +110,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
              if (!entity.isQueuedForRegister) { // Paper
                  this.entitiesToAdd.add(entity);
                  entity.isQueuedForRegister = true; // Paper
-@@ -1923,6 +1928,7 @@ public class WorldServer extends World {
+@@ -1924,6 +1929,7 @@ public class WorldServer extends World {
          } else {
              entity.isQueuedForRegister = false; // Paper
              this.entitiesById.put(entity.getId(), entity);
@@ -118,7 +118,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
              if (entity instanceof EntityEnderDragon) {
                  EntityComplexPart[] aentitycomplexpart = ((EntityEnderDragon) entity).eo();
                  int i = aentitycomplexpart.length;
-@@ -1931,6 +1937,7 @@ public class WorldServer extends World {
+@@ -1932,6 +1938,7 @@ public class WorldServer extends World {
                      EntityComplexPart entitycomplexpart = aentitycomplexpart[j];
  
                      this.entitiesById.put(entitycomplexpart.getId(), entitycomplexpart);
@@ -126,7 +126,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
                  }
              }
  
-@@ -1955,12 +1962,16 @@ public class WorldServer extends World {
+@@ -1956,12 +1963,16 @@ public class WorldServer extends World {
              // this.getChunkProvider().addEntity(entity); // Paper - moved down below valid=true
              // CraftBukkit start - SPIGOT-5278
              if (entity instanceof EntityDrowned) {
@@ -146,7 +146,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
              }
              entity.valid = true; // CraftBukkit
              this.getChunkProvider().addEntity(entity); // Paper - from above to be below valid=true
-@@ -1976,7 +1987,7 @@ public class WorldServer extends World {
+@@ -1977,7 +1988,7 @@ public class WorldServer extends World {
      }
  
      public void removeEntity(Entity entity) {
@@ -155,7 +155,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
              throw (IllegalStateException) SystemUtils.c(new IllegalStateException("Removing entity while ticking!"));
          } else {
              this.removeEntityFromChunk(entity);
-@@ -2078,7 +2089,9 @@ public class WorldServer extends World {
+@@ -2079,7 +2090,9 @@ public class WorldServer extends World {
  
          if (VoxelShapes.c(voxelshape, voxelshape1, OperatorBoolean.NOT_SAME)) {
              boolean wasTicking = this.tickingEntities; this.tickingEntities = true; // Paper
@@ -166,7 +166,7 @@ index 8d2a937cacaf201056030c26240a214f34ed3e66..c6509ad99d26f718b2e1fc89d874d4b0
  
              while (iterator.hasNext()) {
                  NavigationAbstract navigationabstract = (NavigationAbstract) iterator.next();
-@@ -2087,6 +2100,9 @@ public class WorldServer extends World {
+@@ -2088,6 +2101,9 @@ public class WorldServer extends World {
                      navigationabstract.b(blockposition);
                  }
              }

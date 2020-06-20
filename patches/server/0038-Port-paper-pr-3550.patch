@@ -1,0 +1,158 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Sun, 14 Jun 2020 03:16:33 -0700
+Subject: [PATCH] Port paper pr 3550
+
+Required for pushable TE's
+
+Also paper is taking too long
+
+diff --git a/src/main/java/net/minecraft/server/Block.java b/src/main/java/net/minecraft/server/Block.java
+index bd7a92599b4182739aafef9eeaaf8665d2f9f954..66244a9d0e253b3709df4ae2adcd21e44ebbfc90 100644
+--- a/src/main/java/net/minecraft/server/Block.java
++++ b/src/main/java/net/minecraft/server/Block.java
+@@ -37,7 +37,8 @@ public class Block implements IMaterial {
+             this != Blocks.BEDROCK &&
+             this != Blocks.END_PORTAL_FRAME &&
+             this != Blocks.END_PORTAL &&
+-            this != Blocks.END_GATEWAY;
++            this != Blocks.END_GATEWAY &&
++            this != Blocks.MOVING_PISTON; // try to prevent creation of headless pistons
+     }
+     public co.aikar.timings.Timing timing;
+     public co.aikar.timings.Timing getTiming() {
+diff --git a/src/main/java/net/minecraft/server/BlockPiston.java b/src/main/java/net/minecraft/server/BlockPiston.java
+index 32ff3f65cf9c2f9f4be1c1e78f5df555efe67b07..d740027140804cb6f57407a11fb7376ddedb2edc 100644
+--- a/src/main/java/net/minecraft/server/BlockPiston.java
++++ b/src/main/java/net/minecraft/server/BlockPiston.java
+@@ -175,6 +175,12 @@ public class BlockPiston extends BlockDirectional {
+     @Override
+     public boolean a(IBlockData iblockdata, World world, BlockPosition blockposition, int i, int j) {
+         EnumDirection enumdirection = (EnumDirection) iblockdata.get(BlockPiston.FACING);
++        // Paper start - prevent retracting when we're facing the wrong way (we were replaced before retraction could occur)
++        EnumDirection directionQueuedAs = EnumDirection.fromType1(j & 7); // Paper - copied from below
++        if (!com.destroystokyo.paper.PaperConfig.allowBlockPermanentBreakingExploits && enumdirection != directionQueuedAs) {
++            return false;
++        }
++        // Paper end - prevent retracting when we're facing the wrong way
+ 
+         if (!world.isClientSide) {
+             boolean flag = this.a(world, blockposition, enumdirection);
+@@ -232,7 +238,14 @@ public class BlockPiston extends BlockDirectional {
+                     }
+                 }
+             } else {
+-                world.a(blockposition.shift(enumdirection), false);
++                // Paper start - fix headless pistons breaking blocks
++                BlockPosition headPos = blockposition.shift(enumdirection);
++                if (com.destroystokyo.paper.PaperConfig.allowBlockPermanentBreakingExploits || world.getType(headPos) == Blocks.PISTON_HEAD.getBlockData().set(FACING, enumdirection)) { // double check to make sure we're not a headless piston.
++                    world.setAir(headPos, false);
++                } else {
++                    ((WorldServer)world).getChunkProvider().flagDirty(headPos); // ... fix client desync
++                }
++                // Paper end - fix headless pistons breaking blocks
+             }
+ 
+             world.playSound((EntityHuman) null, blockposition, SoundEffects.BLOCK_PISTON_CONTRACT, SoundCategory.BLOCKS, 0.5F, world.random.nextFloat() * 0.15F + 0.6F);
+@@ -363,12 +376,24 @@ public class BlockPiston extends BlockDirectional {
+             }
+ 
+             for (k = list.size() - 1; k >= 0; --k) {
+-                blockposition3 = (BlockPosition) list.get(k);
+-                iblockdata1 = world.getType(blockposition3); if (!com.destroystokyo.paper.PaperConfig.allowTntDuplication) map.replace(blockposition3, iblockdata1); // Paper start - fix piston physics inconsistency
++                // Paper start - fix a variety of piston desync dupes
++                boolean allowDesync = com.destroystokyo.paper.PaperConfig.allowTntDuplication;
++                BlockPosition oldPos = blockposition3 = (BlockPosition) list.get(k);
++                iblockdata1 = allowDesync ? world.getType(oldPos) : null;
++                // Paper end - fix a variety of piston desync dupes
+                 blockposition3 = blockposition3.shift(enumdirection1);
+                 map.remove(blockposition3);
+                 world.setTypeAndData(blockposition3, (IBlockData) Blocks.MOVING_PISTON.getBlockData().set(BlockPiston.FACING, enumdirection), 68);
+-                world.setTileEntity(blockposition3, BlockPistonMoving.a(com.destroystokyo.paper.PaperConfig.allowTntDuplication ? list1.get(k) : iblockdata1, enumdirection, flag, false)); // Paper - fix piston physics inconsistency
++                // Paper start - fix a variety of piston desync dupes
++                if (!allowDesync) {
++                    iblockdata1 = world.getType(oldPos);
++                    map.replace(oldPos, iblockdata1);
++                }
++                world.setTileEntity(blockposition3, BlockPistonMoving.a(allowDesync ? list1.get(k) : iblockdata1, enumdirection, flag, false));
++                if (!allowDesync) {
++                    world.setTypeAndData(oldPos, Blocks.AIR.getBlockData(), 4 | 16 | 1024); // set air to prevent later physics updates from seeing this block
++                }
++                // Paper end - fix a variety of piston desync dupes
+                 --j;
+                 aiblockdata[j] = iblockdata1;
+             }
+diff --git a/src/main/java/net/minecraft/server/EntityEnderDragon.java b/src/main/java/net/minecraft/server/EntityEnderDragon.java
+index aecdaacfc7da560759bc513680d76f55820d5046..7daebfdab5c6e258d3e426643c0dbd374774ff5d 100644
+--- a/src/main/java/net/minecraft/server/EntityEnderDragon.java
++++ b/src/main/java/net/minecraft/server/EntityEnderDragon.java
+@@ -33,7 +33,7 @@ public class EntityEnderDragon extends EntityInsentient implements IMonster {
+     public float bx;
+     public float by;
+     public boolean bz;
+-    public int bA;
++    public int bA; public final int getDeathTicks() { return this.bA; } public final void setDeathTicks(final int value) { this.bA = value; } // Paper
+     public float bB;
+     @Nullable
+     public EntityEnderCrystal currentEnderCrystal;
+@@ -833,6 +833,7 @@ public class EntityEnderDragon extends EntityInsentient implements IMonster {
+     public void b(NBTTagCompound nbttagcompound) {
+         super.b(nbttagcompound);
+         nbttagcompound.setInt("DragonPhase", this.bO.a().getControllerPhase().b());
++        nbttagcompound.setInt("Paper.DeathTick", this.getDeathTicks()); // Paper
+     }
+ 
+     @Override
+@@ -841,6 +842,7 @@ public class EntityEnderDragon extends EntityInsentient implements IMonster {
+         if (nbttagcompound.hasKey("DragonPhase")) {
+             this.bO.setControllerPhase(DragonControllerPhase.getById(nbttagcompound.getInt("DragonPhase")));
+         }
++        this.setDeathTicks(nbttagcompound.getInt("Paper.DeathTick")); // Paper
+ 
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/EntityFallingBlock.java b/src/main/java/net/minecraft/server/EntityFallingBlock.java
+index 6683f7c5f31b88187961335c5f708b8a4f77b5af..243a8c570dd7cc5b1b622ff130c7339f9bcfc79a 100644
+--- a/src/main/java/net/minecraft/server/EntityFallingBlock.java
++++ b/src/main/java/net/minecraft/server/EntityFallingBlock.java
+@@ -64,6 +64,11 @@ public class EntityFallingBlock extends Entity {
+ 
+     @Override
+     public void tick() {
++        // Paper start - fix sand duping
++        if (this.dead) {
++            return;
++        }
++        // Paper end - fix sand duping
+         if (this.block.isAir()) {
+             this.die();
+         } else {
+@@ -86,6 +91,12 @@ public class EntityFallingBlock extends Entity {
+ 
+             this.move(EnumMoveType.SELF, this.getMot());
+ 
++            // Paper start - fix sand duping
++            if (this.dead) {
++                return;
++            }
++            // Paper end - fix sand duping
++
+             // Paper start - Configurable EntityFallingBlock height nerf
+             if (this.world.paperConfig.fallingBlockHeightNerf != 0 && this.locY() > this.world.paperConfig.fallingBlockHeightNerf) {
+                 if (this.dropItem && this.world.getGameRules().getBoolean(GameRules.DO_ENTITY_DROPS)) {
+diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
+index f09b85390745379ddffcfd11501881cf66352ce7..1859cd296bbe0ea12cd32366e84ce31caf71d9a3 100644
+--- a/src/main/java/net/minecraft/server/PlayerConnection.java
++++ b/src/main/java/net/minecraft/server/PlayerConnection.java
+@@ -1092,6 +1092,11 @@ public class PlayerConnection implements PacketListenerPlayIn {
+                             }
+ 
+                             this.player.move(EnumMoveType.PLAYER, new Vec3D(d7, d8, d9));
++                            // Paper start - prevent position desync
++                            if (this.teleportPos != null) {
++                                return; // ... thanks Mojang for letting move calls teleport across dimensions.
++                            }
++                            // Paper end - prevent position desync
+                             this.player.onGround = packetplayinflying.b();
+                             double d12 = d8;
+ 
