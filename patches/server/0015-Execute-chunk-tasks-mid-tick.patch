@@ -92,10 +92,10 @@ index 2e1dc996162c626a7222bd2fafdda8a92df37eea..a657c25cf0c2494afc3c0d478c825a58
          @Override
          protected boolean executeNext() {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index a78bb9623765b09a77a8e79d2f6353d3aff24155..3829494aa62732fade4104e3d7d57ac26d236296 100644
+index 6641fe6aea44369524487c9a89e133f51aeb7947..d437ee7511ac55bd02791286983ef0efa8200313 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -987,7 +987,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -986,7 +986,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
                          // Paper end
                          tickSection = curTime;
                      }
@@ -104,7 +104,7 @@ index a78bb9623765b09a77a8e79d2f6353d3aff24155..3829494aa62732fade4104e3d7d57ac2
                      // Spigot end
  
                      //MinecraftServer.currentTick = (int) (System.currentTimeMillis() / 50); // CraftBukkit // Paper - don't overwrite current tick time
-@@ -1080,6 +1080,78 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1079,6 +1079,78 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
      }
      // Paper end
  
@@ -183,7 +183,7 @@ index a78bb9623765b09a77a8e79d2f6353d3aff24155..3829494aa62732fade4104e3d7d57ac2
      private void executeModerately() {
          this.executeAll();
          java.util.concurrent.locks.LockSupport.parkNanos("executing tasks", 1000L);
-@@ -1093,22 +1165,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1092,22 +1164,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          });
      }
  
@@ -207,7 +207,7 @@ index a78bb9623765b09a77a8e79d2f6353d3aff24155..3829494aa62732fade4104e3d7d57ac2
  
      @Override
      protected TickTask postToMainThread(Runnable runnable) {
-@@ -1135,6 +1192,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1134,6 +1191,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
  
      private boolean aZ() {
          if (super.executeNext()) {
@@ -215,7 +215,7 @@ index a78bb9623765b09a77a8e79d2f6353d3aff24155..3829494aa62732fade4104e3d7d57ac2
              return true;
          } else {
              if (this.canSleepForTick()) {
-@@ -1202,7 +1260,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1201,7 +1259,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          // Paper start - move oversleep into full server tick
          isOversleep = true;MinecraftTimings.serverOversleep.startTiming();
          this.awaitTasks(() -> {
@@ -224,7 +224,7 @@ index a78bb9623765b09a77a8e79d2f6353d3aff24155..3829494aa62732fade4104e3d7d57ac2
              return !this.canOversleep();
          });
          isOversleep = false;MinecraftTimings.serverOversleep.stopTiming();
-@@ -1287,16 +1345,16 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1286,16 +1344,16 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
      }
  
      protected void b(BooleanSupplier booleansupplier) {
@@ -244,7 +244,7 @@ index a78bb9623765b09a77a8e79d2f6353d3aff24155..3829494aa62732fade4104e3d7d57ac2
          this.methodProfiler.exitEnter("levels");
          Iterator iterator = this.getWorlds().iterator();
  
-@@ -1307,7 +1365,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1306,7 +1364,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
              processQueue.remove().run();
          }
          MinecraftTimings.processQueueTimer.stopTiming(); // Spigot
@@ -253,7 +253,7 @@ index a78bb9623765b09a77a8e79d2f6353d3aff24155..3829494aa62732fade4104e3d7d57ac2
          MinecraftTimings.timeUpdateTimer.startTiming(); // Spigot // Paper
          // Send time updates to everyone, it will get the right time from the world the player is in.
          // Paper start - optimize time updates
-@@ -1349,11 +1407,11 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1348,11 +1406,11 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
              this.methodProfiler.enter("tick");
  
              try {
@@ -268,10 +268,10 @@ index a78bb9623765b09a77a8e79d2f6353d3aff24155..3829494aa62732fade4104e3d7d57ac2
                  // Spigot Start
                  CrashReport crashreport;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 0e30a1ae539509c66678e7b58870eff6101e4731..15f97e1bf49ccec1880bc301c4ddfa012bd36224 100644
+index 05f0d884e6f64f088cb51bd30843b4a9c3ea14ed..a1d1badcadba8d941ad4005b1bd33922f6075d55 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -944,6 +944,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -946,6 +946,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
              return;
              // Paper end
          }
