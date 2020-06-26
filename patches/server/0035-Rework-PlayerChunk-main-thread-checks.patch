@@ -12,10 +12,10 @@ completion (completion of the world gen future,
 PlayerChunkMap#b(PlayerChunk, ChunkStatus)) was detected and fixed.
 
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 4dff079b692b9ff3d9e79af9165e2faabb2129e9..44d6f2debc767cb0576b17ed3e0711baa4361001 100644
+index 442fc932e16cb2c053249e5c386864ab40eb2c62..a483ec0e2b389903cf693ac7d018fce158d740d2 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -563,6 +563,7 @@ public class PlayerChunk {
+@@ -550,6 +550,7 @@ public class PlayerChunk {
      }
  
      protected void a(PlayerChunkMap playerchunkmap) {
@@ -23,7 +23,7 @@ index 4dff079b692b9ff3d9e79af9165e2faabb2129e9..44d6f2debc767cb0576b17ed3e0711ba
          ChunkStatus chunkstatus = getChunkStatus(this.oldTicketLevel);
          ChunkStatus chunkstatus1 = getChunkStatus(this.ticketLevel);
          boolean flag = this.oldTicketLevel <= PlayerChunkMap.GOLDEN_TICKET;
-@@ -572,7 +573,8 @@ public class PlayerChunk {
+@@ -559,7 +560,8 @@ public class PlayerChunk {
          // CraftBukkit start
          // ChunkUnloadEvent: Called before the chunk is unloaded: isChunkLoaded is still true and chunk can still be modified by plugins.
          if (playerchunk_state.isAtLeast(PlayerChunk.State.BORDER) && !playerchunk_state1.isAtLeast(PlayerChunk.State.BORDER)) {
@@ -33,7 +33,7 @@ index 4dff079b692b9ff3d9e79af9165e2faabb2129e9..44d6f2debc767cb0576b17ed3e0711ba
                  Chunk chunk = (Chunk)either.left().orElse(null);
                  if (chunk != null) {
                      playerchunkmap.callbackExecutor.execute(() -> {
-@@ -637,7 +639,8 @@ public class PlayerChunk {
+@@ -624,7 +626,8 @@ public class PlayerChunk {
          if (!flag2 && flag3) {
              // Paper start - cache ticking ready status
              int expectCreateCount = ++this.fullChunkCreateCount;
@@ -43,7 +43,7 @@ index 4dff079b692b9ff3d9e79af9165e2faabb2129e9..44d6f2debc767cb0576b17ed3e0711ba
                  if (either.left().isPresent() && PlayerChunk.this.fullChunkCreateCount == expectCreateCount) {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      Chunk fullChunk = either.left().get();
-@@ -668,7 +671,8 @@ public class PlayerChunk {
+@@ -655,7 +658,8 @@ public class PlayerChunk {
  
          if (!flag4 && flag5) {
              // Paper start - cache ticking ready status
@@ -53,7 +53,7 @@ index 4dff079b692b9ff3d9e79af9165e2faabb2129e9..44d6f2debc767cb0576b17ed3e0711ba
                  if (either.left().isPresent()) {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      Chunk tickingChunk = either.left().get();
-@@ -699,7 +703,8 @@ public class PlayerChunk {
+@@ -686,7 +690,8 @@ public class PlayerChunk {
              }
  
              // Paper start - cache ticking ready status
@@ -63,7 +63,7 @@ index 4dff079b692b9ff3d9e79af9165e2faabb2129e9..44d6f2debc767cb0576b17ed3e0711ba
                  if (either.left().isPresent()) {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      Chunk entityTickingChunk = either.left().get();
-@@ -759,7 +764,8 @@ public class PlayerChunk {
+@@ -747,7 +752,8 @@ public class PlayerChunk {
          // CraftBukkit start
          // ChunkLoadEvent: Called after the chunk is loaded: isChunkLoaded returns true and chunk is ready to be modified by plugins.
          if (!playerchunk_state.isAtLeast(PlayerChunk.State.BORDER) && playerchunk_state1.isAtLeast(PlayerChunk.State.BORDER)) {
@@ -74,13 +74,13 @@ index 4dff079b692b9ff3d9e79af9165e2faabb2129e9..44d6f2debc767cb0576b17ed3e0711ba
                  if (chunk != null) {
                      playerchunkmap.callbackExecutor.execute(() -> {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 8f72ea3ab4da3228516c20df5dc2db454cdfdbfa..34ec3b9d702fd865cf733c5608f11c927b3d6c68 100644
+index aa0eda9c0328c3340d68d2e0c16ea1c374d220dc..87ff7fe2b847daaf9c10dc6bfd320d9e3bd70cd4 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -1221,7 +1221,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1215,7 +1215,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              }
              // Paper end
-             this.mailboxWorldGen.a(ChunkTaskQueueSorter.a(playerchunk, runnable)); // CraftBukkit - decompile error
+             this.mailboxWorldGen.a(ChunkTaskQueueSorter.a(playerchunk, runnable));
 -        });
 +        }).thenComposeAsync((either) -> { // Tuinity start - force competion on the main thread
 +            return CompletableFuture.completedFuture(either);

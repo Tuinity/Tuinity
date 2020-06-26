@@ -6,13 +6,14 @@ Subject: [PATCH] Optimise getType calls
 Remove the map lookup for converting from Block->Bukkit Material
 
 diff --git a/src/main/java/net/minecraft/server/IBlockData.java b/src/main/java/net/minecraft/server/IBlockData.java
-index b39554faf235b6f81c86542673dfb4508d4c3e5a..41cac274111efa5ba42ac9c4acb547295f7f4bb5 100644
+index 10a5901db1e0efe0b7d6958098bb0ae492a9e76f..9117504767834d0a798a3dfd4867a0c0bea95ed8 100644
 --- a/src/main/java/net/minecraft/server/IBlockData.java
 +++ b/src/main/java/net/minecraft/server/IBlockData.java
-@@ -26,6 +26,18 @@ public class IBlockData extends BlockDataAbstract<Block, IBlockData> implements
-     private final boolean isTicking; // Paper
-     private final boolean canOcclude; // Paper
+@@ -8,6 +8,19 @@ public class IBlockData extends BlockBase.BlockData {
  
+     public static final Codec<IBlockData> b = a((Codec) IRegistry.BLOCK, Block::getBlockData).stable();
+ 
++
 +    // Tuinity start - optimise getType calls
 +    org.bukkit.Material cachedMaterial;
 +
@@ -25,14 +26,14 @@ index b39554faf235b6f81c86542673dfb4508d4c3e5a..41cac274111efa5ba42ac9c4acb54729
 +    }
 +    // Tuinity end - optimise getType calls
 +
-     public IBlockData(Block block, ImmutableMap<IBlockState<?>, Comparable<?>> immutablemap) {
-         super(block, immutablemap);
-         this.d = block.a(this);
+     public IBlockData(Block block, ImmutableMap<IBlockState<?>, Comparable<?>> immutablemap, MapCodec<IBlockData> mapcodec) {
+         super(block, immutablemap, mapcodec);
+     }
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftChunkSnapshot.java b/src/main/java/org/bukkit/craftbukkit/CraftChunkSnapshot.java
-index b909af3d6f1732a8bdb62ab58601f788bd937752..3c8166149893228d711d5cea46ba2febee3c15bd 100644
+index 4ec53a54e39cccf29cbe4f21e094bf997ba4389c..31c81b4b52f79892de5c1315358ec161c5a0c204 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftChunkSnapshot.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftChunkSnapshot.java
-@@ -75,7 +75,7 @@ public class CraftChunkSnapshot implements ChunkSnapshot {
+@@ -77,7 +77,7 @@ public class CraftChunkSnapshot implements ChunkSnapshot {
      public Material getBlockType(int x, int y, int z) {
          CraftChunk.validateChunkCoordinates(x, y, z);
  
@@ -42,7 +43,7 @@ index b909af3d6f1732a8bdb62ab58601f788bd937752..3c8166149893228d711d5cea46ba2feb
  
      @Override
 diff --git a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
-index 382b50d37aced746266b618f3f277846728565bd..c936c699ad8059fe902954c0f3ab7606d7ab058f 100644
+index c50277fb107c562c00f9d803967b4121e427f40e..d964bbab12bf7a17b8328f7cfa3a4c83c0845031 100644
 --- a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
 +++ b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
 @@ -207,7 +207,7 @@ public class CraftBlock implements Block {
@@ -55,10 +56,10 @@ index 382b50d37aced746266b618f3f277846728565bd..c936c699ad8059fe902954c0f3ab7606
  
      @Override
 diff --git a/src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java b/src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java
-index d3017db1bd5c7f21af3c4a352fa57ae83588dad5..8eaed6bfdfa936a356de648534cdbd879ce5871b 100644
+index 11aa2dc18c2fa76c66d89f650636eb623662717b..c51c43573faa33ca5a10e76cb0f6aa9bc301f118 100644
 --- a/src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java
 +++ b/src/main/java/org/bukkit/craftbukkit/block/CraftBlockState.java
-@@ -139,7 +139,7 @@ public class CraftBlockState implements BlockState {
+@@ -136,7 +136,7 @@ public class CraftBlockState implements BlockState {
  
      @Override
      public Material getType() {
@@ -68,7 +69,7 @@ index d3017db1bd5c7f21af3c4a352fa57ae83588dad5..8eaed6bfdfa936a356de648534cdbd87
  
      public void setFlag(int flag) {
 diff --git a/src/main/java/org/bukkit/craftbukkit/block/data/CraftBlockData.java b/src/main/java/org/bukkit/craftbukkit/block/data/CraftBlockData.java
-index a0746a1694a01996eab44a91b078ba14996f3d13..adba4a8a2f4dd22fd3b6090661cf3598cc30c5a4 100644
+index bbded5671e986be34ebe3100e4c10ee0d5741764..980890153294c04502108d6852e347ca8b1ac200 100644
 --- a/src/main/java/org/bukkit/craftbukkit/block/data/CraftBlockData.java
 +++ b/src/main/java/org/bukkit/craftbukkit/block/data/CraftBlockData.java
 @@ -44,7 +44,7 @@ public class CraftBlockData implements BlockData {

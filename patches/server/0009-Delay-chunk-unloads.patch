@@ -46,29 +46,17 @@ index 67e9a32c2b56e0ca70ef138873b1dc9dc215e452..4b71f4c55e5f3dceac3c46eb40d5457f
  
      public static final class WorldConfig {
  
-diff --git a/src/main/java/net/minecraft/server/ChunkMap.java b/src/main/java/net/minecraft/server/ChunkMap.java
-index 55f9f4e6e7fddb2fcdbc1877d1bdfe8d3c9eff6f..15f0f86a364618288e626c38191337a7921c7382 100644
---- a/src/main/java/net/minecraft/server/ChunkMap.java
-+++ b/src/main/java/net/minecraft/server/ChunkMap.java
-@@ -68,6 +68,7 @@ public abstract class ChunkMap extends LightEngineGraph {
- 
-     protected abstract int b(long i);
- 
-+    public final void update(long coordinate, int level, boolean increaseInLevel) { this.b(coordinate, level, increaseInLevel); } // Tuinity - OBFHELPER
-     public void b(long i, int j, boolean flag) {
-         this.a(ChunkCoordIntPair.a, i, j, flag);
-     }
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index d63f693372c141b646e868af3744c9223a65df00..e0378f486c5d191d55114701d4d519e0d0af5726 100644
+index b69e14d730c0765dfd5cbf7dd4349a1090bf4468..d83d3b54d394bab7ee9161552cb41ed93d1c9335 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
      private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2;
      private final Long2ObjectMap<ObjectSet<EntityPlayer>> c = new Long2ObjectOpenHashMap();
      public final Long2ObjectOpenHashMap<ArraySetSorted<Ticket<?>>> tickets = new Long2ObjectOpenHashMap();
--    private final ChunkMapDistance.a e = new ChunkMapDistance.a();
-+    private final ChunkMapDistance.a e = new ChunkMapDistance.a(); final ChunkMapDistance.a getTicketTracker() { return this.e; } // Tuinity - OBFHELPER
-     public static final int MOB_SPAWN_RANGE = 8; //private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); // Paper - no longer used
+-    private final ChunkMapDistance.a ticketLevelTracker = new ChunkMapDistance.a();
++    private final ChunkMapDistance.a ticketLevelTracker = new ChunkMapDistance.a(); final ChunkMapDistance.a getTicketTracker() { return this.ticketLevelTracker; } // Tuinity - OBFHELPER
+     public static final int MOB_SPAWN_RANGE = 8; // private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); // Paper - no longer used
      private final ChunkMapDistance.c g = new ChunkMapDistance.c(33);
      // Paper start use a queue, but still keep unique requirement
 @@ -53,6 +53,47 @@ public abstract class ChunkMapDistance {
@@ -148,18 +136,10 @@ index d63f693372c141b646e868af3744c9223a65df00..e0378f486c5d191d55114701d4d519e0
 +                    this.computeDelayedTicketFor(entry.getLongKey(), tempLevel[0], entry.getValue());
 +                }
 +                // Tuinity end - delay chunk unloads
-                 this.e.b(entry.getLongKey(), a((ArraySetSorted) entry.getValue()), false);
+                 this.ticketLevelTracker.update(entry.getLongKey(), getLowestTicketLevel((ArraySetSorted) entry.getValue()), false);
              }
  
-@@ -85,6 +144,7 @@ public abstract class ChunkMapDistance {
- 
-     }
- 
-+    private static int getLowestTicketLevel(ArraySetSorted<Ticket<?>> arraysetsorted) { return a(arraysetsorted); } // Tuinity - OBFHELPER
-     private static int a(ArraySetSorted<Ticket<?>> arraysetsorted) {
-         AsyncCatcher.catchOp("ChunkMapDistance::getHighestTicketLevel"); // Paper
-         return !arraysetsorted.isEmpty() ? ((Ticket) arraysetsorted.b()).b() : PlayerChunkMap.GOLDEN_TICKET + 1;
-@@ -178,27 +238,11 @@ public abstract class ChunkMapDistance {
+@@ -178,27 +237,11 @@ public abstract class ChunkMapDistance {
          boolean removed = false; // CraftBukkit
          if (arraysetsorted.remove(ticket)) {
              removed = true; // CraftBukkit
@@ -192,7 +172,7 @@ index d63f693372c141b646e868af3744c9223a65df00..e0378f486c5d191d55114701d4d519e0
  
          if (arraysetsorted.isEmpty()) {
 diff --git a/src/main/java/net/minecraft/server/Ticket.java b/src/main/java/net/minecraft/server/Ticket.java
-index c79aa4a80a8a2288f7a50466abd677f388360ba1..36916459cd8d9fcda81aeb366b0eba7fa8152b5f 100644
+index e41cb8613efc86499dfe3be36c9130ab6dc9b89e..c19ffb925a02d123da8a5c77186e6105422dccf7 100644
 --- a/src/main/java/net/minecraft/server/Ticket.java
 +++ b/src/main/java/net/minecraft/server/Ticket.java
 @@ -5,17 +5,17 @@ import java.util.Objects;
@@ -242,10 +222,10 @@ index 5c789b25f1df2eae8ea8ceb4ba977ba336fe6d5e..358d87102eddd5bb11ca9b33c484fb36
      public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
          return new TicketType<>(s, comparator, 0L);
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 73ffc3c24d38c11982cb44bf0c08e761b9667cda..84948bf31b680145257b80fca9daf437e5cdb053 100644
+index 7096886c20e870061587860a663a184b21650246..5d0ee5a906ad413377f04a09dafb54b75bbf5ed9 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-@@ -489,6 +489,7 @@ public class CraftWorld implements World {
+@@ -490,6 +490,7 @@ public class CraftWorld implements World {
          org.spigotmc.AsyncCatcher.catchOp("chunk unload"); // Spigot
          if (isChunkLoaded(x, z)) {
              world.getChunkProvider().removeTicket(TicketType.PLUGIN, new ChunkCoordIntPair(x, z), 0, Unit.INSTANCE); // Paper

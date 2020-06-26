@@ -23,24 +23,24 @@ index 4b71f4c55e5f3dceac3c46eb40d5457f0da576b8..549d3a1e106ff9919976f12b0827be3c
  
          public final String worldName;
 diff --git a/src/main/java/net/minecraft/server/PlayerInteractManager.java b/src/main/java/net/minecraft/server/PlayerInteractManager.java
-index 6df8434612d4afe411b2c435f4c847b9183570f8..272c1f0eaf12852e302765240d379cd9865764a9 100644
+index 734855c1db3215d90b2743988f64af68aacb388e..18e67aee5e1794a906b284e055367f25305915fd 100644
 --- a/src/main/java/net/minecraft/server/PlayerInteractManager.java
 +++ b/src/main/java/net/minecraft/server/PlayerInteractManager.java
-@@ -20,14 +20,29 @@ public class PlayerInteractManager {
-     public EntityPlayer player;
+@@ -21,14 +21,29 @@ public class PlayerInteractManager {
      private EnumGamemode gamemode;
-     private boolean e;
+     private EnumGamemode e;
+     private boolean f;
 -    private int lastDigTick;
 +    private int lastDigTick; private long lastDigTime; // Tuinity - lag compensate block breaking
-     private BlockPosition g;
+     private BlockPosition h;
      private int currentTick;
--    private boolean i;
-+    private boolean i; private final boolean hasDestroyedTooFast() { return this.i; } // Tuinity - OBFHELPER
-     private BlockPosition j;
--    private int k;
-+    private int k; private final int getHasDestroyedTooFastStartTick() { return this.k; } // Tuinity - OBFHELPER
+-    private boolean j;
++    private boolean j; private final boolean hasDestroyedTooFast() { return this.j; } // Tuinity - OBFHELPER
+     private BlockPosition k;
+-    private int l;
++    private int l; private final int getHasDestroyedTooFastStartTick() { return this.l; } // Tuinity - OBFHELPER
 +    private long hasDestroyedTooFastStartTime; // Tuinity - lag compensate block breaking
-     private int l;
+     private int m;
  
 +    // Tuinity start - lag compensate block breaking
 +    private int getTimeDiggingLagCompensate() {
@@ -58,26 +58,26 @@ index 6df8434612d4afe411b2c435f4c847b9183570f8..272c1f0eaf12852e302765240d379cd9
 +
      public PlayerInteractManager(WorldServer worldserver) {
          this.gamemode = EnumGamemode.NOT_SET;
-         this.g = BlockPosition.ZERO;
-@@ -73,7 +88,7 @@ public class PlayerInteractManager {
+         this.e = EnumGamemode.NOT_SET;
+@@ -84,7 +99,7 @@ public class PlayerInteractManager {
              if (iblockdata == null || iblockdata.isAir()) { // Paper
-                 this.i = false;
+                 this.j = false;
              } else {
--                float f = this.a(iblockdata, this.j, this.k);
-+                float f = this.updateBlockBreakAnimation(iblockdata, this.j, this.getTimeDiggingTooFastLagCompensate()); // Tuinity - lag compensate destroying blocks
+-                float f = this.a(iblockdata, this.k, this.l);
++                float f = this.updateBlockBreakAnimation(iblockdata, this.k, this.getTimeDiggingTooFastLagCompensate()); // Tuinity - lag compensate destroying blocks
  
                  if (f >= 1.0F) {
-                     this.i = false;
-@@ -93,7 +108,7 @@ public class PlayerInteractManager {
-                 this.l = -1;
-                 this.e = false;
+                     this.j = false;
+@@ -104,7 +119,7 @@ public class PlayerInteractManager {
+                 this.m = -1;
+                 this.f = false;
              } else {
--                this.a(iblockdata, this.g, this.lastDigTick);
-+                this.updateBlockBreakAnimation(iblockdata, this.g, this.getTimeDiggingLagCompensate()); // Tuinity - lag compensate destroying blocks
+-                this.a(iblockdata, this.h, this.lastDigTick);
++                this.updateBlockBreakAnimation(iblockdata, this.h, this.getTimeDiggingLagCompensate()); // Tuinity - lag compensate destroying blocks
              }
          }
  
-@@ -101,6 +116,12 @@ public class PlayerInteractManager {
+@@ -112,6 +127,12 @@ public class PlayerInteractManager {
  
      private float a(IBlockData iblockdata, BlockPosition blockposition, int i) {
          int j = this.currentTick - i;
@@ -90,36 +90,36 @@ index 6df8434612d4afe411b2c435f4c847b9183570f8..272c1f0eaf12852e302765240d379cd9
          float f = iblockdata.getDamage(this.player, this.player.world, blockposition) * (float) (j + 1);
          int k = (int) (f * 10.0F);
  
-@@ -174,7 +195,7 @@ public class PlayerInteractManager {
+@@ -179,7 +200,7 @@ public class PlayerInteractManager {
+                     return;
                  }
  
-                 // this.world.douseFire((EntityHuman) null, blockposition, enumdirection); // CraftBukkit - Moved down
 -                this.lastDigTick = this.currentTick;
 +                this.lastDigTick = this.currentTick; this.lastDigTime = System.nanoTime(); // Tuinity - lag compensate block breaking
                  float f = 1.0F;
  
                  iblockdata = this.world.getType(blockposition);
-@@ -229,12 +250,12 @@ public class PlayerInteractManager {
+@@ -232,12 +253,12 @@ public class PlayerInteractManager {
                      int j = (int) (f * 10.0F);
  
                      this.world.a(this.player.getId(), blockposition, j);
 -                    this.player.playerConnection.sendPacket(new PacketPlayOutBlockBreak(blockposition, this.world.getType(blockposition), packetplayinblockdig_enumplayerdigtype, true, "actual start of destroying"));
 +                    if (!com.tuinity.tuinity.config.TuinityConfig.lagCompensateBlockBreaking) this.player.playerConnection.sendPacket(new PacketPlayOutBlockBreak(blockposition, this.world.getType(blockposition), packetplayinblockdig_enumplayerdigtype, true, "actual start of destroying")); // Tuinity - on lagging servers this can cause the client to think it's only just started to destroy a block when it already has/will
-                     this.l = j;
+                     this.m = j;
                  }
              } else if (packetplayinblockdig_enumplayerdigtype == PacketPlayInBlockDig.EnumPlayerDigType.STOP_DESTROY_BLOCK) {
-                 if (blockposition.equals(this.g)) {
+                 if (blockposition.equals(this.h)) {
 -                    int k = this.currentTick - this.lastDigTick;
 +                    int k = this.getTimeDiggingLagCompensate(); // Tuinity - lag compensate block breaking
  
                      iblockdata = this.world.getType(blockposition);
                      if (!iblockdata.isAir()) {
-@@ -251,12 +272,18 @@ public class PlayerInteractManager {
-                             this.e = false;
-                             this.i = true;
-                             this.j = blockposition;
--                            this.k = this.lastDigTick;
-+                            this.k = this.lastDigTick; this.hasDestroyedTooFastStartTime = this.lastDigTime; // Tuinity - lag compensate block breaking
+@@ -254,12 +275,18 @@ public class PlayerInteractManager {
+                             this.f = false;
+                             this.j = true;
+                             this.k = blockposition;
+-                            this.l = this.lastDigTick;
++                            this.l = this.lastDigTick; this.hasDestroyedTooFastStartTime = this.lastDigTime; // Tuinity - lag compensate block breaking
                          }
                      }
                  }
@@ -132,9 +132,9 @@ index 6df8434612d4afe411b2c435f4c847b9183570f8..272c1f0eaf12852e302765240d379cd9
 +                }
 +                // Tuinity end - this can cause clients on a lagging server to think they're not currently destroying a block
              } else if (packetplayinblockdig_enumplayerdigtype == PacketPlayInBlockDig.EnumPlayerDigType.ABORT_DESTROY_BLOCK) {
-                 this.e = false;
-                 if (!Objects.equals(this.g, blockposition) && !BlockPosition.ZERO.equals(this.g)) { // Paper
-@@ -268,7 +295,7 @@ public class PlayerInteractManager {
+                 this.f = false;
+                 if (!Objects.equals(this.h, blockposition) && !BlockPosition.ZERO.equals(this.h)) {
+@@ -271,7 +298,7 @@ public class PlayerInteractManager {
                  }
  
                  this.world.a(this.player.getId(), blockposition, -1);
@@ -143,7 +143,7 @@ index 6df8434612d4afe411b2c435f4c847b9183570f8..272c1f0eaf12852e302765240d379cd9
              }
  
          }
-@@ -278,7 +305,13 @@ public class PlayerInteractManager {
+@@ -281,7 +308,13 @@ public class PlayerInteractManager {
  
      public void a(BlockPosition blockposition, PacketPlayInBlockDig.EnumPlayerDigType packetplayinblockdig_enumplayerdigtype, String s) {
          if (this.breakBlock(blockposition)) {

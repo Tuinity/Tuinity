@@ -6,7 +6,7 @@ Subject: [PATCH] Prevent long map entry creation in light engine
 Use fastiterator to prevent it
 
 diff --git a/src/main/java/net/minecraft/server/LightEngineStorage.java b/src/main/java/net/minecraft/server/LightEngineStorage.java
-index f2575fb69714397bb8e1f9d402689c7816d73b6c..89985a61e4ee596f3ceb075f0f11207bd56b6b5d 100644
+index b98e60772bad7e06845b50fdc11e98c0ea775d3d..e0bbfe1422cbad811ecb43d7436380d86b0f8abc 100644
 --- a/src/main/java/net/minecraft/server/LightEngineStorage.java
 +++ b/src/main/java/net/minecraft/server/LightEngineStorage.java
 @@ -23,7 +23,8 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
@@ -18,13 +18,22 @@ index f2575fb69714397bb8e1f9d402689c7816d73b6c..89985a61e4ee596f3ceb075f0f11207b
 +    protected final Long2ObjectMap<NibbleArray> i = Long2ObjectMaps.synchronize(this.i_synchronized_map_real); // Tuinity - store wrapped map, we need fastIterator
      private final LongSet n = new LongOpenHashSet();
      private final LongSet o = new LongOpenHashSet();
-     protected volatile boolean j;
-@@ -246,7 +247,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+     private final LongSet p = new LongOpenHashSet();
+@@ -247,7 +248,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
  
-             this.o.clear();
+             this.p.clear();
              this.j = false;
--            ObjectIterator<Long2ObjectMap.Entry<NibbleArray>> objectiterator = Long2ObjectMaps.fastIterator(this.i); // Paper
-+            ObjectIterator objectiterator = this.i_synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to reduce entry creation - remove paper diff, it's ineffective
+-            ObjectIterator objectiterator = this.i.long2ObjectEntrySet().iterator();
++            ObjectIterator objectiterator = this.i_synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to reduce entry creation
  
              Entry entry;
              long j;
+@@ -284,7 +285,7 @@ public abstract class LightEngineStorage<M extends LightEngineStorageArray<M>> e
+             }
+ 
+             this.n.clear();
+-            objectiterator = this.i.long2ObjectEntrySet().iterator();
++            objectiterator = this.i_synchronized_map_real.long2ObjectEntrySet().fastIterator(); // Tuinity - use fast iterator to reduce entry creation;
+ 
+             while (objectiterator.hasNext()) {
+                 entry = (Entry) objectiterator.next();

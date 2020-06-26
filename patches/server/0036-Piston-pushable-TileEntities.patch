@@ -33,36 +33,35 @@ index 0e797adfa135fd26a8966cecf02ff36b83b0bb70..1ae1fd7505d14874ddfc7b86919fac00
  
          public final String worldName;
 diff --git a/src/main/java/net/minecraft/server/BlockChest.java b/src/main/java/net/minecraft/server/BlockChest.java
-index 72fb92f7c379cb84425b6b03ddf8aad29388c0ae..8688ff0f8fb1e0abecff0dc0d21d8d2b16cf41d2 100644
+index 44b9bfcdc7f2cbf4dc6e28c258506d9f84783b0e..89b1f0f22533cc11192704040431f5b8ade1fa87 100644
 --- a/src/main/java/net/minecraft/server/BlockChest.java
 +++ b/src/main/java/net/minecraft/server/BlockChest.java
 @@ -10,7 +10,7 @@ import javax.annotation.Nullable;
  public class BlockChest extends BlockChestAbstract<TileEntityChest> implements IBlockWaterlogged {
  
      public static final BlockStateDirection FACING = BlockFacingHorizontal.FACING;
--    public static final BlockStateEnum<BlockPropertyChestType> c = BlockProperties.ay;
-+    public static final BlockStateEnum<BlockPropertyChestType> c = BlockProperties.ay; public static final BlockStateEnum<BlockPropertyChestType> getChestTypeEnum() { return BlockChest.c; } // Tuinity - OBFHELPER
-     public static final BlockStateBoolean d = BlockProperties.C;
+-    public static final BlockStateEnum<BlockPropertyChestType> c = BlockProperties.aF;
++    public static final BlockStateEnum<BlockPropertyChestType> c = BlockProperties.aF; public static final BlockStateEnum<BlockPropertyChestType> getChestTypeEnum() { return BlockChest.c; } // Tuinity - OBFHELPER
+     public static final BlockStateBoolean d = BlockProperties.C; public static final BlockStateBoolean waterlogged() { return d; } // Paper OBFHELPER
      protected static final VoxelShape e = Block.a(1.0D, 0.0D, 0.0D, 15.0D, 14.0D, 15.0D);
      protected static final VoxelShape f = Block.a(1.0D, 0.0D, 1.0D, 15.0D, 14.0D, 16.0D);
 diff --git a/src/main/java/net/minecraft/server/BlockPiston.java b/src/main/java/net/minecraft/server/BlockPiston.java
-index 73ac83832121e0390b7c4649681fc247e3d8c30b..8312ed7797eb508ed36eb73c94693a6d87e18938 100644
+index 0fb6debc0cd5f522614f32f3df1b5f37a415a0f5..4f10ca5ada741b4f5ef941bb9d92a2fa6a7c44ff 100644
 --- a/src/main/java/net/minecraft/server/BlockPiston.java
 +++ b/src/main/java/net/minecraft/server/BlockPiston.java
-@@ -279,8 +279,10 @@ public class BlockPiston extends BlockDirectional {
-                 } else if ((Boolean) iblockdata.get(BlockPiston.EXTENDED)) {
+@@ -270,7 +270,10 @@ public class BlockPiston extends BlockDirectional {
+                         return false;
+                     }
+ 
+-                    return !iblockdata.getBlock().isTileEntity();
++                    // Tuinity start - pushable TE's
++                    TileEntity tileEntity;
++                    return !iblockdata.getBlock().isTileEntity() || ((tileEntity = world.getTileEntity(blockposition)) != null && tileEntity.isPushable());
++                    // Tuinity end - pushable TE's
+                 } else {
                      return false;
                  }
--
--                return !block.isTileEntity();
-+                // Tuinity start - pushable TE's
-+                TileEntity tileEntity;
-+                return !block.isTileEntity() || ((tileEntity = world.getTileEntity(blockposition)) != null && tileEntity.isPushable());
-+                // Tuinity end - pushable TE's
-             } else {
-                 return false;
-             }
-@@ -377,7 +379,7 @@ public class BlockPiston extends BlockDirectional {
+@@ -369,7 +372,7 @@ public class BlockPiston extends BlockDirectional {
  
              for (k = list.size() - 1; k >= 0; --k) {
                  // Paper start - fix a variety of piston desync dupes
@@ -71,11 +70,11 @@ index 73ac83832121e0390b7c4649681fc247e3d8c30b..8312ed7797eb508ed36eb73c94693a6d
                  BlockPosition oldPos = blockposition3 = (BlockPosition) list.get(k);
                  iblockdata1 = allowDesync ? world.getType(oldPos) : null;
                  // Paper end - fix a variety of piston desync dupes
-@@ -389,10 +391,29 @@ public class BlockPiston extends BlockDirectional {
+@@ -381,10 +384,29 @@ public class BlockPiston extends BlockDirectional {
                      iblockdata1 = world.getType(oldPos);
                      map.replace(oldPos, iblockdata1);
                  }
--                world.setTileEntity(blockposition3, BlockPistonMoving.a(allowDesync ? list1.get(k) : iblockdata1, enumdirection, flag, false));
+-                world.setTileEntity(blockposition3, BlockPistonMoving.a((IBlockData) list1.get(k), enumdirection, flag, false));
 +                // Tuinity start - pushable TE's
 +                TileEntity tileEntity = world.getTileEntity(oldPos);
 +                if (tileEntity != null) {
@@ -101,10 +100,10 @@ index 73ac83832121e0390b7c4649681fc247e3d8c30b..8312ed7797eb508ed36eb73c94693a6d
                  }
 +                world.setTileEntity(blockposition3, BlockPistonMoving.createPistonTile(allowDesync ? list1.get(k) : iblockdata1, enumdirection, flag, false, tileEntity)); // Tuinity - pushable TE's
                  // Paper end - fix a variety of piston desync dupes
-                 --j;
-                 aiblockdata[j] = iblockdata1;
+                 aiblockdata[j++] = iblockdata1;
+             }
 diff --git a/src/main/java/net/minecraft/server/BlockPistonMoving.java b/src/main/java/net/minecraft/server/BlockPistonMoving.java
-index 809ee9f9a69d86d891d25efa04b1af4d5f04f185..805fc6b8827afac2a84c52cc442798e030061c30 100644
+index 4bf66420f5361771aae4e07379333f3d8cfb718d..bf76615d720911fa3f31efb05fa49f2a1ec239ac 100644
 --- a/src/main/java/net/minecraft/server/BlockPistonMoving.java
 +++ b/src/main/java/net/minecraft/server/BlockPistonMoving.java
 @@ -21,7 +21,12 @@ public class BlockPistonMoving extends BlockTileEntity {
@@ -122,10 +121,10 @@ index 809ee9f9a69d86d891d25efa04b1af4d5f04f185..805fc6b8827afac2a84c52cc442798e0
  
      @Override
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 1c5137632ae78da6790664275dbf16be9435f54c..5a360fdca93c6e5b94963c6ca3ff66315c265edf 100644
+index bcf32c7ebb2ad739e6527e572e8194d76a64ef71..996438b00f704d2eb89381ad76649d88320d5121 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -509,8 +509,35 @@ public class Chunk implements IChunkAccess {
+@@ -510,8 +510,35 @@ public class Chunk implements IChunkAccess {
          return this.setType(blockposition, iblockdata, flag, true);
      }
  
@@ -161,7 +160,7 @@ index 1c5137632ae78da6790664275dbf16be9435f54c..5a360fdca93c6e5b94963c6ca3ff6631
          // CraftBukkit end
          int i = blockposition.getX() & 15;
          int j = blockposition.getY();
-@@ -569,6 +596,10 @@ public class Chunk implements IChunkAccess {
+@@ -570,6 +597,10 @@ public class Chunk implements IChunkAccess {
                  }
  
                  if (block instanceof ITileEntity) {
@@ -172,7 +171,7 @@ index 1c5137632ae78da6790664275dbf16be9435f54c..5a360fdca93c6e5b94963c6ca3ff6631
                      tileentity = this.a(blockposition, Chunk.EnumTileEntityState.CHECK);
                      if (tileentity == null) {
                          tileentity = ((ITileEntity) block).createTile(this.world);
-@@ -576,6 +607,7 @@ public class Chunk implements IChunkAccess {
+@@ -577,6 +608,7 @@ public class Chunk implements IChunkAccess {
                      } else {
                          tileentity.invalidateBlockCache();
                      }
@@ -181,7 +180,7 @@ index 1c5137632ae78da6790664275dbf16be9435f54c..5a360fdca93c6e5b94963c6ca3ff6631
  
                  this.s = true;
 diff --git a/src/main/java/net/minecraft/server/MCUtil.java b/src/main/java/net/minecraft/server/MCUtil.java
-index 87d58002116f361d8255d79fc0dbd1200f442168..973bdd25ca45ee6a11803e3abb8c0ff22d658554 100644
+index ce17f5114e997b48073bb078336dc43bdae190a7..f78ed0dfbdfe2fa0682b0ff4389d66835cffeb27 100644
 --- a/src/main/java/net/minecraft/server/MCUtil.java
 +++ b/src/main/java/net/minecraft/server/MCUtil.java
 @@ -48,6 +48,20 @@ public final class MCUtil {
@@ -206,7 +205,7 @@ index 87d58002116f361d8255d79fc0dbd1200f442168..973bdd25ca45ee6a11803e3abb8c0ff2
  
  
 diff --git a/src/main/java/net/minecraft/server/TileEntity.java b/src/main/java/net/minecraft/server/TileEntity.java
-index a8e64dfdab1e73894144a65c10c15d22f9198d3d..652ad383ab581cea79c357e8a3e71b529d2d5447 100644
+index 67fda8bd5a0ad6fea2df0066c61e006c8a49980c..e1f1d6e33fd76bd11eb23e78457ba711bf9d5cde 100644
 --- a/src/main/java/net/minecraft/server/TileEntity.java
 +++ b/src/main/java/net/minecraft/server/TileEntity.java
 @@ -12,7 +12,7 @@ import org.bukkit.inventory.InventoryHolder;
@@ -280,7 +279,7 @@ index a8e64dfdab1e73894144a65c10c15d22f9198d3d..652ad383ab581cea79c357e8a3e71b52
      private String tileEntityKeyString = null;
      private MinecraftKey tileEntityKey = null;
 diff --git a/src/main/java/net/minecraft/server/TileEntityBeacon.java b/src/main/java/net/minecraft/server/TileEntityBeacon.java
-index df2d6c3b070c2fc106fa2942959ef21b3511f0ee..9780ee07b2b0eed0cab5057ca02a48b244e3767b 100644
+index 2858ea1f3eb44ea2cc6b11454b8e94bca4ab0568..453f1301b4b4ed5024a2d608d119889f7805961f 100644
 --- a/src/main/java/net/minecraft/server/TileEntityBeacon.java
 +++ b/src/main/java/net/minecraft/server/TileEntityBeacon.java
 @@ -35,7 +35,7 @@ public class TileEntityBeacon extends TileEntity implements ITileInventory, ITic
@@ -331,7 +330,7 @@ index df2d6c3b070c2fc106fa2942959ef21b3511f0ee..9780ee07b2b0eed0cab5057ca02a48b2
      public void tick() {
          int i = this.position.getX();
 diff --git a/src/main/java/net/minecraft/server/TileEntityBeehive.java b/src/main/java/net/minecraft/server/TileEntityBeehive.java
-index 417152d16ca48c008eb6c4159e79ce9b8eb42c46..42374183b330d8af6f4ecd66d46e4e05acd605db 100644
+index 66ac41db79a160c5dc829d6dedb91403456ff380..016b06364500759263f791437f4182cfd1bba80a 100644
 --- a/src/main/java/net/minecraft/server/TileEntityBeehive.java
 +++ b/src/main/java/net/minecraft/server/TileEntityBeehive.java
 @@ -12,6 +12,13 @@ public class TileEntityBeehive extends TileEntity implements ITickable {
@@ -349,7 +348,7 @@ index 417152d16ca48c008eb6c4159e79ce9b8eb42c46..42374183b330d8af6f4ecd66d46e4e05
          super(TileEntityTypes.BEEHIVE);
      }
 diff --git a/src/main/java/net/minecraft/server/TileEntityBrewingStand.java b/src/main/java/net/minecraft/server/TileEntityBrewingStand.java
-index 441157cf7fc944048d33617dd4da7b9be406a1a4..438d14dd2365bfaf55fd535b23e8d264afb0bab3 100644
+index 276eba954bebcf87b6d9b899f161355974bc9dc8..e38a494d7b1aa03b5644a54e9ba9139aa43eb759 100644
 --- a/src/main/java/net/minecraft/server/TileEntityBrewingStand.java
 +++ b/src/main/java/net/minecraft/server/TileEntityBrewingStand.java
 @@ -24,7 +24,7 @@ public class TileEntityBrewingStand extends TileEntityContainer implements IWorl
@@ -367,7 +366,7 @@ index 441157cf7fc944048d33617dd4da7b9be406a1a4..438d14dd2365bfaf55fd535b23e8d264
  
 -    public TileEntityBrewingStand() {
 -        super(TileEntityTypes.BREWING_STAND);
--        this.items = NonNullList.a(5, ItemStack.a);
+-        this.items = NonNullList.a(5, ItemStack.b);
 -        this.a = new IContainerProperties() {
 +    // Tuinity start - pushable TE's
 +    protected final IContainerProperties getNewContainerProperties() {
@@ -392,15 +391,15 @@ index 441157cf7fc944048d33617dd4da7b9be406a1a4..438d14dd2365bfaf55fd535b23e8d264
 +
 +    public TileEntityBrewingStand() {
 +        super(TileEntityTypes.BREWING_STAND);
-+        this.items = NonNullList.a(5, ItemStack.a);
++        this.items = NonNullList.a(5, ItemStack.b);
 +        this.a = this.getNewContainerProperties();
 +    }
 +
      @Override
      protected IChatBaseComponent getContainerName() {
-         return new ChatMessage("container.brewing", new Object[0]);
+         return new ChatMessage("container.brewing");
 diff --git a/src/main/java/net/minecraft/server/TileEntityChest.java b/src/main/java/net/minecraft/server/TileEntityChest.java
-index 9a5f2da8c073f9b249edac98b0990615a9efb0e2..50a8d59da6df62f0ec7158d563fe7a8517a61847 100644
+index 203a4b7c8d0bd7e978711bcaa1fb4b5e833a147b..19573c7eee00b083cb10cf8cb55fea1fdd4bc058 100644
 --- a/src/main/java/net/minecraft/server/TileEntityChest.java
 +++ b/src/main/java/net/minecraft/server/TileEntityChest.java
 @@ -45,6 +45,22 @@ public class TileEntityChest extends TileEntityLootable { // Paper - Remove ITic
@@ -425,9 +424,9 @@ index 9a5f2da8c073f9b249edac98b0990615a9efb0e2..50a8d59da6df62f0ec7158d563fe7a85
 +
      protected TileEntityChest(TileEntityTypes<?> tileentitytypes) {
          super(tileentitytypes);
-         this.items = NonNullList.a(27, ItemStack.a);
+         this.items = NonNullList.a(27, ItemStack.b);
 diff --git a/src/main/java/net/minecraft/server/TileEntityConduit.java b/src/main/java/net/minecraft/server/TileEntityConduit.java
-index 07f265b299fe352e26d94f9932a5a91bd1933638..34c191d769816c9ca14d2c6f4dc19316ea3d267a 100644
+index ade830122762b2ba9a0142bdf3e13f325fc3a18a..7e9470caa568ccd5857b8f5c774b6d2651f6f96c 100644
 --- a/src/main/java/net/minecraft/server/TileEntityConduit.java
 +++ b/src/main/java/net/minecraft/server/TileEntityConduit.java
 @@ -16,15 +16,32 @@ public class TileEntityConduit extends TileEntity implements ITickable {
@@ -466,21 +465,21 @@ index 07f265b299fe352e26d94f9932a5a91bd1933638..34c191d769816c9ca14d2c6f4dc19316
          this(TileEntityTypes.CONDUIT);
      }
 diff --git a/src/main/java/net/minecraft/server/TileEntityFurnace.java b/src/main/java/net/minecraft/server/TileEntityFurnace.java
-index d5432bfeb727baadd8614384d3e50314de5f8dc4..7d50b7056acba77c278fab9cc310ab269a79a653 100644
+index f4f50fb8375fec3f6868bbccc50bc78a5cd81965..59aa2f8a797482c43fd47d3bce936772ad3cd6aa 100644
 --- a/src/main/java/net/minecraft/server/TileEntityFurnace.java
 +++ b/src/main/java/net/minecraft/server/TileEntityFurnace.java
-@@ -30,14 +30,14 @@ public abstract class TileEntityFurnace extends TileEntityContainer implements I
+@@ -32,14 +32,14 @@ public abstract class TileEntityFurnace extends TileEntityContainer implements I
      public double cookSpeedMultiplier = 1.0; // Paper - cook speed multiplier API
      public int cookTime;
      public int cookTimeTotal;
 -    protected final IContainerProperties b;
 +    protected IContainerProperties b; protected final void setContainerProperties(IContainerProperties value) { this.b = value; } // Tuinity - OBFHELPER // Tuinity - need non-final for `createCopyForPush`
-     private final Map<MinecraftKey, Integer> n;
+     private final Object2IntOpenHashMap<MinecraftKey> n;
      protected final Recipes<? extends RecipeCooking> c;
  
 -    protected TileEntityFurnace(TileEntityTypes<?> tileentitytypes, Recipes<? extends RecipeCooking> recipes) {
 -        super(tileentitytypes);
--        this.items = NonNullList.a(3, ItemStack.a);
+-        this.items = NonNullList.a(3, ItemStack.b);
 -        this.b = new IContainerProperties() {
 +    // Tuinity start - pushable TE's
 +    protected final IContainerProperties getNewContainerProperties() {
@@ -489,7 +488,7 @@ index d5432bfeb727baadd8614384d3e50314de5f8dc4..7d50b7056acba77c278fab9cc310ab26
              @Override
              public int getProperty(int i) {
                  switch (i) {
-@@ -77,6 +77,22 @@ public abstract class TileEntityFurnace extends TileEntityContainer implements I
+@@ -79,7 +79,23 @@ public abstract class TileEntityFurnace extends TileEntityContainer implements I
                  return 4;
              }
          };
@@ -507,13 +506,14 @@ index d5432bfeb727baadd8614384d3e50314de5f8dc4..7d50b7056acba77c278fab9cc310ab26
 +
 +    protected TileEntityFurnace(TileEntityTypes<?> tileentitytypes, Recipes<? extends RecipeCooking> recipes) {
 +        super(tileentitytypes);
-+        this.items = NonNullList.a(3, ItemStack.a);
++        this.items = NonNullList.a(3, ItemStack.b);
+         this.n = new Object2IntOpenHashMap();
 +        this.b = this.getNewContainerProperties();
-         this.n = Maps.newHashMap();
          this.c = recipes;
      }
+ 
 diff --git a/src/main/java/net/minecraft/server/TileEntityJukeBox.java b/src/main/java/net/minecraft/server/TileEntityJukeBox.java
-index d66d9ff1880ae13c129c5c7e933bf50f885b3f26..470f3108326f5b9fb88a387b426d5959087fc848 100644
+index 33c7dc56da4fa77c652dda30c5a34ce29e80e60e..75eb1b8b298e6b803cd938b80c71e20670f8df35 100644
 --- a/src/main/java/net/minecraft/server/TileEntityJukeBox.java
 +++ b/src/main/java/net/minecraft/server/TileEntityJukeBox.java
 @@ -4,6 +4,13 @@ public class TileEntityJukeBox extends TileEntity implements Clearable {
@@ -529,12 +529,12 @@ index d66d9ff1880ae13c129c5c7e933bf50f885b3f26..470f3108326f5b9fb88a387b426d5959
 +
      public TileEntityJukeBox() {
          super(TileEntityTypes.JUKEBOX);
-         this.a = ItemStack.a;
+         this.a = ItemStack.b;
 diff --git a/src/main/java/net/minecraft/server/TileEntityLectern.java b/src/main/java/net/minecraft/server/TileEntityLectern.java
-index 6c2b48bdbe2ae09649a483b106e860f4e67ec0ac..c3b854b6a2ced313072b914fe8f5daa987471bc0 100644
+index b2ceb6c179e925aa9b499693247ae00811a404cc..b955d5d6619d6b9c64559937df6aa619fb4c8c04 100644
 --- a/src/main/java/net/minecraft/server/TileEntityLectern.java
 +++ b/src/main/java/net/minecraft/server/TileEntityLectern.java
-@@ -16,7 +16,7 @@ import org.bukkit.inventory.InventoryHolder;
+@@ -17,7 +17,7 @@ import org.bukkit.inventory.InventoryHolder;
  public class TileEntityLectern extends TileEntity implements Clearable, ITileInventory, ICommandListener { // CraftBukkit - ICommandListener
  
      // CraftBukkit start - add fields and methods
@@ -543,7 +543,7 @@ index 6c2b48bdbe2ae09649a483b106e860f4e67ec0ac..c3b854b6a2ced313072b914fe8f5daa9
      public class LecternInventory implements IInventory {
  
          public List<HumanEntity> transaction = new ArrayList<>();
-@@ -136,29 +136,48 @@ public class TileEntityLectern extends TileEntity implements Clearable, ITileInv
+@@ -137,29 +137,48 @@ public class TileEntityLectern extends TileEntity implements Clearable, ITileInv
          @Override
          public void clear() {}
      };
@@ -606,9 +606,9 @@ index 6c2b48bdbe2ae09649a483b106e860f4e67ec0ac..c3b854b6a2ced313072b914fe8f5daa9
 +
      public TileEntityLectern() {
          super(TileEntityTypes.LECTERN);
-         this.book = ItemStack.a;
+         this.book = ItemStack.b;
 diff --git a/src/main/java/net/minecraft/server/TileEntityPiston.java b/src/main/java/net/minecraft/server/TileEntityPiston.java
-index d700e8281fe50b1c4131ac260ff6c0d0dd8412f0..bd0ebacf7a97549512445f70f2f290a574042d1e 100644
+index e7b7e468fc874b0fbcd43f87d816a42420f9b05e..38d0e841cabfbb30b55414e8bf8e12219245fb9e 100644
 --- a/src/main/java/net/minecraft/server/TileEntityPiston.java
 +++ b/src/main/java/net/minecraft/server/TileEntityPiston.java
 @@ -5,10 +5,10 @@ import java.util.List;
@@ -661,7 +661,7 @@ index d700e8281fe50b1c4131ac260ff6c0d0dd8412f0..bd0ebacf7a97549512445f70f2f290a5
      }
  
      public boolean d() {
-@@ -257,7 +272,25 @@ public class TileEntityPiston extends TileEntity implements ITickable {
+@@ -238,7 +253,25 @@ public class TileEntityPiston extends TileEntity implements ITickable {
                      iblockdata = Block.b(this.a, (GeneratorAccess) this.world, this.position);
                  }
  
@@ -688,7 +688,7 @@ index d700e8281fe50b1c4131ac260ff6c0d0dd8412f0..bd0ebacf7a97549512445f70f2f290a5
                  this.world.a(this.position, iblockdata.getBlock(), this.position);
              }
          }
-@@ -282,7 +315,12 @@ public class TileEntityPiston extends TileEntity implements ITickable {
+@@ -263,7 +296,12 @@ public class TileEntityPiston extends TileEntity implements ITickable {
                          iblockdata = (IBlockData) iblockdata.set(BlockProperties.C, false);
                      }
  
@@ -702,7 +702,7 @@ index d700e8281fe50b1c4131ac260ff6c0d0dd8412f0..bd0ebacf7a97549512445f70f2f290a5
                      this.world.a(this.position, iblockdata.getBlock(), this.position);
                  }
              }
-@@ -309,16 +347,34 @@ public class TileEntityPiston extends TileEntity implements ITickable {
+@@ -290,16 +328,34 @@ public class TileEntityPiston extends TileEntity implements ITickable {
          this.j = this.i;
          this.c = nbttagcompound.getBoolean("extending");
          this.g = nbttagcompound.getBoolean("source");
@@ -710,7 +710,7 @@ index d700e8281fe50b1c4131ac260ff6c0d0dd8412f0..bd0ebacf7a97549512445f70f2f290a5
 +        if (nbttagcompound.hasKey("Tuinity.tileEntity")) {
 +            NBTTagCompound compound = nbttagcompound.getCompound("Tuinity.tileEntity");
 +            if (!compound.isEmpty()) {
-+                this.tileEntity = TileEntity.create(compound);
++                this.tileEntity = TileEntity.create(this.getBlockData(), compound);
 +            }
 +        }
 +        // Tuinity end - pushable TE's
@@ -725,7 +725,7 @@ index d700e8281fe50b1c4131ac260ff6c0d0dd8412f0..bd0ebacf7a97549512445f70f2f290a5
 +        // Tuinity end - add saveTile param
          super.save(nbttagcompound);
          nbttagcompound.set("blockState", GameProfileSerializer.a(this.a));
-         nbttagcompound.setInt("facing", this.b.b());
+         nbttagcompound.setInt("facing", this.b.c());
          nbttagcompound.setFloat("progress", this.j);
          nbttagcompound.setBoolean("extending", this.c);
          nbttagcompound.setBoolean("source", this.g);
@@ -738,10 +738,10 @@ index d700e8281fe50b1c4131ac260ff6c0d0dd8412f0..bd0ebacf7a97549512445f70f2f290a5
      }
  
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 0cb3f5a6a406ce2f3078f7525deb1bb0e2b07b93..6ae9ec627e0cf2b3b464a8d86e08a6deba713675 100644
+index 25c291bc727324b2c540bca4f15ac4fa5419080b..6774b392c9862835b2205359e9e3f029dd5036ae 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -341,8 +341,27 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -398,13 +398,37 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          }
      }
  
@@ -760,16 +760,27 @@ index 0cb3f5a6a406ce2f3078f7525deb1bb0e2b07b93..6ae9ec627e0cf2b3b464a8d86e08a6de
 +
      @Override
      public boolean setTypeAndData(BlockPosition blockposition, IBlockData iblockdata, int i) {
+-        return this.a(blockposition, iblockdata, i, 512);
 +        // Tuinity start - add tileEntity parameter
 +        return this.setTypeAndData(blockposition, iblockdata, i, null);
 +    }
 +    // Up to the caller to handle previous tile state.
 +    public boolean setTypeAndData(BlockPosition blockposition, IBlockData iblockdata, int i, TileEntity tileEntity) {
++        return this.setTypeAndData(blockposition, iblockdata, i, 512, tileEntity);
++        // Tuinity end - add tileEntity parameter
+     }
+ 
+     @Override
+     public boolean a(BlockPosition blockposition, IBlockData iblockdata, int i, int j) {
++        // Tuinity start - add tileEntity parameter
++        return this.setTypeAndData(blockposition, iblockdata, i, j, null);
++    }
++    public boolean setTypeAndData(BlockPosition blockposition, IBlockData iblockdata, int i, int j, TileEntity tileEntity) {
 +        // Tuinity end - add tileEntity parameter
          com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async set type call"); // Tuinity
          // CraftBukkit start - tree generation
          if (this.captureTreeGeneration) {
-@@ -376,7 +395,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -438,7 +462,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
              }
              // CraftBukkit end
  
@@ -778,12 +789,12 @@ index 0cb3f5a6a406ce2f3078f7525deb1bb0e2b07b93..6ae9ec627e0cf2b3b464a8d86e08a6de
              this.chunkPacketBlockController.onBlockChange(this, blockposition, iblockdata, iblockdata1, i); // Paper - Anti-Xray
  
              if (iblockdata1 == null) {
-@@ -1114,7 +1133,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1040,7 +1064,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
                      while (iterator.hasNext()) {
                          TileEntity tileentity1 = (TileEntity) iterator.next();
  
 -                        if (tileentity1.getPosition().equals(blockposition)) {
 +                        if (tileentity != tileentity1 && tileentity1.getPosition().equals(blockposition)) { // Tuinity - don't remove us if we double set...
-                             tileentity1.ab_();
+                             tileentity1.an_();
                              iterator.remove();
                          }

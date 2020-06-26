@@ -7,11 +7,11 @@ Subject: [PATCH] Detail more information in watchdog dumps
 - Dump player name, player uuid, position, and world for packet handling
 
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 373701273780d26bb2d9edf982aef1910a1c5bc5..352e8699f16f04153f3065b6fd7f3bdadd96aeed 100644
+index ce95f77c2b68d42f1ee448fc8682900e65c1efd4..ea997f0a205dc1fbd9e305fca477fe96f0c3ba00 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -609,7 +609,40 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
-         return this.world.getCubes(this, axisalignedbb) && !this.world.containsLiquid(axisalignedbb);
+@@ -630,7 +630,39 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return this.onGround;
      }
  
 +    // Tuinity start - detailed watchdog information
@@ -36,7 +36,6 @@ index 373701273780d26bb2d9edf982aef1910a1c5bc5..352e8699f16f04153f3065b6fd7f3bda
 +        return this.moveStartZ;
 +    }
 +    // Tuinity end - detailed watchdog information
-+
      public void move(EnumMoveType enummovetype, Vec3D vec3d) {
 +        // Tuinity start - detailed watchdog information
 +        com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot move an entity off-main");
@@ -49,9 +48,9 @@ index 373701273780d26bb2d9edf982aef1910a1c5bc5..352e8699f16f04153f3065b6fd7f3bda
 +        try {
 +        // Tuinity end - detailed watchdog information
          if (this.noclip) {
-             this.a(this.getBoundingBox().b(vec3d));
+             this.a(this.getBoundingBox().c(vec3d));
              this.recalcPosition();
-@@ -769,6 +802,13 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -775,6 +807,13 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
  
              this.world.getMethodProfiler().exit();
          }
@@ -64,9 +63,9 @@ index 373701273780d26bb2d9edf982aef1910a1c5bc5..352e8699f16f04153f3065b6fd7f3bda
 +        // Tuinity end - detailed watchdog information
      }
  
-     protected BlockPosition ag() {
-@@ -3396,12 +3436,16 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
-         return new Vec3D(this.locX, this.locY, this.locZ);
+     protected BlockPosition ak() {
+@@ -3294,12 +3333,16 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return this.locBlock;
      }
  
 +    public final Object posLock = new Object(); // Tuinity - log detailed entity tick information
@@ -82,18 +81,16 @@ index 373701273780d26bb2d9edf982aef1910a1c5bc5..352e8699f16f04153f3065b6fd7f3bda
      }
  
      public void setMot(double d0, double d1, double d2) {
-@@ -3457,9 +3501,11 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
-             this.setBoundingBox(new AxisAlignedBB(d0 - (double) f, d1, d2 - (double) f, d0 + (double) f, d1 + (double) f1, d2 + (double) f));
-         }
-         // Paper end
-+        synchronized (this.posLock) { // Tuinity
-         this.locX = d0;
-         this.locY = d1;
-         this.locZ = d2;
-+        } // Tuinity
-     }
+@@ -3348,7 +3391,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
  
-     public void checkDespawn() {}
+     public void setPositionRaw(double d0, double d1, double d2) {
+         if (this.loc.x != d0 || this.loc.y != d1 || this.loc.z != d2) {
++            synchronized (this.posLock) { // Tuinity
+             this.loc = new Vec3D(d0, d1, d2);
++            } // Tuinity
+             int i = MathHelper.floor(d0);
+             int j = MathHelper.floor(d1);
+             int k = MathHelper.floor(d2);
 diff --git a/src/main/java/net/minecraft/server/PlayerConnectionUtils.java b/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
 index eb3269e0ea3ce33d08e9eee3bca7cf434921e991..d9c9d01aef9e546fc2cb66e69ff0e563a2a2a0ac 100644
 --- a/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
@@ -143,10 +140,10 @@ index eb3269e0ea3ce33d08e9eee3bca7cf434921e991..d9c9d01aef9e546fc2cb66e69ff0e563
              });
              throw CancelledPacketHandleException.INSTANCE;
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 3fce6c778f0d28b993a32addef2d85cd68c06ea6..791e32a04a611c36a5291e6a112b97da3d2c21fa 100644
+index 290d59990e991c0c23eefd26f0ee2d5d0a7f720a..d7b025ec9e4de611e415680b078fe39247caef52 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -870,7 +870,26 @@ public class WorldServer extends World {
+@@ -893,7 +893,26 @@ public class WorldServer extends World implements GeneratorAccessSeed {
  
      }
  
@@ -169,11 +166,11 @@ index 3fce6c778f0d28b993a32addef2d85cd68c06ea6..791e32a04a611c36a5291e6a112b97da
 +        com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot tick an entity off-main");
 +        try {
 +            currentlyTickingEntities.push(entity);
-+        // Tuinity end - log detailed entity tick information
-         if (entity instanceof EntityHuman || this.getChunkProvider().a(entity)) {
-             ++TimingHistory.entityTicks; // Paper - timings
-             // Spigot start
-@@ -915,6 +934,11 @@ public class WorldServer extends World {
++            // Tuinity end - log detailed entity tick information
+         if (!(entity instanceof EntityHuman) && !this.getChunkProvider().a(entity)) {
+             this.chunkCheck(entity);
+         } else {
+@@ -939,6 +958,11 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              } // Paper - timings
  
          }
@@ -186,7 +183,7 @@ index 3fce6c778f0d28b993a32addef2d85cd68c06ea6..791e32a04a611c36a5291e6a112b97da
  
      public void a(Entity entity, Entity entity1) {
 diff --git a/src/main/java/org/spigotmc/WatchdogThread.java b/src/main/java/org/spigotmc/WatchdogThread.java
-index 513c1041c34ebb3ac1775674a3f4526693759c08..7c1ef532d7732972fdff7f2507b601dad7cf7d86 100644
+index 513c1041c34ebb3ac1775674a3f4526693759c08..4d310908489953d6d061b2358f614142edacb62e 100644
 --- a/src/main/java/org/spigotmc/WatchdogThread.java
 +++ b/src/main/java/org/spigotmc/WatchdogThread.java
 @@ -61,6 +61,84 @@ public class WatchdogThread extends Thread
@@ -219,7 +216,7 @@ index 513c1041c34ebb3ac1775674a3f4526693759c08..7c1ef532d7732972fdff7f2507b601da
 +            net.minecraft.server.World world = entity.getWorld();
 +
 +            log.log(Level.SEVERE, "Ticking entity: " + entityType);
-+            log.log(Level.SEVERE, "Position: world: '" + (world == null ? "unknown world?" : world.getWorldData().getName()) + "' at location (" + posX + ", " + posY + ", " + posZ + ")");
++            log.log(Level.SEVERE, "Position: world: '" + (world == null ? "unknown world?" : world.getWorld().getName()) + "' at location (" + posX + ", " + posY + ", " + posZ + ")");
 +            log.log(Level.SEVERE, "Velocity: " + (mot == null ? "unknown velocity" : mot.toString()) + " (in blocks per tick)");
 +            if (moveVec != null) {
 +                log.log(Level.SEVERE, "Move call information: ");
@@ -256,7 +253,7 @@ index 513c1041c34ebb3ac1775674a3f4526693759c08..7c1ef532d7732972fdff7f2507b601da
 +                    net.minecraft.server.World world = player.getWorld();
 +
 +                    log.log(Level.SEVERE, "Handling packet for player '" + player.getName() + "', UUID: " + entityUUID);
-+                    log.log(Level.SEVERE, "Position: world: '" + (world == null ? "unknown world?" : world.getWorldData().getName()) + "' at location (" + posX + ", " + posY + ", " + posZ + ")");
++                    log.log(Level.SEVERE, "Position: world: '" + (world == null ? "unknown world?" : world.getWorld().getName()) + "' at location (" + posX + ", " + posY + ", " + posZ + ")");
 +                    if (moveVec != null) {
 +                        log.log(Level.SEVERE, "Move call information: ");
 +                        log.log(Level.SEVERE, "Start position: (" + moveStartX + ", " + moveStartY + ", " + moveStartZ + ")");

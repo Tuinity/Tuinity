@@ -6,10 +6,10 @@ Subject: [PATCH] Add soft async catcher
 Must be enabled via -Dtuinity.strict-thread-checks=true
 
 diff --git a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
-index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b9debb9e7 100644
+index 0692fe33bb7c4a7bb666920b10f5dd3a0e7a7689..4ad7d9da29481c6be301fe4a912a24adc7409d7a 100644
 --- a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
 +++ b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
-@@ -189,6 +189,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -188,6 +188,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
      }
  
      public void onChunkSetTicking(final int chunkX, final int chunkZ) {
@@ -17,7 +17,7 @@ index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b
          final ArrayList<NextTickListEntry<T>> pending = this.pendingChunkTickLoad.remove(MCUtil.getCoordinateKey(chunkX, chunkZ));
          if (pending == null) {
              return;
-@@ -269,6 +270,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -268,6 +269,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public void tick() {
@@ -25,7 +25,7 @@ index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b
          final ChunkProviderServer chunkProvider = this.world.getChunkProvider();
  
          this.world.getMethodProfiler().enter("cleaning");
-@@ -414,6 +416,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -413,6 +415,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
      }
  
      public void schedule(final BlockPosition pos, final T data, final long targetTick, final TickListPriority priority) {
@@ -33,7 +33,7 @@ index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b
          final NextTickListEntry<T> entry = new NextTickListEntry<>(pos, data, targetTick, priority);
          if (this.excludeFromScheduling.test(entry.getData())) {
              return;
-@@ -473,6 +476,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -468,6 +471,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public List<NextTickListEntry<T>> getEntriesInBoundingBox(final StructureBoundingBox structureboundingbox, final boolean removeReturned, final boolean excludeTicked) {
@@ -41,7 +41,7 @@ index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b
          if (structureboundingbox.getMinX() == structureboundingbox.getMaxX() || structureboundingbox.getMinZ() == structureboundingbox.getMaxZ()) {
              return Collections.emptyList(); // vanilla behaviour, check isBlockInSortof above
          }
-@@ -529,6 +533,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -524,6 +528,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public void copy(StructureBoundingBox structureboundingbox, BlockPosition blockposition) {
@@ -49,7 +49,7 @@ index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b
          // start copy from TickListServer // TODO check on update
          List<NextTickListEntry<T>> list = this.getEntriesInBoundingBox(structureboundingbox, false, false);
          Iterator<NextTickListEntry<T>> iterator = list.iterator();
-@@ -548,6 +553,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -543,6 +548,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public List<NextTickListEntry<T>> getEntriesInChunk(ChunkCoordIntPair chunkPos, boolean removeReturned, boolean excludeTicked) {
@@ -57,7 +57,7 @@ index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b
          // Vanilla DOES get the entries 2 blocks out of the chunk too, but that doesn't matter since we ignore chunks
          // not at ticking status, and ticking status requires neighbours loaded
          // so with this method we will reduce scheduler churning
-@@ -579,6 +585,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -574,6 +580,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public NBTTagList serialize(ChunkCoordIntPair chunkcoordintpair) {
@@ -65,7 +65,7 @@ index ce653f6b4be3ab6c6d35cb3e9222e7f8c8759e25..2dfda90acfab087f4b7c25130c14e23b
          // start copy from TickListServer  // TODO check on update
          List<NextTickListEntry<T>> list = this.getEntriesInChunk(chunkcoordintpair, false, true);
  
-@@ -588,6 +595,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
+@@ -583,6 +590,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
      public int getTotalScheduledEntries() {
@@ -112,10 +112,10 @@ index 033548a58d27f64d3954206d267783c0437d4019..08ed243259f052165c6f75aed1d1d65a
  
      public TickThread(final Runnable run, final String name, final int id) {
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index d7beb47d9e07707e5875c50932dfe4698cb6ad72..1c5137632ae78da6790664275dbf16be9435f54c 100644
+index 84dc89d961bde16f96dba5cf7f2ce4b85564215a..bcf32c7ebb2ad739e6527e572e8194d76a64ef71 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -591,6 +591,7 @@ public class Chunk implements IChunkAccess {
+@@ -592,6 +592,7 @@ public class Chunk implements IChunkAccess {
  
      @Override
      public void a(Entity entity) {
@@ -123,7 +123,7 @@ index d7beb47d9e07707e5875c50932dfe4698cb6ad72..1c5137632ae78da6790664275dbf16be
          this.q = true;
          int i = MathHelper.floor(entity.locX() / 16.0D);
          int j = MathHelper.floor(entity.locZ() / 16.0D);
-@@ -660,6 +661,7 @@ public class Chunk implements IChunkAccess {
+@@ -661,6 +662,7 @@ public class Chunk implements IChunkAccess {
      }
  
      public void a(Entity entity, int i) {
@@ -131,7 +131,7 @@ index d7beb47d9e07707e5875c50932dfe4698cb6ad72..1c5137632ae78da6790664275dbf16be
          if (i < 0) {
              i = 0;
          }
-@@ -917,6 +919,7 @@ public class Chunk implements IChunkAccess {
+@@ -918,6 +920,7 @@ public class Chunk implements IChunkAccess {
      }
  
      public void a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<Entity> list, @Nullable Predicate<? super Entity> predicate) {
@@ -139,7 +139,7 @@ index d7beb47d9e07707e5875c50932dfe4698cb6ad72..1c5137632ae78da6790664275dbf16be
          int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
-@@ -956,6 +959,7 @@ public class Chunk implements IChunkAccess {
+@@ -957,6 +960,7 @@ public class Chunk implements IChunkAccess {
      }
  
      public <T extends Entity> void a(@Nullable EntityTypes<?> entitytypes, AxisAlignedBB axisalignedbb, List<? super T> list, Predicate<? super T> predicate) {
@@ -147,7 +147,7 @@ index d7beb47d9e07707e5875c50932dfe4698cb6ad72..1c5137632ae78da6790664275dbf16be
          int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
-@@ -986,6 +990,7 @@ public class Chunk implements IChunkAccess {
+@@ -987,6 +991,7 @@ public class Chunk implements IChunkAccess {
      }
  
      public <T extends Entity> void a(Class<? extends T> oclass, AxisAlignedBB axisalignedbb, List<T> list, @Nullable Predicate<? super T> predicate) {
@@ -156,7 +156,7 @@ index d7beb47d9e07707e5875c50932dfe4698cb6ad72..1c5137632ae78da6790664275dbf16be
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 9a84d1749cf00316f1acadc55d45426267a94827..d63f693372c141b646e868af3744c9223a65df00 100644
+index 893c0085bca0a8d77a85dba1cc29f2dec96c56ec..b69e14d730c0765dfd5cbf7dd4349a1090bf4468 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -65,6 +65,7 @@ public abstract class ChunkMapDistance {
@@ -173,9 +173,9 @@ index 9a84d1749cf00316f1acadc55d45426267a94827..d63f693372c141b646e868af3744c922
      public boolean a(PlayerChunkMap playerchunkmap) {
 +        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot tick ChunkMapDistance off of the main-thread");// Tuinity
          //this.f.a(); // Paper - no longer used
-         AsyncCatcher.catchOp("DistanceManagerTick");
+         AsyncCatcher.catchOp("DistanceManagerTick"); // Paper
          this.g.a();
-@@ -369,6 +371,7 @@ public abstract class ChunkMapDistance {
+@@ -370,6 +372,7 @@ public abstract class ChunkMapDistance {
      }
  
      private ArraySetSorted<Ticket<?>> e(long i) {
@@ -183,23 +183,23 @@ index 9a84d1749cf00316f1acadc55d45426267a94827..d63f693372c141b646e868af3744c922
          return (ArraySetSorted) this.tickets.computeIfAbsent(i, (j) -> {
              return ArraySetSorted.a(4);
          });
-@@ -386,6 +389,7 @@ public abstract class ChunkMapDistance {
+@@ -387,6 +390,7 @@ public abstract class ChunkMapDistance {
      }
  
      public void a(SectionPosition sectionposition, EntityPlayer entityplayer) {
 +        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async player add"); // Tuinity
-         long i = sectionposition.u().pair();
+         long i = sectionposition.r().pair();
  
          ((ObjectSet) this.c.computeIfAbsent(i, (j) -> {
-@@ -396,6 +400,7 @@ public abstract class ChunkMapDistance {
+@@ -397,6 +401,7 @@ public abstract class ChunkMapDistance {
      }
  
      public void b(SectionPosition sectionposition, EntityPlayer entityplayer) {
 +        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async player remove"); // Tuinity
-         long i = sectionposition.u().pair();
+         long i = sectionposition.r().pair();
          ObjectSet<EntityPlayer> objectset = (ObjectSet) this.c.get(i);
  
-@@ -445,6 +450,7 @@ public abstract class ChunkMapDistance {
+@@ -446,6 +451,7 @@ public abstract class ChunkMapDistance {
  
      // CraftBukkit start
      public <T> void removeAllTicketsFor(TicketType<T> ticketType, int ticketLevel, T ticketIdentifier) {
@@ -208,10 +208,10 @@ index 9a84d1749cf00316f1acadc55d45426267a94827..d63f693372c141b646e868af3744c922
  
          for (java.util.Iterator<Entry<ArraySetSorted<Ticket<?>>>> iterator = this.tickets.long2ObjectEntrySet().fastIterator(); iterator.hasNext();) {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index a6d27f77fbb99ab25559a596b42a0a4363e2d87a..9dd9e32d6f8ef8a8a2f7b9bf02aa0065c8f25c48 100644
+index a68716154368380cf8ad5c9134c9ee7d81bffb6c..2e1dc996162c626a7222bd2fafdda8a92df37eea 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -1251,6 +1251,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1181,6 +1181,7 @@ public class ChunkProviderServer extends IChunkProvider {
  
          @Override
          protected boolean executeNext() {
@@ -220,10 +220,10 @@ index a6d27f77fbb99ab25559a596b42a0a4363e2d87a..9dd9e32d6f8ef8a8a2f7b9bf02aa0065
          try {
              boolean execChunkTask = com.destroystokyo.paper.io.chunk.ChunkTaskManager.pollChunkWaitQueue() || ChunkProviderServer.this.world.asyncChunkTaskManager.pollNextChunkTask(); // Paper
 diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
-index 5cc89c0cf9e9e632212a9653391437cbe9b15031..1bd70384840b1a9e5ddce1e2fd50433661ce2952 100644
+index f75c09d44a19f84588f21a55ea8f0dd8ccb539b9..bfb931268d35754b415538728e081bc1a2c9f188 100644
 --- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
 +++ b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
-@@ -72,6 +72,7 @@ public class EntityTrackerEntry {
+@@ -74,6 +74,7 @@ public class EntityTrackerEntry {
  
      public final void tick() { this.a(); } // Paper - OBFHELPER
      public void a() {
@@ -232,10 +232,10 @@ index 5cc89c0cf9e9e632212a9653391437cbe9b15031..1bd70384840b1a9e5ddce1e2fd504336
  
          if (!list.equals(this.p)) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 201221df63d4ec8e704fee9126240891f2b1c37d..b30c7b3e9dcb3dd02e922f8b736f4330f6e84352 100644
+index 46f8fe23cf4442334d344365baba77b2a6394e1b..c527d114e72ea773dd6e81dfc0f7f2d8b2b4d76e 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -192,6 +192,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -197,6 +197,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      // Paper end - no-tick view distance
  
      void addPlayerToDistanceMaps(EntityPlayer player) {
@@ -243,7 +243,7 @@ index 201221df63d4ec8e704fee9126240891f2b1c37d..b30c7b3e9dcb3dd02e922f8b736f4330
          int chunkX = MCUtil.getChunkCoordinate(player.locX());
          int chunkZ = MCUtil.getChunkCoordinate(player.locZ());
          // Note: players need to be explicitly added to distance maps before they can be updated
-@@ -222,6 +223,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -227,6 +228,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      void removePlayerFromDistanceMaps(EntityPlayer player) {
@@ -251,7 +251,7 @@ index 201221df63d4ec8e704fee9126240891f2b1c37d..b30c7b3e9dcb3dd02e922f8b736f4330
          // Paper start - use distance map to optimise tracker
          for (int i = 0, len = TRACKING_RANGE_TYPES.length; i < len; ++i) {
              this.playerEntityTrackerTrackMaps[i].remove(player);
-@@ -239,6 +241,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -244,6 +246,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      void updateMaps(EntityPlayer player) {
@@ -259,7 +259,7 @@ index 201221df63d4ec8e704fee9126240891f2b1c37d..b30c7b3e9dcb3dd02e922f8b736f4330
          int chunkX = MCUtil.getChunkCoordinate(player.locX());
          int chunkZ = MCUtil.getChunkCoordinate(player.locZ());
          // Note: players need to be explicitly added to distance maps before they can be updated
-@@ -740,6 +743,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -727,6 +730,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      @Nullable
      private PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k) {
@@ -267,7 +267,7 @@ index 201221df63d4ec8e704fee9126240891f2b1c37d..b30c7b3e9dcb3dd02e922f8b736f4330
          if (k > PlayerChunkMap.GOLDEN_TICKET && j > PlayerChunkMap.GOLDEN_TICKET) {
              return playerchunk;
          } else {
-@@ -1042,6 +1046,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1029,6 +1033,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      protected boolean b() {
@@ -275,15 +275,15 @@ index 201221df63d4ec8e704fee9126240891f2b1c37d..b30c7b3e9dcb3dd02e922f8b736f4330
          if (!this.updatingChunksModified) {
              return false;
          } else {
-@@ -1447,6 +1452,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1465,6 +1470,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
-     public final void setViewDistance(int i) { // Paper - public
+     public void setViewDistance(int i) { // Paper - public
 +        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot update view distance off of the main thread"); // Tuinity
          int j = MathHelper.clamp(i + 1, 3, 33); // Paper - diff on change, these make the lower view distance limit 2 and the upper 32
  
          if (j != this.viewDistance) {
-@@ -1460,6 +1466,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1478,6 +1484,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      // Paper start - no-tick view distance
      public final void setNoTickViewDistance(int viewDistance) {
@@ -292,18 +292,18 @@ index 201221df63d4ec8e704fee9126240891f2b1c37d..b30c7b3e9dcb3dd02e922f8b736f4330
  
          this.noTickViewDistance = viewDistance;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index e8a8e35de58691e5bf6846640f56753b4772c271..69d69dd9b8af110dd1cd49c9de62a110185bcb2d 100644
+index 499fe7edf05d0d2cd2b3c213203001abb8f41113..0e30a1ae539509c66678e7b58870eff6101e4731 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -343,6 +343,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -405,6 +405,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
  
      @Override
-     public boolean setTypeAndData(BlockPosition blockposition, IBlockData iblockdata, int i) {
+     public boolean a(BlockPosition blockposition, IBlockData iblockdata, int i, int j) {
 +        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async set type call"); // Tuinity
          // CraftBukkit start - tree generation
          if (this.captureTreeGeneration) {
              // Paper start
-@@ -443,6 +444,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -505,6 +506,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
  
      // CraftBukkit start - Split off from above in order to directly send client and physic updates
      public void notifyAndUpdatePhysics(BlockPosition blockposition, Chunk chunk, IBlockData oldBlock, IBlockData newBlock, IBlockData actualBlock, int i) {

@@ -10,10 +10,10 @@ hoping that at least then we don't swap chunks, and maybe recover
 them all.
 
 diff --git a/src/main/java/net/minecraft/server/ChunkRegionLoader.java b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-index 1685237dfd7d6f352c5bab5f65817462de5e6d12..20b6b58bdee872a4aaa18e3507aef2c8afd5d26e 100644
+index ac58fcb7985ebe0cfdab6e1400deb37c233ff637..742c59cb059c8a691727ae1a554743b1c059e594 100644
 --- a/src/main/java/net/minecraft/server/ChunkRegionLoader.java
 +++ b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-@@ -23,6 +23,14 @@ public class ChunkRegionLoader {
+@@ -24,6 +24,14 @@ public class ChunkRegionLoader {
  
      private static final Logger LOGGER = LogManager.getLogger();
  
@@ -28,7 +28,7 @@ index 1685237dfd7d6f352c5bab5f65817462de5e6d12..20b6b58bdee872a4aaa18e3507aef2c8
      // Paper start - guard against serializing mismatching coordinates
      // TODO Note: This needs to be re-checked each update
      public static ChunkCoordIntPair getChunkCoordinate(NBTTagCompound chunkData) {
-@@ -375,10 +383,10 @@ public class ChunkRegionLoader {
+@@ -374,10 +382,10 @@ public class ChunkRegionLoader {
          NBTTagCompound nbttagcompound1 = new NBTTagCompound();
  
          nbttagcompound.setInt("DataVersion", SharedConstants.getGameVersion().getWorldVersion());
@@ -41,8 +41,21 @@ index 1685237dfd7d6f352c5bab5f65817462de5e6d12..20b6b58bdee872a4aaa18e3507aef2c8
          nbttagcompound1.setLong("InhabitedTime", ichunkaccess.getInhabitedTime());
          nbttagcompound1.setString("Status", ichunkaccess.getChunkStatus().d());
          ChunkConverter chunkconverter = ichunkaccess.p();
+diff --git a/src/main/java/net/minecraft/server/IChunkLoader.java b/src/main/java/net/minecraft/server/IChunkLoader.java
+index 582a5695bac7d078e3022b8ee70c512c0680d992..5601088cd5024a40e8296bab979f43de924c2b62 100644
+--- a/src/main/java/net/minecraft/server/IChunkLoader.java
++++ b/src/main/java/net/minecraft/server/IChunkLoader.java
+@@ -21,7 +21,7 @@ public class IChunkLoader implements AutoCloseable {
+     protected final RegionFileCache regionFileCache;
+ 
+     public IChunkLoader(File file, DataFixer datafixer, boolean flag) {
+-        this.regionFileCache = new RegionFileCache(file, flag); // Paper - nuke IOWorker
++        this.regionFileCache = new RegionFileCache(file, flag, true); // Paper - nuke IOWorker // Tuinity
+         this.b = datafixer;
+         // Paper - nuke IOWorker
+     }
 diff --git a/src/main/java/net/minecraft/server/RegionFile.java b/src/main/java/net/minecraft/server/RegionFile.java
-index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf1708603884374d 100644
+index 93797395c3a710d228bd790771ac18b4baa3b1e2..6928b1730fd793de78f9d24f3188ab23a09bf057 100644
 --- a/src/main/java/net/minecraft/server/RegionFile.java
 +++ b/src/main/java/net/minecraft/server/RegionFile.java
 @@ -28,14 +28,349 @@ public class RegionFile implements AutoCloseable {
@@ -402,27 +415,26 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf170860
 @@ -63,10 +398,21 @@ public class RegionFile implements AutoCloseable {
      // Paper end
  
-     public RegionFile(File file, File file1) throws IOException {
--        this(file.toPath(), file1.toPath(), RegionFileCompression.b);
-+        // Tuinity start - add header recalculation boolean
-+        this(file, file1, false);
-+    }
-+    public RegionFile(File file, File file1, boolean canRecalcHeader) throws IOException {
-+        this(file.toPath(), file1.toPath(), RegionFileCompression.b, canRecalcHeader);
-+        // Tuinity end
+     public RegionFile(File file, File file1, boolean flag) throws IOException {
++        // Tuinity start - add can recalc flag
+         this(file.toPath(), file1.toPath(), RegionFileCompression.b, flag);
      }
- 
-     public RegionFile(java.nio.file.Path java_nio_file_path, java.nio.file.Path java_nio_file_path1, RegionFileCompression regionfilecompression) throws IOException {
-+        // Tuinity start - add header recalculation boolean
-+        this(java_nio_file_path, java_nio_file_path1, regionfilecompression, false);
++    public RegionFile(File file, File file1, boolean flag, boolean canRecalcHeader) throws IOException {
++        this(file.toPath(), file1.toPath(), RegionFileCompression.b, flag, canRecalcHeader);
++        // Tuinity end - add can recalc flag
 +    }
-+    public RegionFile(java.nio.file.Path java_nio_file_path, java.nio.file.Path java_nio_file_path1, RegionFileCompression regionfilecompression, boolean canRecalcHeader) throws IOException {
+ 
+     public RegionFile(java.nio.file.Path java_nio_file_path, java.nio.file.Path java_nio_file_path1, RegionFileCompression regionfilecompression, boolean flag) throws IOException {
++        // Tuinity start - add can recalc flag
++        this(java_nio_file_path, java_nio_file_path1, regionfilecompression, flag, false);
++    }
++    public RegionFile(java.nio.file.Path java_nio_file_path, java.nio.file.Path java_nio_file_path1, RegionFileCompression regionfilecompression, boolean flag, boolean canRecalcHeader) throws IOException {
 +        this.canRecalcHeader = canRecalcHeader;
-+        // Tuinity end
++        // Tuinity end - add can recalc flag
          this.file = java_nio_file_path.toFile(); // Paper
          this.f = ByteBuffer.allocateDirect(8192);
          initOversizedState();
-@@ -90,12 +436,15 @@ public class RegionFile implements AutoCloseable {
+@@ -95,12 +441,15 @@ public class RegionFile implements AutoCloseable {
                      RegionFile.LOGGER.warn("Region file {} has truncated header: {}", java_nio_file_path, i);
                  }
  
@@ -441,7 +453,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf170860
                          // Spigot start
                          if (i1 == 255) {
                              // We're maxed out, so we need to read the proper length from the section
-@@ -105,20 +454,87 @@ public class RegionFile implements AutoCloseable {
+@@ -110,20 +459,87 @@ public class RegionFile implements AutoCloseable {
                          }
                          // Spigot end
  
@@ -531,7 +543,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf170860
      @Nullable public synchronized DataInputStream getReadStream(ChunkCoordIntPair chunkCoordIntPair) throws IOException { return a(chunkCoordIntPair);} // Paper - OBFHELPER
      @Nullable
      public synchronized DataInputStream a(ChunkCoordIntPair chunkcoordintpair) throws IOException {
-@@ -142,6 +558,12 @@ public class RegionFile implements AutoCloseable {
+@@ -147,6 +563,12 @@ public class RegionFile implements AutoCloseable {
              this.dataFile.read(bytebuffer, (long) (j * 4096));
              ((java.nio.Buffer) bytebuffer).flip();
              if (bytebuffer.remaining() < 5) {
@@ -544,7 +556,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf170860
                  RegionFile.LOGGER.error("Chunk {} header is truncated: expected {} but read {}", chunkcoordintpair, l, bytebuffer.remaining());
                  return null;
              } else {
-@@ -150,6 +572,12 @@ public class RegionFile implements AutoCloseable {
+@@ -155,6 +577,12 @@ public class RegionFile implements AutoCloseable {
  
                  if (i1 == 0) {
                      RegionFile.LOGGER.warn("Chunk {} is allocated, but stream is missing", chunkcoordintpair);
@@ -557,7 +569,7 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf170860
                      return null;
                  } else {
                      int j1 = i1 - 1;
-@@ -162,9 +590,21 @@ public class RegionFile implements AutoCloseable {
+@@ -167,9 +595,21 @@ public class RegionFile implements AutoCloseable {
                          return this.a(chunkcoordintpair, b(b0));
                      } else if (j1 > bytebuffer.remaining()) {
                          RegionFile.LOGGER.error("Chunk {} stream is truncated: expected {} but read {}", chunkcoordintpair, j1, bytebuffer.remaining());
@@ -579,10 +591,10 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf170860
                          return null;
                      } else {
                          return this.a(chunkcoordintpair, b0, a(bytebuffer, j1));
-@@ -323,10 +763,15 @@ public class RegionFile implements AutoCloseable {
+@@ -332,10 +772,15 @@ public class RegionFile implements AutoCloseable {
      }
  
-     private ByteBuffer a() {
+     private ByteBuffer b() {
 +        // Tuinity start - add compressionType param
 +        return this.getOversizedChunkHolderData(this.getRegionFileCompression());
 +    }
@@ -596,12 +608,12 @@ index df728e2c0a2bf660a91e0bd6342c4b4b1471dcb7..a66b02baa96ebdb8bcf477a5cf170860
          ((java.nio.Buffer) bytebuffer).flip();
          return bytebuffer;
      }
-@@ -363,6 +808,7 @@ public class RegionFile implements AutoCloseable {
+@@ -372,6 +817,7 @@ public class RegionFile implements AutoCloseable {
          };
      }
  
 +    private final void flushHeader() throws IOException { this.b(); } // Tuinity - OBFHELPER
-     private void b() throws IOException {
+     private void c() throws IOException {
          ((java.nio.Buffer) this.f).position(0);
          this.dataFile.write(this.f, 0L);
 diff --git a/src/main/java/net/minecraft/server/RegionFileBitSet.java b/src/main/java/net/minecraft/server/RegionFileBitSet.java
@@ -653,11 +665,24 @@ index 1ebdf73cc927405bc536dc74a5118d2a086db0e5..cfa3ecb031b59ec677f016ecdea92d16
          int j = 0;
  
 diff --git a/src/main/java/net/minecraft/server/RegionFileCache.java b/src/main/java/net/minecraft/server/RegionFileCache.java
-index 72118a7dcfabde0f069b8c8b86f41c026a2c99d9..3eebeee4c4afb74506372f828b3f25df6a8b5697 100644
+index 867dc074bc57b27486de6ce742971d5db945b0fc..60b4171a3aa2a8b216aba13738c84ac9d7f3b49e 100644
 --- a/src/main/java/net/minecraft/server/RegionFileCache.java
 +++ b/src/main/java/net/minecraft/server/RegionFileCache.java
-@@ -18,6 +18,30 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -14,12 +14,43 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+     public final Long2ObjectLinkedOpenHashMap<RegionFile> cache = new Long2ObjectLinkedOpenHashMap();
+     private final File b;
+     private final boolean c;
++    private final boolean isChunkData; // Tuinity
+ 
+     RegionFileCache(File file, boolean flag) {
++        // Tuinity start - add isChunkData param
++        this(file, flag, false);
++    }
++    RegionFileCache(File file, boolean flag, boolean isChunkData) {
++        this.isChunkData = isChunkData;
++        // Tuinity end - add isChunkData param
          this.b = file;
+         this.c = flag;
      }
  
 +    // Tuinity start
@@ -687,19 +712,19 @@ index 72118a7dcfabde0f069b8c8b86f41c026a2c99d9..3eebeee4c4afb74506372f828b3f25df
  
      // Paper start
      public synchronized RegionFile getRegionFileIfLoaded(ChunkCoordIntPair chunkcoordintpair) { // Paper - synchronize for async io
-@@ -51,9 +75,9 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -53,9 +84,9 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
                  this.b.mkdirs();
              }
  
 -            File file = new File(this.b, "r." + chunkcoordintpair.getRegionX() + "." + chunkcoordintpair.getRegionZ() + ".mca");
 +            File file = new File(this.b, "r." + chunkcoordintpair.getRegionX() + "." + chunkcoordintpair.getRegionZ() + ".mca"); // Tuinity - diff on change
              if (existingOnly && !file.exists()) return null; // CraftBukkit
--            RegionFile regionfile1 = new RegionFile(file, this.b);
-+            RegionFile regionfile1 = new RegionFile(file, this.b, this instanceof IChunkLoader); // Tuinity - allow for chunk regionfiles to regen header
+-            RegionFile regionfile1 = new RegionFile(file, this.b, this.c);
++            RegionFile regionfile1 = new RegionFile(file, this.b, this.c, this.isChunkData); // Tuinity - allow for chunk regionfiles to regen header
  
              this.cache.putAndMoveToFirst(i, regionfile1);
              // Paper start
-@@ -142,6 +166,13 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -144,6 +175,13 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
              return null;
          }
          // CraftBukkit end
@@ -713,12 +738,12 @@ index 72118a7dcfabde0f069b8c8b86f41c026a2c99d9..3eebeee4c4afb74506372f828b3f25df
          try { // Paper
          DataInputStream datainputstream = regionfile.a(chunkcoordintpair);
          // Paper start
-@@ -157,6 +188,16 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -159,6 +197,16 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
          try {
              if (datainputstream != null) {
                  nbttagcompound = NBTCompressedStreamTools.a(datainputstream);
 +                // Tuinity start - recover from corrupt regionfile header
-+                if (this instanceof IChunkLoader) {
++                if (this.isChunkData) {
 +                    ChunkCoordIntPair chunkPos = ChunkRegionLoader.getChunkCoordinate(nbttagcompound);
 +                    if (!chunkPos.equals(chunkcoordintpair)) {
 +                        regionfile.recalculateHeader();
@@ -763,15 +788,15 @@ index 3382d678e68e559b8d3cb9dced4fce24206cd38f..29137f495942d810e61fadc33178999a
          return (InputStream) this.f.wrap(inputstream);
      }
 diff --git a/src/main/java/net/minecraft/server/WorldUpgrader.java b/src/main/java/net/minecraft/server/WorldUpgrader.java
-index 3030c347ef49da9ef4d9ba4177f09aac4a23596a..76f0f258e1debb587154ca1b49a24e592c0c878b 100644
+index 5ccdc0b87b922724c3dd3085860c55d4959ca0b4..888dae2d5ee8a71e83dd24e5f3c6bc8513016f9d 100644
 --- a/src/main/java/net/minecraft/server/WorldUpgrader.java
 +++ b/src/main/java/net/minecraft/server/WorldUpgrader.java
-@@ -220,7 +220,7 @@ public class WorldUpgrader {
+@@ -218,7 +218,7 @@ public class WorldUpgrader {
                      int l = Integer.parseInt(matcher.group(2)) << 5;
  
                      try {
--                        RegionFile regionfile = new RegionFile(file2, file1);
-+                        RegionFile regionfile = new RegionFile(file2, file1, true); // Tuinity - allow for chunk regionfiles to regen header
+-                        RegionFile regionfile = new RegionFile(file2, file1, true);
++                        RegionFile regionfile = new RegionFile(file2, file1, true, true); // Tuinity - allow for chunk regionfiles to regen header
                          Throwable throwable = null;
  
                          try {

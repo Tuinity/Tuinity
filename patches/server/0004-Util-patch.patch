@@ -276,10 +276,10 @@ index 0000000000000000000000000000000000000000..e12d096456965c0f9e152a31f4c2c602
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 7d50b94cb37ea921451af1baa47c8900e99b37e1..a6d27f77fbb99ab25559a596b42a0a4363e2d87a 100644
+index 70fdce2946b94fad32cd7d31f990c4d7916a6e53..a68716154368380cf8ad5c9134c9ee7d81bffb6c 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -118,7 +118,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -120,7 +120,7 @@ public class ChunkProviderServer extends IChunkProvider {
          return (Chunk)this.getChunkAt(x, z, ChunkStatus.FULL, true);
      }
  
@@ -288,7 +288,7 @@ index 7d50b94cb37ea921451af1baa47c8900e99b37e1..a6d27f77fbb99ab25559a596b42a0a43
  
      public void getEntityTickingChunkAsync(int x, int z, java.util.function.Consumer<Chunk> onLoad) {
          if (Thread.currentThread() != this.serverThread) {
-@@ -207,6 +207,163 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -209,6 +209,164 @@ public class ChunkProviderServer extends IChunkProvider {
      }
      // Paper end - rewrite ticklistserver
  
@@ -322,7 +322,7 @@ index 7d50b94cb37ea921451af1baa47c8900e99b37e1..a6d27f77fbb99ab25559a596b42a0a43
 +    }
 +
 +    void getChunkAtAsynchronously(int chunkX, int chunkZ, int ticketLevel,
-+                                          java.util.function.Consumer<IChunkAccess> consumer) {
++                                  java.util.function.Consumer<IChunkAccess> consumer) {
 +        this.getChunkAtAsynchronously(chunkX, chunkZ, ticketLevel, (PlayerChunk playerChunk) -> {
 +            if (ticketLevel <= 33) {
 +                return (CompletableFuture)playerChunk.getFullChunkFuture();
@@ -333,8 +333,8 @@ index 7d50b94cb37ea921451af1baa47c8900e99b37e1..a6d27f77fbb99ab25559a596b42a0a43
 +    }
 +
 +    void getChunkAtAsynchronously(int chunkX, int chunkZ, int ticketLevel,
-+                                          java.util.function.Function<PlayerChunk, CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>>> function,
-+                                          java.util.function.Consumer<IChunkAccess> consumer) {
++                                  java.util.function.Function<PlayerChunk, CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>>> function,
++                                  java.util.function.Consumer<IChunkAccess> consumer) {
 +        if (Thread.currentThread() != this.serverThread) {
 +            throw new IllegalStateException();
 +        }
@@ -449,11 +449,12 @@ index 7d50b94cb37ea921451af1baa47c8900e99b37e1..a6d27f77fbb99ab25559a596b42a0a43
 +        });
 +    }
 +    // Tuinity end
- 
-     public ChunkProviderServer(WorldServer worldserver, File file, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator<?> chunkgenerator, int i, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
++
+     public ChunkProviderServer(WorldServer worldserver, Convertable.ConversionSession convertable_conversionsession, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator chunkgenerator, int i, boolean flag, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
          this.world = worldserver;
+         this.serverThreadQueue = new ChunkProviderServer.a(worldserver);
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index e0ab058bf947ea10b37eadf6122292e708bd3809..373701273780d26bb2d9edf982aef1910a1c5bc5 100644
+index b11383b35662b1e59b89e916e55340cee2726944..ce95f77c2b68d42f1ee448fc8682900e65c1efd4 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -211,6 +211,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -472,10 +473,10 @@ index e0ab058bf947ea10b37eadf6122292e708bd3809..373701273780d26bb2d9edf982aef191
      /**
       * Overriding this field will cause memory leaks.
 diff --git a/src/main/java/net/minecraft/server/HeightMap.java b/src/main/java/net/minecraft/server/HeightMap.java
-index 8a272ae1b800e31aab6431b647e5b349430b2634..aa73396100adbf741ed52f457284a78c73d658c3 100644
+index 14ddb2a8949ce18a0c42e17a82d0d7a13ac325fe..476da43b9f0ef35b4985f88e4784b1f8c5222af3 100644
 --- a/src/main/java/net/minecraft/server/HeightMap.java
 +++ b/src/main/java/net/minecraft/server/HeightMap.java
-@@ -119,6 +119,7 @@ public class HeightMap {
+@@ -101,6 +101,7 @@ public class HeightMap {
          }
      }
  
@@ -484,10 +485,10 @@ index 8a272ae1b800e31aab6431b647e5b349430b2634..aa73396100adbf741ed52f457284a78c
          return this.a(c(i, j));
      }
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 2edb4904d3071aa9de6517c375410b814a45cfbe..7c3ad6db0a0d3e710fa96a4295ecc6470e8870cf 100644
+index a3bce8f13bf278af2d6870891daa9bf692b4e267..4ca923fa88b19791157a78bf4ddbb9c4ebcba34f 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -507,6 +507,7 @@ public class PlayerChunk {
+@@ -494,6 +494,7 @@ public class PlayerChunk {
          // Paper end - per player view distance
      }
  
@@ -496,10 +497,10 @@ index 2edb4904d3071aa9de6517c375410b814a45cfbe..7c3ad6db0a0d3e710fa96a4295ecc647
          int i = chunkstatus.c();
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 46e261b6513b52f5562387b661de4a409ea515a3..3fce6c778f0d28b993a32addef2d85cd68c06ea6 100644
+index f24c4def3799d2787b1bc14b2dea532e6a93d6ee..290d59990e991c0c23eefd26f0ee2d5d0a7f720a 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -190,6 +190,96 @@ public class WorldServer extends World {
+@@ -200,6 +200,96 @@ public class WorldServer extends World implements GeneratorAccessSeed {
      }
      // Paper end - rewrite ticklistserver
  
@@ -593,6 +594,6 @@ index 46e261b6513b52f5562387b661de4a409ea515a3..3fce6c778f0d28b993a32addef2d85cd
 +    }
 +    // Tuinity end
 +
-     // Add env and gen to constructor
-     public WorldServer(MinecraftServer minecraftserver, Executor executor, WorldNBTStorage worldnbtstorage, WorldData worlddata, DimensionManager dimensionmanager, GameProfilerFiller gameprofilerfiller, WorldLoadListener worldloadlistener, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
-         super(worlddata, dimensionmanager, executor, (world, worldprovider) -> { // Paper - pass executor down
+     // Add env and gen to constructor, WorldData -> WorldDataServer
+     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, ResourceKey<DimensionManager> resourcekey1, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
+         super(iworlddataserver, resourcekey, resourcekey1, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
