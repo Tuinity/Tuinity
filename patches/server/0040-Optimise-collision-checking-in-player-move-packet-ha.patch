@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 2 Jul 2020 12:02:43 -0700
+Subject: [PATCH] Optimise collision checking in player move packet handling
+
+Don't need to do another getCubes call if the move() call
+doesn't find any collisions
+
+diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
+index c40255263ee7c396b5f17c059212116832090f54..152e58ff24999fdb77bde01e45d2a10092eb5104 100644
+--- a/src/main/java/net/minecraft/server/PlayerConnection.java
++++ b/src/main/java/net/minecraft/server/PlayerConnection.java
+@@ -983,7 +983,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+                 }
+ 
+                 if (this.teleportPos != null) {
+-                    if (this.e - this.A > 20) {
++                    if (false && this.e - this.A > 20) { // Tuinity - this will greatly screw with clients with > 1000ms RTT
+                         this.A = this.e;
+                         this.a(this.teleportPos.x, this.teleportPos.y, this.teleportPos.z, this.player.yaw, this.player.pitch);
+                     }
+@@ -1133,7 +1133,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+                             }
+ 
+                             this.player.setLocation(d4, d5, d6, f, f1);
+-                            if (!this.player.noclip && !this.player.isSleeping() && (flag1 && worldserver.getCubes(this.player, axisalignedbb) || this.a((IWorldReader) worldserver, axisalignedbb))) {
++                            if (!this.player.noclip && !this.player.isSleeping() && (flag1 && worldserver.getCubes(this.player, axisalignedbb) || (d11 != 0.0 && this.a((IWorldReader) worldserver, axisalignedbb)))) { // Tuinity
+                                 this.a(d0, d1, d2, f, f1);
+                             } else {
+                                 // CraftBukkit start - fire PlayerMoveEvent

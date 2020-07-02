@@ -501,7 +501,7 @@ index 1cb45f97b644347d16b66b46113b1e4455004fd3..e60ad41b22ddeeae4923a5b7b2999f2f
          T t0 = this.h.a(this.a.a(i));
  
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 67cba48771bc86f20232ce8fe0845879d2d03bf4..f8ca56be883417ed947c5bbc11bbe732ebcf593f 100644
+index 67cba48771bc86f20232ce8fe0845879d2d03bf4..818afb4f493e80b31d885a51a3dbe751069ddfd9 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -136,7 +136,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -513,36 +513,24 @@ index 67cba48771bc86f20232ce8fe0845879d2d03bf4..f8ca56be883417ed947c5bbc11bbe732
      public boolean noclip;
      public float I;
      protected final Random random;
-@@ -655,6 +655,10 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -655,6 +655,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return this.moveStartZ;
      }
      // Tuinity end - detailed watchdog information
 +
-+    boolean collidedOnSomething; // Tuinity - optimise collisions
-+    boolean requiredRelaxedCollisionCheck; // Tuinity - optimise collisions
-+
      public void move(EnumMoveType enummovetype, Vec3D vec3d) {
          // Tuinity start - detailed watchdog information
          com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot move an entity off-main");
-@@ -664,6 +668,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
-             this.moveStartZ = this.locZ();
-             this.moveVector = vec3d;
-         }
-+        this.collidedOnSomething = false; // Tuinity - optimise collisions
-         try {
-         // Tuinity end - detailed watchdog information
-         if (this.noclip) {
-@@ -693,7 +698,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -693,7 +694,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
              // Paper end
  
              vec3d = this.a(vec3d, enummovetype);
 -            Vec3D vec3d1 = this.f(vec3d);
-+            Vec3D vec3d1 = !this.requiredRelaxedCollisionCheck ? this.performCollision(vec3d) : this.performCollision(vec3d, 0.0625); // Tuinity - optimise collisions
-+            this.collidedOnSomething = !vec3d.equals(vec3d1); // Tuinity - optimise collisions
++            Vec3D vec3d1 = this.performCollision(vec3d); // Tuinity - optimise collisions
  
              if (vec3d1.g() > 1.0E-7D) {
                  this.a(this.getBoundingBox().c(vec3d1));
-@@ -897,6 +903,138 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -897,6 +898,132 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return d0;
      }
  
@@ -619,24 +607,18 @@ index 67cba48771bc86f20232ce8fe0845879d2d03bf4..f8ca56be883417ed947c5bbc11bbe732
 +    }
 +
 +    Vec3D performCollision(Vec3D moveVector) {
-+        return this.performCollision(moveVector, 0.0);
-+    }
-+    Vec3D performCollision(Vec3D moveVector, double contractAmount) {
 +        if (moveVector.getX() == 0.0 && moveVector.getY() == 0.0 && moveVector.getZ() == 0.0) {
 +            return moveVector;
 +        }
 +
 +        WorldServer world = ((WorldServer)this.world);
-+        AxisAlignedBB currBoundingBox = contractAmount == 0.0 ? this.getBoundingBox() : this.getBoundingBox().grow(-contractAmount);
++        AxisAlignedBB currBoundingBox = this.getBoundingBox();
 +
 +        List<AxisAlignedBB> potentialCollisions = com.tuinity.tuinity.util.CachedLists.getTempCollisionList();
 +        try {
-+            // We take a fat guess that we actually need to do the step height checks.
-+            // So we collect all of the AABB's we would ever need into one list, and use that list
-+            // for every collision check we want.
 +            AxisAlignedBB collisionBox;
 +            double stepHeight = (double)this.getStepHeight();
-+            if ((this.onGround || (moveVector.y < 0.0)) && (moveVector.x != 0.0 || moveVector.z != 0.0)) {
++            if (stepHeight > 0.0 && (this.onGround || (moveVector.y < 0.0)) && (moveVector.x != 0.0 || moveVector.z != 0.0)) {
 +                // don't bother getting the collisions if we don't need them.
 +                if (moveVector.y <= 0.0) {
 +                    collisionBox = currBoundingBox.expand(moveVector.x, moveVector.y, moveVector.z).expandUpwards(stepHeight);
@@ -681,7 +663,7 @@ index 67cba48771bc86f20232ce8fe0845879d2d03bf4..f8ca56be883417ed947c5bbc11bbe732
      private Vec3D f(Vec3D vec3d) {
          AxisAlignedBB axisalignedbb = this.getBoundingBox();
          VoxelShapeCollision voxelshapecollision = VoxelShapeCollision.a(this);
-@@ -932,6 +1070,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -932,6 +1059,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return vec3d1;
      }
  
@@ -689,7 +671,7 @@ index 67cba48771bc86f20232ce8fe0845879d2d03bf4..f8ca56be883417ed947c5bbc11bbe732
      public static double b(Vec3D vec3d) {
          return vec3d.x * vec3d.x + vec3d.z * vec3d.z;
      }
-@@ -1138,6 +1277,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -1138,6 +1266,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
  
  
      @Nullable public final AxisAlignedBB getCollisionBox(){return ay();} //Paper - OBFHELPER
@@ -697,7 +679,7 @@ index 67cba48771bc86f20232ce8fe0845879d2d03bf4..f8ca56be883417ed947c5bbc11bbe732
      @Nullable public AxisAlignedBB ay() {
          return null;
      }
-@@ -2018,8 +2158,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -2018,8 +2147,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
  
      public final AxisAlignedBB getHardCollisionBox(Entity entity){ return j(entity);}//Paper - OBFHELPER
@@ -930,7 +912,7 @@ index caf297fe977942ca68fdb963d97dd9fc0f78d883..8d68c783f6d8c1dae62c0d3ed34e3057
 +    // Tuinity end - optimise multi-aabb shapes
  }
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
-index 1fa7061f7adb539b6786fa11a0090f2c188ba9f2..f6f3bdc61dadca13088ea8d261fa4a90b520de57 100644
+index 1fa7061f7adb539b6786fa11a0090f2c188ba9f2..9b40f4888d362bd805385ec23938282abb93c242 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java
 +++ b/src/main/java/net/minecraft/server/VoxelShapes.java
 @@ -17,18 +17,81 @@ public final class VoxelShapes {
@@ -1027,13 +1009,19 @@ index 1fa7061f7adb539b6786fa11a0090f2c188ba9f2..f6f3bdc61dadca13088ea8d261fa4a90
          }
      }
  
-@@ -132,6 +195,14 @@ public final class VoxelShapes {
+@@ -132,6 +195,20 @@ public final class VoxelShapes {
  
      public static final boolean applyOperation(VoxelShape voxelshape, VoxelShape voxelshape1, OperatorBoolean operatorboolean) { return VoxelShapes.c(voxelshape, voxelshape1, operatorboolean); } // Paper - OBFHELPER
      public static boolean c(VoxelShape voxelshape, VoxelShape voxelshape1, OperatorBoolean operatorboolean) {
 +        // Tuinity start - optimise voxelshape
-+        if (operatorboolean == OperatorBoolean.AND && voxelshape instanceof com.tuinity.tuinity.voxel.AABBVoxelShape && voxelshape1 instanceof com.tuinity.tuinity.voxel.AABBVoxelShape) {
-+            return ((com.tuinity.tuinity.voxel.AABBVoxelShape) voxelshape).aabb.intersects(((com.tuinity.tuinity.voxel.AABBVoxelShape) voxelshape1).aabb);
++        if (operatorboolean == OperatorBoolean.AND) {
++            if (voxelshape instanceof com.tuinity.tuinity.voxel.AABBVoxelShape && voxelshape1 instanceof com.tuinity.tuinity.voxel.AABBVoxelShape) {
++                return ((com.tuinity.tuinity.voxel.AABBVoxelShape)voxelshape).aabb.intersects(((com.tuinity.tuinity.voxel.AABBVoxelShape)voxelshape1).aabb);
++            } else if (voxelshape instanceof com.tuinity.tuinity.voxel.AABBVoxelShape && voxelshape1 instanceof VoxelShapeArray) {
++                return ((VoxelShapeArray)voxelshape1).intersects(((com.tuinity.tuinity.voxel.AABBVoxelShape)voxelshape).aabb);
++            } else if (voxelshape1 instanceof com.tuinity.tuinity.voxel.AABBVoxelShape && voxelshape instanceof VoxelShapeArray) {
++                return ((VoxelShapeArray)voxelshape).intersects(((com.tuinity.tuinity.voxel.AABBVoxelShape)voxelshape1).aabb);
++            }
 +        }
 +        return abstract_c(voxelshape, voxelshape1, operatorboolean);
 +    }
