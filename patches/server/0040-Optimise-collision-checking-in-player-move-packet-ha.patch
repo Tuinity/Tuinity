@@ -7,7 +7,7 @@ Don't need to do another getCubes call if the move() call
 doesn't find any collisions
 
 diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
-index c40255263ee7c396b5f17c059212116832090f54..152e58ff24999fdb77bde01e45d2a10092eb5104 100644
+index c40255263ee7c396b5f17c059212116832090f54..37f55c66b6cbca9650b050fe08f60c101c2d35bf 100644
 --- a/src/main/java/net/minecraft/server/PlayerConnection.java
 +++ b/src/main/java/net/minecraft/server/PlayerConnection.java
 @@ -983,7 +983,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
@@ -19,12 +19,20 @@ index c40255263ee7c396b5f17c059212116832090f54..152e58ff24999fdb77bde01e45d2a100
                          this.A = this.e;
                          this.a(this.teleportPos.x, this.teleportPos.y, this.teleportPos.z, this.player.yaw, this.player.pitch);
                      }
-@@ -1133,7 +1133,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1109,6 +1109,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+                             }
+ 
+                             this.player.move(EnumMoveType.PLAYER, new Vec3D(d7, d8, d9));
++                            boolean didCollide = toX != this.player.locX() || toY != this.player.locY() || toZ != this.player.locZ(); // Tuinity - needed here as the difference in Y can be reset - also note: this is only a guess at whether collisions took place, floating point errors can make this true when it shouldn't be...
+                             this.player.c(packetplayinflying.b()); // CraftBukkit - SPIGOT-5810, SPIGOT-5835: reset by this.player.move
+                             // Paper start - prevent position desync
+                             if (this.teleportPos != null) {
+@@ -1133,7 +1134,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                              }
  
                              this.player.setLocation(d4, d5, d6, f, f1);
 -                            if (!this.player.noclip && !this.player.isSleeping() && (flag1 && worldserver.getCubes(this.player, axisalignedbb) || this.a((IWorldReader) worldserver, axisalignedbb))) {
-+                            if (!this.player.noclip && !this.player.isSleeping() && (flag1 && worldserver.getCubes(this.player, axisalignedbb) || (d11 != 0.0 && this.a((IWorldReader) worldserver, axisalignedbb)))) { // Tuinity
++                            if (!this.player.noclip && !this.player.isSleeping() && (flag1 && worldserver.getCubes(this.player, axisalignedbb) || (didCollide && this.a((IWorldReader) worldserver, axisalignedbb)))) { // Tuinity - optimise out the extra getCubes-like call most of the time
                                  this.a(d0, d1, d2, f, f1);
                              } else {
                                  // CraftBukkit start - fire PlayerMoveEvent
