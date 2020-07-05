@@ -275,8 +275,82 @@ index 0000000000000000000000000000000000000000..e12d096456965c0f9e152a31f4c2c602
 +        }
 +    }
 +}
+diff --git a/src/main/java/net/minecraft/server/BlockBase.java b/src/main/java/net/minecraft/server/BlockBase.java
+index ff770a3b0e5c4fcccc498ecca51dad9863b0fe0e..c750e1c6e7e1ce1e657951627541cc0797590662 100644
+--- a/src/main/java/net/minecraft/server/BlockBase.java
++++ b/src/main/java/net/minecraft/server/BlockBase.java
+@@ -176,8 +176,8 @@ public abstract class BlockBase {
+         return VoxelShapes.a();
+     }
+ 
+-    @Deprecated
+-    public int f(IBlockData iblockdata, IBlockAccess iblockaccess, BlockPosition blockposition) {
++    @Deprecated public final int getOpacity(IBlockData iblockdata, IBlockAccess iblockaccess, BlockPosition blockposition) { return this.f(iblockdata, iblockaccess, blockposition); } // Tuinity - OBFHELPER
++    @Deprecated public int f(IBlockData iblockdata, IBlockAccess iblockaccess, BlockPosition blockposition) { // Tuinity - OBFHELPER
+         return iblockdata.i(iblockaccess, blockposition) ? iblockaccess.H() : (iblockdata.a(iblockaccess, blockposition) ? 0 : 1);
+     }
+ 
+@@ -289,14 +289,14 @@ public abstract class BlockBase {
+ 
+     public abstract static class BlockData extends IBlockDataHolder<Block, IBlockData> {
+ 
+-        private final int b;
+-        private final boolean e;
++        private final int b; public final int getEmittedLight() { return this.b; } // Tuinity - OBFHELPER
++        private final boolean e; public final boolean isTransparentOnSomeFaces() { return this.e; } // Tuinity - OBFHELPER
+         private final boolean f;
+         private final Material g;
+         private final MaterialMapColor h;
+         public final float strength;
+         private final boolean j;
+-        private final boolean k;
++        private final boolean k; public final boolean isOpaque() { return this.k; } // Tuinity - OBFHELPER
+         private final BlockBase.e l;
+         private final BlockBase.e m;
+         private final BlockBase.e n;
+@@ -332,10 +332,18 @@ public abstract class BlockBase {
+         }
+         // Paper end
+ 
++        // Tuinity start - micro the hell out of this call
++        protected boolean shapeExceedsCube = true;
++        public final boolean shapeExceedsCube() {
++            return this.shapeExceedsCube;
++        }
++        // Tuinity end
++
+         public void a() {
+             if (!this.getBlock().o()) {
+                 this.a = new BlockBase.BlockData.a(this.p());
+             }
++            this.shapeExceedsCube = this.a == null || this.a.c; // Tuinity - moved from actual method to here
+ 
+         }
+ 
+@@ -359,10 +367,12 @@ public abstract class BlockBase {
+             return this.a != null ? this.a.g : this.getBlock().b(this.p(), iblockaccess, blockposition);
+         }
+ 
++        public final int getOpacity(IBlockAccess iblockaccess, BlockPosition blockposition) { return this.b(iblockaccess, blockposition); } // Tuinity - OBFHELPER
+         public int b(IBlockAccess iblockaccess, BlockPosition blockposition) {
+             return this.a != null ? this.a.h : this.getBlock().f(this.p(), iblockaccess, blockposition);
+         }
+ 
++        public final VoxelShape getCullingFace(IBlockAccess iblockaccess, BlockPosition blockposition, EnumDirection enumdirection) { return this.a(iblockaccess, blockposition, enumdirection); } // Tuinity - OBFHELPER
+         public VoxelShape a(IBlockAccess iblockaccess, BlockPosition blockposition, EnumDirection enumdirection) {
+             return this.a != null && this.a.i != null ? this.a.i[enumdirection.ordinal()] : VoxelShapes.a(this.c(iblockaccess, blockposition), enumdirection);
+         }
+@@ -372,7 +382,7 @@ public abstract class BlockBase {
+         }
+ 
+         public boolean d() {
+-            return this.a == null || this.a.c;
++            return this.shapeExceedsCube; // Tuinity - moved into shape cache init
+         }
+ 
+         public boolean e() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index ef980f9859d1d7d0d5e13d0d70e998055f92135e..b3fedc8b7bd44f33264749da6673a194669ac9e0 100644
+index ef980f9859d1d7d0d5e13d0d70e998055f92135e..b0e0657dbc40fdf6c7366c8f66b978970664ebbc 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -120,7 +120,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -453,6 +527,17 @@ index ef980f9859d1d7d0d5e13d0d70e998055f92135e..b3fedc8b7bd44f33264749da6673a194
      public ChunkProviderServer(WorldServer worldserver, Convertable.ConversionSession convertable_conversionsession, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator chunkgenerator, int i, boolean flag, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
          this.world = worldserver;
          this.serverThreadQueue = new ChunkProviderServer.a(worldserver);
+@@ -599,8 +757,8 @@ public class ChunkProviderServer extends IChunkProvider {
+         return !this.a(playerchunk, k);
+     }
+ 
+-    @Override
+-    public IBlockAccess c(int i, int j) {
++    public final IBlockAccess getFeaturesReadyChunk(int x, int z) { return this.c(x, z); } // Tuinity - OBFHELPER
++    @Override public IBlockAccess c(int i, int j) { // Tuinity - OBFHELPER
+         long k = ChunkCoordIntPair.pair(i, j);
+         PlayerChunk playerchunk = this.getChunk(k);
+ 
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
 index 9c4b02d776f8b99c6703c8dfc5d9fac0702bbe80..2f701b78ede718cf3b1391e0b10b3f664af1f644 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
@@ -496,6 +581,18 @@ index a3bce8f13bf278af2d6870891daa9bf692b4e267..4ca923fa88b19791157a78bf4ddbb9c4
      public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> a(ChunkStatus chunkstatus, PlayerChunkMap playerchunkmap) {
          int i = chunkstatus.c();
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
+diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
+index 1fa7061f7adb539b6786fa11a0090f2c188ba9f2..0ce2580c63c9afeae41451ca8f7cad1f404f6483 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapes.java
++++ b/src/main/java/net/minecraft/server/VoxelShapes.java
+@@ -314,6 +314,7 @@ public final class VoxelShapes {
+         }
+     }
+ 
++    public static boolean combinationOccludes(VoxelShape voxelshape, VoxelShape voxelshape1) { return b(voxelshape, voxelshape1); } // Tuinity - OBFHELPER
+     public static boolean b(VoxelShape voxelshape, VoxelShape voxelshape1) {
+         return voxelshape != b() && voxelshape1 != b() ? (voxelshape.isEmpty() && voxelshape1.isEmpty() ? false : !c(b(), b(voxelshape, voxelshape1, OperatorBoolean.OR), OperatorBoolean.ONLY_FIRST)) : true;
+     }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
 index 3a740f5669876271a3f13c64e28eb6f2cb033b4c..572e73eef7cf8c1bc0c5e026cf8f7ff6e1972d9c 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java

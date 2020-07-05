@@ -464,18 +464,6 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..d54bf71409fe299671aa3f72315f18a1
      public boolean e(double d0, double d1, double d2) {
          return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
      }
-diff --git a/src/main/java/net/minecraft/server/BlockBase.java b/src/main/java/net/minecraft/server/BlockBase.java
-index ff770a3b0e5c4fcccc498ecca51dad9863b0fe0e..c4ad88b7e08b7a17acb4282b4e6d05b10def236e 100644
---- a/src/main/java/net/minecraft/server/BlockBase.java
-+++ b/src/main/java/net/minecraft/server/BlockBase.java
-@@ -371,6 +371,7 @@ public abstract class BlockBase {
-             return this.getBlock().d(this.p(), iblockaccess, blockposition);
-         }
- 
-+        public final boolean collisionBoxExceedsCube() { return this.d(); } // Tuinity - OBFHELPER
-         public boolean d() {
-             return this.a == null || this.a.c;
-         }
 diff --git a/src/main/java/net/minecraft/server/ChunkSection.java b/src/main/java/net/minecraft/server/ChunkSection.java
 index 8d45588ecfa33b8c7335df3db58ed6865b8c956c..4ab74198557ce7db6464ec5828a6563862d3af77 100644
 --- a/src/main/java/net/minecraft/server/ChunkSection.java
@@ -912,7 +900,7 @@ index caf297fe977942ca68fdb963d97dd9fc0f78d883..8d68c783f6d8c1dae62c0d3ed34e3057
 +    // Tuinity end - optimise multi-aabb shapes
  }
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
-index 1fa7061f7adb539b6786fa11a0090f2c188ba9f2..9b40f4888d362bd805385ec23938282abb93c242 100644
+index 0ce2580c63c9afeae41451ca8f7cad1f404f6483..52aee91d2dc7c2459db45183b7f3dccf326bd515 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java
 +++ b/src/main/java/net/minecraft/server/VoxelShapes.java
 @@ -17,18 +17,81 @@ public final class VoxelShapes {
@@ -1134,7 +1122,7 @@ index b651eb87bb23deeb2a3f4a1c626ddde9b11a7b9e..5cba3b0e613bb6c016c4441ebb931be9
          return this.j.d();
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 9a3e8392b75ab1084a525fd28479241b31c9d3db..6657b2f8e48e55cecc86566c5581ee42d42b8b85 100644
+index 9a3e8392b75ab1084a525fd28479241b31c9d3db..d0a0abfbab1b88a6167fb36537276bccdda6676b 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -354,6 +354,349 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -1242,7 +1230,7 @@ index 9a3e8392b75ab1084a525fd28479241b31c9d3db..6657b2f8e48e55cecc86566c5581ee42
 +                            int blockKeyFull = blockKeyXY | (currZ << 4);
 +                            IBlockData blockData = blocks.rawGet(blockKeyFull);
 +
-+                            if (!blockData.isAir() && (edgeCountFull != 1 || blockData.collisionBoxExceedsCube()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                            if (!blockData.isAir() && (edgeCountFull != 1 || blockData.shapeExceedsCube()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
 +                                mutablePos.setValues(blockX, currY, blockZ);
 +                                VoxelShape voxelshape2 = blockData.getCollisionShape(this, mutablePos, collisionShape);
 +                                if (voxelshape2 != VoxelShapes.getEmptyShape()) {
@@ -1406,7 +1394,7 @@ index 9a3e8392b75ab1084a525fd28479241b31c9d3db..6657b2f8e48e55cecc86566c5581ee42
 +                            int blockKeyFull = blockKeyXY | (currZ << 4);
 +                            IBlockData blockData = blocks.rawGet(blockKeyFull);
 +
-+                            if (!blockData.isAir() && (edgeCountFull != 1 || blockData.collisionBoxExceedsCube()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                            if (!blockData.isAir() && (edgeCountFull != 1 || blockData.shapeExceedsCube()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
 +                                mutablePos.setValues(blockX, currY, blockZ);
 +                                VoxelShape voxelshape2 = blockData.getCollisionShape(this, mutablePos, collisionShape);
 +                                if (voxelshape2 != VoxelShapes.getEmptyShape()) {
