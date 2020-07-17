@@ -17,17 +17,41 @@ You can also [build it yourself](https://github.com/Spottedleaf/Tuinity#building
 In order to use Tuinity as a dependency you must [build it yourself](https://github.com/Spottedleaf/Tuinity#building).
 Each time you want to update your dependency you must re-build tuinity.
 
-Tuinity-API maven dependency:
+<details><summary>Gradle</summary>
+<p>
+ 
+ * Artifact Information - Tuinity-API
+
+```groovy
+dependencies {
+    compileOnly "com.tuinity:tuinity-api:1.16.1-R0.1-SNAPSHOT"
+}
+ ```
+* Artifact Information - Tuinity-Server
+```groovy
+dependencies {
+    compileOnly "com.tuinity:tuinity:1.16.1-R0.1-SNAPSHOT" 
+```
+
+</p>
+</details>
+
+<details><summary>Maven</summary>
+<p>
+    
+* Artifact Information - Tuinity-API
+
 ```xml
 <dependency>
     <groupId>com.tuinity</groupId>
     <artifactId>tuinity-api</artifactId>
     <version>1.16.1-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
- </dependency>
- ```
+</dependency>
+```
 
-Tuinity-Server maven dependency:
+* Artifact Information - Tuinity-Server
+
 ```xml
 <dependency>
     <groupId>com.tuinity</groupId>
@@ -36,6 +60,9 @@ Tuinity-Server maven dependency:
     <scope>provided</scope>
 </dependency>
 ```
+
+</p>
+</details>
 
 There is no repository required since the artifacts should be locally installed
 via building tuinity.
