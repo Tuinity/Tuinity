@@ -65,8 +65,8 @@ dependencies {
 </p>
 </details>
 
-There is no repository required since the artifacts should be locally installed
-via building tuinity.
+**There is no repository required since the artifacts should be locally installed
+via building tuinity.**
 
 ## Building
 
