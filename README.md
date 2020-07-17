@@ -89,9 +89,11 @@ via building tuinity.
 in your project root `./tuinity patch` additionally, after you run `./tuinity patch` you can run `./tuinity build` to build the 
 respective api and server jars.*
 
-`./tuinity patch` should initialize the repo such that you can now start modifying and creating
-patches. The folder `Tuinity-API` is the api repo and the `Tuinity-Server` folder
-is the server repo and will contain the source files you will modify.
+
+# `./tuinity patch` should initialize the repo such that you can now start modifying and creating
+# patches. The folder `Tuinity-API` is the api repo and the `Tuinity-Server` folder
+# is the server repo and will contain the source files you will modify.
+
 
 #### Creating a patch
 Patches are effectively just commits in either `Tuinity-API` or `Tuinity-Server`.
