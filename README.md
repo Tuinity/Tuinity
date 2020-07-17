@@ -11,7 +11,7 @@ Fork of [Paper](https://github.com/PaperMC/Paper) aimed at improving server perf
 
 ### Note: You need to be signed in to a github account to download these builds below
 
-[DOWNLOAD LATEST 1.16-BUILD](https://github.com/Spottedleaf/Tuinity/actions?query=branch%3Aver%2F1.16++)
+[DOWNLOAD LATEST MC VERSION BUILD](https://github.com/Spottedleaf/Tuinity/actions?query=branch%3Aver%2F1.16++)
 
 [DOWNLOAD LATEST DEV-BUILD](https://github.com/Spottedleaf/Tuinity/actions?query=branch%3Adev)
 
