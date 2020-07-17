@@ -86,7 +86,8 @@ via building tuinity.**
 
 
 
-  If all you want is a paperclip server jar, just run ***./tuinity jar***
+ ### If all you want is a paperclip server jar, just run -   ***./tuinity jar***
+
 
 
 *Otherwise, to setup the **Tuinity-API** and **Tuinity-Server** repo, just run the following command
