@@ -86,7 +86,7 @@ via building tuinity.**
 
 
 
- ### If all you want is a paperclip server jar, just run -   ***./tuinity jar***
+ #### If all you want is a paperclip server jar, just run -   ***./tuinity jar***
 
 
 
