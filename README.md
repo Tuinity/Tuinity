@@ -31,6 +31,7 @@ dependencies {
 ```groovy
 dependencies {
     compileOnly "com.tuinity:tuinity:1.16.1-R0.1-SNAPSHOT" 
+}
 ```
 
 </p>
@@ -82,6 +83,7 @@ via building tuinity.
  
 </p>
 </details>
+
 
 **If all you want is a paperclip server jar, just run `./tuinity jar`**
 
