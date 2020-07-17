@@ -1,7 +1,17 @@
 Tuinity ![Java CI](https://github.com/Spottedleaf/Tuinity/workflows/Java%20CI/badge.svg)
+[![Discord](https://img.shields.io/discord/186794372468178944.svg?color=blue&label=Discord&logo=discord)](https://discord.gg/CgDPu27)
+[![IRC](https://img.shields.io/discord/186794372468178944.svg?color=yellow&label=IRC&logo=mlg)](http://irc.spi.gt/iris/?channels=tuinity)
+[![Contributors](https://img.shields.io/github/contributors/SpottedLeaf/Tuinity.svg)](https://github.com/SpottedLeaf/Tuinity/graphs/Contributors)
 ==
 
 Fork of [Paper](https://github.com/PaperMC/Paper) aimed at improving server performance at high playercounts.
+
+# Downloads
+[DOWNLOAD LATEST JENKINS BUILD](https://ci.codemc.io/job/Spottedleaf/job/Tuinity/lastSuccessfulBuild/artifact/tuinity-paperclip.jar)
+
+[DOWNLOAD LATEST 1.16-BUILD](https://github.com/Spottedleaf/Tuinity/actions?query=branch%3Aver%2F1.16++)
+
+[DOWNLOAD LATEST DEV-BUILD](https://github.com/Spottedleaf/Tuinity/actions?query=branch%3Adev)
 
 ## Contact
 [IRC](http://irc.spi.gt/iris/?channels=tuinity) | [Discord](https://discord.gg/CgDPu27)
