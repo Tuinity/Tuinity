@@ -69,16 +69,20 @@ via building tuinity.
 
 ## Building
 
-Requirements:
+<details><summary>Requirements</summary>
+<p>
 - You need `git` installed, with a configured user name and email. 
    On windows you need to run from git bash.
 - You need `maven` installed
 - You need `jdk` 8+ installed to compile (and `jre` 8+ to run)
 - Anything else that `paper` requires to build
+ 
+</p>
+</details>
 
-If all you want is a paperclip server jar, just run `./tuinity jar`
+## If all you want is a paperclip server jar, just run `./tuinity jar`
 
-Otherwise, to setup the `Tuinity-API` and `Tuinity-Server` repo, just run the following command
+* Otherwise, to setup the `Tuinity-API` and `Tuinity-Server` repo, just run the following command
 in your project root `./tuinity patch` additionally, after you run `./tuinity patch` you can run `./tuinity build` to build the 
 respective api and server jars.
 
