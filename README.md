@@ -6,7 +6,7 @@ Tuinity ![Java CI](https://github.com/Spottedleaf/Tuinity/workflows/Java%20CI/ba
 
 Fork of [Paper](https://github.com/PaperMC/Paper) aimed at improving server performance at high playercounts.
 
-# Downloads
+## Downloads
 [DOWNLOAD LATEST JENKINS BUILD](https://ci.codemc.io/job/Spottedleaf/job/Tuinity/lastSuccessfulBuild/artifact/tuinity-paperclip.jar)
 
 ### Note: You need to be signed in to a github account to download these builds below
