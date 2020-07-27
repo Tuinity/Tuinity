@@ -608,7 +608,7 @@ index b2ceb6c179e925aa9b499693247ae00811a404cc..b955d5d6619d6b9c64559937df6aa619
          super(TileEntityTypes.LECTERN);
          this.book = ItemStack.b;
 diff --git a/src/main/java/net/minecraft/server/TileEntityPiston.java b/src/main/java/net/minecraft/server/TileEntityPiston.java
-index e7b7e468fc874b0fbcd43f87d816a42420f9b05e..38d0e841cabfbb30b55414e8bf8e12219245fb9e 100644
+index e7b7e468fc874b0fbcd43f87d816a42420f9b05e..faf5e4aff0584df082fad8337d15b325fb9cea08 100644
 --- a/src/main/java/net/minecraft/server/TileEntityPiston.java
 +++ b/src/main/java/net/minecraft/server/TileEntityPiston.java
 @@ -5,10 +5,10 @@ import java.util.List;
@@ -661,7 +661,7 @@ index e7b7e468fc874b0fbcd43f87d816a42420f9b05e..38d0e841cabfbb30b55414e8bf8e1221
      }
  
      public boolean d() {
-@@ -238,7 +253,25 @@ public class TileEntityPiston extends TileEntity implements ITickable {
+@@ -238,7 +253,27 @@ public class TileEntityPiston extends TileEntity implements ITickable {
                      iblockdata = Block.b(this.a, (GeneratorAccess) this.world, this.position);
                  }
  
@@ -676,9 +676,11 @@ index e7b7e468fc874b0fbcd43f87d816a42420f9b05e..38d0e841cabfbb30b55414e8bf8e1221
 +                    this.world.setAir(this.position, false);
 +                    Block.dropItems(this.getBlockData(), this.world, this.position, null, null, ItemStack.NULL_ITEM);
 +                } else {
-+                    // need to set to air before else the setTypeAndData call will create a new TE and override
-+                    // the old one
-+                    this.world.setTypeAndDataRaw(this.position, Blocks.AIR.getBlockData(), null);
++                    if (iblockdata.getBlock() == this.getBlockData().getBlock() && this.tileEntity != null) {
++                        // need to set to air before else the setTypeAndData call will create a new TE and override
++                        // the old one
++                        this.world.setAir(this.position, false);
++                    }
 +                    this.world.setTypeAndData(this.position, iblockdata, 3, iblockdata.getBlock() == this.getBlockData().getBlock() ? this.tileEntity : null);
 +                }
 +                if (this.tileEntity != null && this.world.getType(this.position).getBlock() == this.getBlockData().getBlock()) {
@@ -688,7 +690,7 @@ index e7b7e468fc874b0fbcd43f87d816a42420f9b05e..38d0e841cabfbb30b55414e8bf8e1221
                  this.world.a(this.position, iblockdata.getBlock(), this.position);
              }
          }
-@@ -263,7 +296,12 @@ public class TileEntityPiston extends TileEntity implements ITickable {
+@@ -263,7 +298,12 @@ public class TileEntityPiston extends TileEntity implements ITickable {
                          iblockdata = (IBlockData) iblockdata.set(BlockProperties.C, false);
                      }
  
@@ -702,7 +704,7 @@ index e7b7e468fc874b0fbcd43f87d816a42420f9b05e..38d0e841cabfbb30b55414e8bf8e1221
                      this.world.a(this.position, iblockdata.getBlock(), this.position);
                  }
              }
-@@ -290,16 +328,34 @@ public class TileEntityPiston extends TileEntity implements ITickable {
+@@ -290,16 +330,34 @@ public class TileEntityPiston extends TileEntity implements ITickable {
          this.j = this.i;
          this.c = nbttagcompound.getBoolean("extending");
          this.g = nbttagcompound.getBoolean("source");
