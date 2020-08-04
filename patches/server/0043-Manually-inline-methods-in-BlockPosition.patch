@@ -5,19 +5,19 @@ Subject: [PATCH] Manually inline methods in BlockPosition
 
 
 diff --git a/src/main/java/net/minecraft/server/BaseBlockPosition.java b/src/main/java/net/minecraft/server/BaseBlockPosition.java
-index 1842e69839a65e7b8d2c47fd30ec8f3179f04470..dab89b0c69ddff24d37cee06107bdc464012c6bb 100644
+index 3b0c8971c638fdf3c8bb7f4e3bd2b28533765ef8..e69b7dbc7a954374f9e2374ffe7faebfed2b0644 100644
 --- a/src/main/java/net/minecraft/server/BaseBlockPosition.java
 +++ b/src/main/java/net/minecraft/server/BaseBlockPosition.java
 @@ -16,9 +16,9 @@ public class BaseBlockPosition implements Comparable<BaseBlockPosition> {
          return IntStream.of(new int[]{baseblockposition.getX(), baseblockposition.getY(), baseblockposition.getZ()});
      });
      public static final BaseBlockPosition ZERO = new BaseBlockPosition(0, 0, 0);
--    private int a;
--    private int b;
--    private int e;
-+    protected int a; // Tuinity - private->protected - diff on change, this is the x coordinate
-+    protected int b; // Tuinity - private->protected - diff on change, this is the y coordinate
-+    protected int e; // Tuinity - private->protected - diff on change, this is the z coordinate
+-    private int a;public final void setX(final int x) { this.a = x; } // Paper - OBFHELPER
+-    private int b;public final void setY(final int y) { this.b = y; } // Paper - OBFHELPER
+-    private int e;public final void setZ(final int z) { this.e = z; } // Paper - OBFHELPER
++    protected int a; // Paper - OBFHELPER // Tuinity - private->protected - diff on change, this is the x coordinate - Also revert the decision to expose set on an immutable type
++    protected int b; // Paper - OBFHELPER // Tuinity - private->protected - diff on change, this is the y coordinate - Also revert the decision to expose set on an immutable type
++    protected int e; // Paper - OBFHELPER // Tuinity - private->protected - diff on change, this is the z coordinate - Also revert the decision to expose set on an immutable type
  
      // Paper start
      public boolean isValidLocation() {
@@ -41,19 +41,17 @@ index 1842e69839a65e7b8d2c47fd30ec8f3179f04470..dab89b0c69ddff24d37cee06107bdc46
      }
  
 diff --git a/src/main/java/net/minecraft/server/BlockPosition.java b/src/main/java/net/minecraft/server/BlockPosition.java
-index 8c2a4b57aba17b43517f7b09c4adf65ae5904b6d..7ff4948a47be03c65c162ca04b2338cdcdafe7c4 100644
+index a2ee39b7efca0851bca8dc0ec1c13fe3cada6b3f..c77f71b6de87757900b3734feda819754e9408b1 100644
 --- a/src/main/java/net/minecraft/server/BlockPosition.java
 +++ b/src/main/java/net/minecraft/server/BlockPosition.java
-@@ -386,11 +386,11 @@ public class BlockPosition extends BaseBlockPosition {
-             return super.a(enumblockrotation).immutableCopy();
+@@ -387,10 +387,10 @@ public class BlockPosition extends BaseBlockPosition {
          }
  
--        public BlockPosition.MutableBlockPosition setValues(int i, int j, int k) { return d(i, j, k);} // Paper - OBFHELPER
+         public final BlockPosition.MutableBlockPosition setValues(int i, int j, int k) { return d(i, j, k);} // Paper - OBFHELPER
 -        public BlockPosition.MutableBlockPosition d(int i, int j, int k) {
 -            this.o(i);
 -            this.p(j);
 -            this.q(k);
-+        public final BlockPosition.MutableBlockPosition setValues(int i, int j, int k) { return d(i, j, k);} // Paper - OBFHELPER // Tuinity
 +        public final BlockPosition.MutableBlockPosition d(int i, int j, int k) { // Tuinity
 +            ((BaseBlockPosition)this).a = i; // Tuinity - force inline
 +            ((BaseBlockPosition)this).b = j; // Tuinity - force inline
@@ -98,47 +96,44 @@ index 8c2a4b57aba17b43517f7b09c4adf65ae5904b6d..7ff4948a47be03c65c162ca04b2338cd
          }
  
          public BlockPosition.MutableBlockPosition c(EnumDirection enumdirection, int i) {
-@@ -445,22 +454,31 @@ public class BlockPosition extends BaseBlockPosition {
+@@ -445,21 +454,30 @@ public class BlockPosition extends BaseBlockPosition {
              }
          }
  
--        public final void setX(final int x) { super.o(x); } // Paper - OBFHELPER
+-        /* // Paper start - comment out useless overrides @Override
 -        @Override
 -        public void o(int i) {
 -            super.o(i);
 +        // Tuinity start
++        // only expose set on the mutable blockpos
 +        public final void setX(int value) {
 +            ((BaseBlockPosition)this).a = value;
 +        }
 +        public final void setY(int value) {
 +            ((BaseBlockPosition)this).b = value;
-         }
++        }
 +        public final void setZ(int value) {
 +            ((BaseBlockPosition)this).e = value;
-+        }
-+        // Tuinity end
+         }
  
--        public final void setY(final int y) { super.p(y); } // Paper - OBFHELPER
 -        @Override
 -        public void p(int i) {
 -            super.p(i);
-+        // Tuinity - moved up
-+        public final void o(int i) { // Tuinity
++        public final void o(int i) {
 +            ((BaseBlockPosition)this).a = i; // need cast thanks to name conflict
-         }
- 
--        public final void setZ(final int z) { super.q(z); } // Paper - OBFHELPER
--        @Override
--        public void q(int i) {
--            super.q(i);
-+        // Tuinity - moved up
-+        public final void p(int i) { // Tuinity
-+            ((BaseBlockPosition)this).b = i; // Tuinity
 +        }
 +
-+        // Tuinity - moved up
-+        public final void q(int i) { // Tuinity
-+            ((BaseBlockPosition)this).e = i; // Tuinity
++        public final void p(int i) {
++            ((BaseBlockPosition)this).b = i;
          }
  
+-        public void q(int i) {
+-            super.q(i);
++        public final void q(int i) {
++            ((BaseBlockPosition)this).e = i;
+         }
+-        */ // Paper end
++        // Tuinity end
+ 
          @Override
+         public BlockPosition immutableCopy() {
