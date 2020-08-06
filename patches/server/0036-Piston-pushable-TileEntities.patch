@@ -740,23 +740,26 @@ index e7b7e468fc874b0fbcd43f87d816a42420f9b05e..faf5e4aff0584df082fad8337d15b325
      }
  
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index fd3aace4e0f2887e0d920f9e745d00b3acf381e1..21f34b82f030773dfc79bdef164a664ceabcc992 100644
+index fd3aace4e0f2887e0d920f9e745d00b3acf381e1..8c47db51a054ed21a2b7c05cfffc879e8e36d1f2 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -400,13 +400,37 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -400,13 +400,40 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          }
      }
  
 +    // Tuinity start
 +    // Does not affect TE. This simply just a raw set type - runs no logic.
 +    final void setTypeAndDataRaw(final BlockPosition pos, final IBlockData blockData, final TileEntity tileEntity) {
-+        this.getChunkAt(pos.getX() >> 4, pos.getZ() >> 4).setTypeAndDataRaw(pos, blockData);
++        Chunk chunk = this.getChunkAt(pos.getX() >> 4, pos.getZ() >> 4);
++        IBlockData old = chunk.getType(pos);
++        chunk.setTypeAndDataRaw(pos, blockData);
 +        if (tileEntity == null) {
 +            this.removeTileEntity(pos);
 +        } else {
 +            this.setTileEntity(pos, tileEntity);
 +        }
 +        ((WorldServer)this).getChunkProvider().flagDirty(pos);
++        this.notifyPoiChange(pos, old, blockData);
 +    }
 +    // Tuinity end
 +
@@ -782,7 +785,7 @@ index fd3aace4e0f2887e0d920f9e745d00b3acf381e1..21f34b82f030773dfc79bdef164a664c
          com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async set type call"); // Tuinity
          // CraftBukkit start - tree generation
          if (this.captureTreeGeneration) {
-@@ -440,7 +464,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -440,7 +467,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
              }
              // CraftBukkit end
  
@@ -791,7 +794,15 @@ index fd3aace4e0f2887e0d920f9e745d00b3acf381e1..21f34b82f030773dfc79bdef164a664c
              this.chunkPacketBlockController.onBlockChange(this, blockposition, iblockdata, iblockdata1, i); // Paper - Anti-Xray
  
              if (iblockdata1 == null) {
-@@ -1037,7 +1061,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -557,6 +584,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+     }
+     // CraftBukkit end
+ 
++    public final void notifyPoiChange(BlockPosition blockposition, IBlockData old, IBlockData neww) { this.a(blockposition, old, neww); } // Tuinity - OBFHELPER
+     public void a(BlockPosition blockposition, IBlockData iblockdata, IBlockData iblockdata1) {}
+ 
+     public boolean setAir(BlockPosition blockposition) { return this.a(blockposition, false); } // Paper - OBFHELPER
+@@ -1037,7 +1065,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
                      while (iterator.hasNext()) {
                          TileEntity tileentity1 = (TileEntity) iterator.next();
  
