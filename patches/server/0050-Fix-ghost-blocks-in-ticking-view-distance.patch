@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 10 Aug 2020 17:28:18 -0700
+Subject: [PATCH] Fix ghost blocks in ticking view distance
+
+Post processing doesn't notify, and my changes to chunk sending
+send chunks before post processing.
+
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index 9d313fdefef21fca61a6ba58a5d2feb3251ffc09..b87bfb1deec9c374dced2b1d5494def5ba92e130 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -1211,7 +1211,7 @@ public class Chunk implements IChunkAccess {
+                     IBlockData iblockdata = this.getType(blockposition);
+                     IBlockData iblockdata1 = Block.b(iblockdata, (GeneratorAccess) this.world, blockposition);
+ 
+-                    this.world.setTypeAndData(blockposition, iblockdata1, 20);
++                    this.world.setTypeAndData(blockposition, iblockdata1, 20 | 2); // Tuinity - paper sends chunks before they're ticking ready, so we need to notify here
+                 }
+ 
+                 this.n[i].clear();
