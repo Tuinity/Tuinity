@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Tue, 11 Aug 2020 04:52:24 -0700
+Subject: [PATCH] Use visible chunks for light engine status checks
+
+Not mt-safe to use getUpdating
+
+diff --git a/src/main/java/net/minecraft/server/LightEngineThreaded.java b/src/main/java/net/minecraft/server/LightEngineThreaded.java
+index 9d6d882ad1479771b2a9e7c3a14c71dd00b63172..c7b92e6d180de8b071d5b4337e869e16ca25602f 100644
+--- a/src/main/java/net/minecraft/server/LightEngineThreaded.java
++++ b/src/main/java/net/minecraft/server/LightEngineThreaded.java
+@@ -19,7 +19,7 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+     private static final int MAX_PRIORITIES = PlayerChunkMap.GOLDEN_TICKET + 2;
+ 
+     private boolean isChunkLightStatus(long pair) {
+-        PlayerChunk playerChunk = playerChunkMap.getUpdatingChunk(pair);
++        PlayerChunk playerChunk = playerChunkMap.getVisibleChunk(pair); // Tuinity - mt-safe access
+         if (playerChunk == null) {
+             return false;
+         }
