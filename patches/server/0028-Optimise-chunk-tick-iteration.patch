@@ -6,7 +6,7 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 6025dc4c3cf99c19a94e561fd19527941b677d5b..b8c8777d3534f763afc7fe5fab4ba458a3d4bb8d 100644
+index 03dae919b91160b87c70aa85c0ddb67819ef4f9d..3b2167bfd29a789924407d75c8f11538eaf3906e 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -908,6 +908,16 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -82,10 +82,10 @@ index 6025dc4c3cf99c19a94e561fd19527941b677d5b..b8c8777d3534f763afc7fe5fab4ba458
              if (flag1) {
                  try (co.aikar.timings.Timing ignored = this.world.timings.miscMobSpawning.startTiming()) { // Paper - timings
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 35ceb0734bc25e44ebde0d3a817f1d7ad636dffc..d003ac55a6a29fb9a28458b9f2c0eb7a6a4efed3 100644
+index 852e145ab2a1f352866c5990ce9671b4e6181d6d..97f15f688bf262d4423ac73d862e24c84ae71f2f 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -691,7 +691,14 @@ public class PlayerChunk {
+@@ -697,7 +697,14 @@ public class PlayerChunk {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      Chunk entityTickingChunk = either.left().get();
                      PlayerChunk.this.isEntityTickingReady = true;
@@ -101,7 +101,7 @@ index 35ceb0734bc25e44ebde0d3a817f1d7ad636dffc..d003ac55a6a29fb9a28458b9f2c0eb7a
  
  
  
-@@ -703,6 +710,17 @@ public class PlayerChunk {
+@@ -709,6 +716,17 @@ public class PlayerChunk {
  
          if (flag6 && !flag7) {
              this.entityTickingFuture.complete(PlayerChunk.UNLOADED_CHUNK); this.isEntityTickingReady = false; // Paper - cache chunk ticking stage

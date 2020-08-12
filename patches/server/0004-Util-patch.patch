@@ -615,7 +615,7 @@ index 0000000000000000000000000000000000000000..b0f1e21e6e34f2a339fdec5f0f951a10
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/BlockBase.java b/src/main/java/net/minecraft/server/BlockBase.java
-index 7b0cc7833448a9e77e85be10f4e02ce43fdead58..6f3907f7409c482dda418f249941a3bfbf82f236 100644
+index 440c959b1cbff2f406bb7e576b81860cf56f8858..b733c4eaeb70e42c70269addf1d86eac08b90f4f 100644
 --- a/src/main/java/net/minecraft/server/BlockBase.java
 +++ b/src/main/java/net/minecraft/server/BlockBase.java
 @@ -176,8 +176,8 @@ public abstract class BlockBase {
@@ -626,7 +626,7 @@ index 7b0cc7833448a9e77e85be10f4e02ce43fdead58..6f3907f7409c482dda418f249941a3bf
 -    public int f(IBlockData iblockdata, IBlockAccess iblockaccess, BlockPosition blockposition) {
 +    @Deprecated public final int getOpacity(IBlockData iblockdata, IBlockAccess iblockaccess, BlockPosition blockposition) { return this.f(iblockdata, iblockaccess, blockposition); } // Tuinity - OBFHELPER
 +    @Deprecated public int f(IBlockData iblockdata, IBlockAccess iblockaccess, BlockPosition blockposition) { // Tuinity - OBFHELPER
-         return iblockdata.i(iblockaccess, blockposition) ? iblockaccess.H() : (iblockdata.a(iblockaccess, blockposition) ? 0 : 1);
+         return iblockdata.i(iblockaccess, blockposition) ? iblockaccess.J() : (iblockdata.a(iblockaccess, blockposition) ? 0 : 1);
      }
  
 @@ -289,14 +289,14 @@ public abstract class BlockBase {
@@ -660,7 +660,7 @@ index 7b0cc7833448a9e77e85be10f4e02ce43fdead58..6f3907f7409c482dda418f249941a3bf
 +
          public void a() {
              if (!this.getBlock().o()) {
-                 this.a = new BlockBase.BlockData.a(this.p());
+                 this.a = new BlockBase.BlockData.Cache(this.p());
              }
 +            this.shapeExceedsCube = this.a == null || this.a.c; // Tuinity - moved from actual method to here
  
@@ -689,7 +689,7 @@ index 7b0cc7833448a9e77e85be10f4e02ce43fdead58..6f3907f7409c482dda418f249941a3bf
  
          public boolean e() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 3a5a9aba111fed8b68818b95332b723ee2bce2ac..aeddb9c384a2edb00a59627744ccd03634275c6d 100644
+index b06e04b4caff194c8d35596abfea9c67c3f9911c..0ab1779ca6fe37a9b52c73b5f6aa8b7dfbb6b441 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -120,7 +120,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -878,10 +878,10 @@ index 3a5a9aba111fed8b68818b95332b723ee2bce2ac..aeddb9c384a2edb00a59627744ccd036
          PlayerChunk playerchunk = this.getChunk(k);
  
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 5a8bcd91dc5d030be531124106005ddf513e627f..a3a96a012d9ccdeb11f573a3d0c2680feec72747 100644
+index 8b078f2559789280eccce6445a8c02725bac7d3e..c26535f12efdfb0224e18dc51301acb4bb358aa1 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -212,6 +212,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -207,6 +207,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
      }
      // CraftBukkit end
  
@@ -893,9 +893,9 @@ index 5a8bcd91dc5d030be531124106005ddf513e627f..a3a96a012d9ccdeb11f573a3d0c2680f
 +    }
 +    // Tuinity end
 +
-     // Paper start
-     /**
-      * Overriding this field will cause memory leaks.
+     // Paper start - optimise entity tracking
+     final org.spigotmc.TrackingRange.TrackingRangeType trackingRangeType = org.spigotmc.TrackingRange.getTrackingRangeType(this);
+ 
 diff --git a/src/main/java/net/minecraft/server/HeightMap.java b/src/main/java/net/minecraft/server/HeightMap.java
 index 14ddb2a8949ce18a0c42e17a82d0d7a13ac325fe..476da43b9f0ef35b4985f88e4784b1f8c5222af3 100644
 --- a/src/main/java/net/minecraft/server/HeightMap.java
@@ -909,10 +909,10 @@ index 14ddb2a8949ce18a0c42e17a82d0d7a13ac325fe..476da43b9f0ef35b4985f88e4784b1f8
          return this.a(c(i, j));
      }
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index dd4cdb29c26b74f628125b920b018ecdae4cc819..32f65f8a7b83db27898d91f5a86b2127b398e22c 100644
+index 40f06a9dd36f2bba33042cf91bedf5023d76332e..22449c47f7451a3e4bf70023568f1a1e91afc8a7 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -1352,6 +1352,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1356,6 +1356,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
                  midTickLoadChunks(); // Paper
                  worldserver.timings.doTick.startTiming(); // Spigot
                  worldserver.doTick(booleansupplier);
@@ -921,10 +921,10 @@ index dd4cdb29c26b74f628125b920b018ecdae4cc819..32f65f8a7b83db27898d91f5a86b2127
                  midTickLoadChunks(); // Paper
              } catch (Throwable throwable) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index c14cdb60243e16810ad711d204678d51120c3403..35ceb0734bc25e44ebde0d3a817f1d7ad636dffc 100644
+index 68ed332e9cd1431b440ecc1a6ead390910ed2c40..852e145ab2a1f352866c5990ce9671b4e6181d6d 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -494,6 +494,7 @@ public class PlayerChunk {
+@@ -500,6 +500,7 @@ public class PlayerChunk {
          // Paper end - per player view distance
      }
  
@@ -933,7 +933,7 @@ index c14cdb60243e16810ad711d204678d51120c3403..35ceb0734bc25e44ebde0d3a817f1d7a
          int i = chunkstatus.c();
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 03a79ff9929d0df6b5a2da9d86a31c0c67a4b8cf..55c4345fd51f44389a65d4303b22edb001d00a33 100644
+index 453e6b7e5d63e3a0dace092232fc50c499c7a6b3..8bc56b72685c8bffc7c7692e009d987d99aecf97 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -275,6 +275,21 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -985,7 +985,7 @@ index 03a79ff9929d0df6b5a2da9d86a31c0c67a4b8cf..55c4345fd51f44389a65d4303b22edb0
  
              }
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
-index 1fa7061f7adb539b6786fa11a0090f2c188ba9f2..0ce2580c63c9afeae41451ca8f7cad1f404f6483 100644
+index e21c747b6c39155c44bf30860681d67b0b29fb12..9f4f9df09968dc45878ad59f5ee45672a3f08fbd 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java
 +++ b/src/main/java/net/minecraft/server/VoxelShapes.java
 @@ -314,6 +314,7 @@ public final class VoxelShapes {
@@ -997,7 +997,7 @@ index 1fa7061f7adb539b6786fa11a0090f2c188ba9f2..0ce2580c63c9afeae41451ca8f7cad1f
          return voxelshape != b() && voxelshape1 != b() ? (voxelshape.isEmpty() && voxelshape1.isEmpty() ? false : !c(b(), b(voxelshape, voxelshape1, OperatorBoolean.OR), OperatorBoolean.ONLY_FIRST)) : true;
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 63c119072968586fab05ce3990f7c83373736f33..5d0de2af22707087efaaf5a921a6dfef8aa081b1 100644
+index a3356fa90b8f936b0094977968d770d1c9e32ce8..3ea12caef4679ba82d59fcc9b951e63fa35bbfcb 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -200,6 +200,96 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -1095,5 +1095,5 @@ index 63c119072968586fab05ce3990f7c83373736f33..5d0de2af22707087efaaf5a921a6dfef
 +    // Tuinity end
 +
      // Add env and gen to constructor, WorldData -> WorldDataServer
-     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, ResourceKey<DimensionManager> resourcekey1, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
-         super(iworlddataserver, resourcekey, resourcekey1, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
+     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
+         super(iworlddataserver, resourcekey, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor

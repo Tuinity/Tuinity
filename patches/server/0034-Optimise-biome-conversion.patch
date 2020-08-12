@@ -6,48 +6,48 @@ Subject: [PATCH] Optimise biome conversion
 Avoids the string conversions + map lookup
 
 diff --git a/src/main/java/net/minecraft/server/BiomeBase.java b/src/main/java/net/minecraft/server/BiomeBase.java
-index db198811ddecc00cbd398f3805bdf51b3239f390..52ebdfcc03ae2d8576a98566e7a99c617f87e19e 100644
+index 0854ac9ef586b378420d9899f3afd2755e6f9f33..0ca9df30fab6073570bad5d2c369d64d7c58c120 100644
 --- a/src/main/java/net/minecraft/server/BiomeBase.java
 +++ b/src/main/java/net/minecraft/server/BiomeBase.java
-@@ -92,6 +92,18 @@ public class BiomeBase {
-         return new WorldGenCarverWrapper<>(worldgencarverabstract, c0);
-     }
+@@ -74,6 +74,18 @@ public final class BiomeBase {
+     private final BiomeFog p;
+     private final ThreadLocal<Long2FloatLinkedOpenHashMap> q;
  
 +    // Tuinity start - optimise biome conversion
 +    private org.bukkit.block.Biome bukkitBiome;
 +
 +    public final org.bukkit.block.Biome getBukkitBiome() {
 +        if (this.bukkitBiome == null) {
-+            this.bukkitBiome = org.bukkit.block.Biome.valueOf(IRegistry.BIOME.getKey(this).getKey().toUpperCase(java.util.Locale.ENGLISH));
++            this.bukkitBiome = org.bukkit.block.Biome.valueOf(RegistryGeneration.WORLDGEN_BIOME.getKey(this).getKey().toUpperCase(java.util.Locale.ENGLISH));
 +        }
 +
 +        return this.bukkitBiome;
 +    }
 +    // Tuinity end - optimise biome conversion
 +
-     protected BiomeBase(BiomeBase.a biomebase_a) {
-         if (biomebase_a.a != null && biomebase_a.b != null && biomebase_a.c != null && biomebase_a.d != null && biomebase_a.e != null && biomebase_a.f != null && biomebase_a.g != null && biomebase_a.j != null) {
-             this.m = biomebase_a.a;
+     private BiomeBase(BiomeBase.d biomebase_d, BiomeBase.Geography biomebase_geography, float f, float f1, BiomeFog biomefog, BiomeSettingsGeneration biomesettingsgeneration, BiomeSettingsMobs biomesettingsmobs) {
+         this.g = (Map) IRegistry.STRUCTURE_FEATURE.g().collect(Collectors.groupingBy((structuregenerator) -> {
+             return structuregenerator.f().ordinal();
 diff --git a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
-index 3c7bb694ec7021ee4718768a0e3f6a82e950945f..ee53060b112afe0f84c2be41cad2f498e3d410a0 100644
+index 674fa55b4065bdb0d688996f324c0508d80970c5..501ecfd0fddb4e6bf990b0548673f9dc108a66d2 100644
 --- a/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
 +++ b/src/main/java/org/bukkit/craftbukkit/block/CraftBlock.java
-@@ -505,15 +505,30 @@ public class CraftBlock implements Block {
+@@ -507,15 +507,30 @@ public class CraftBlock implements Block {
              return null;
          }
  
--        return Biome.valueOf(IRegistry.BIOME.getKey(base).getKey().toUpperCase(java.util.Locale.ENGLISH));
+-        return Biome.valueOf(RegistryGeneration.WORLDGEN_BIOME.getKey(base).getKey().toUpperCase(java.util.Locale.ENGLISH));
 +        return base.getBukkitBiome(); // Tuinity - optimise biome conversion
      }
  
-+    private static final java.util.EnumMap<Biome, BiomeBase> BUKKIT_BIOME_TO_NMS_CACHE = new java.util.EnumMap<>(Biome.class);  // Tuinity - optimise biome conversion
++    private static final java.util.EnumMap<Biome, BiomeBase> BUKKIT_BIOME_TO_NMS_CACHE = new java.util.EnumMap<>(Biome.class); // Tuinity - optimise biome conversion
 +
      public static BiomeBase biomeToBiomeBase(Biome bio) {
          if (bio == null) {
              return null;
          }
  
--        return IRegistry.BIOME.get(new MinecraftKey(bio.name().toLowerCase(java.util.Locale.ENGLISH)));
+-        return RegistryGeneration.WORLDGEN_BIOME.get(new MinecraftKey(bio.name().toLowerCase(java.util.Locale.ENGLISH)));
 +        // Tuinity start - optimise biome conversion
 +        BiomeBase cached = BUKKIT_BIOME_TO_NMS_CACHE.get(bio);
 +
@@ -55,7 +55,7 @@ index 3c7bb694ec7021ee4718768a0e3f6a82e950945f..ee53060b112afe0f84c2be41cad2f498
 +            return cached;
 +        }
 +
-+        BiomeBase ret = IRegistry.BIOME.get(new MinecraftKey(bio.name().toLowerCase(java.util.Locale.ENGLISH)));
++        BiomeBase ret = RegistryGeneration.WORLDGEN_BIOME.get(new MinecraftKey(bio.name().toLowerCase(java.util.Locale.ENGLISH)));
 +        synchronized (BUKKIT_BIOME_TO_NMS_CACHE) {
 +            BUKKIT_BIOME_TO_NMS_CACHE.put(bio, ret);
 +        }

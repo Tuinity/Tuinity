@@ -66,10 +66,10 @@ index 0000000000000000000000000000000000000000..a54f516ba72806c0470259436f889faa
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java b/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..76593df295e5f462adcbc223d791316a849fffeb
+index 0000000000000000000000000000000000000000..56b955227f11613f112c77c445a9de5bfa3a60f7
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/voxel/AABBVoxelShape.java
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,237 @@
 +package com.tuinity.tuinity.voxel;
 +
 +import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
@@ -84,21 +84,15 @@ index 0000000000000000000000000000000000000000..76593df295e5f462adcbc223d791316a
 +public final class AABBVoxelShape extends VoxelShape {
 +
 +    public final AxisAlignedBB aabb;
-+    private boolean isEmpty;
 +
 +    public AABBVoxelShape(AxisAlignedBB aabb) {
 +        super(VoxelShapes.getFullUnoptimisedCube().getShape());
 +        this.aabb = aabb;
-+        this.isEmpty = (fuzzyEquals(aabb.minX, aabb.maxX) && fuzzyEquals(aabb.minY, aabb.maxY) && fuzzyEquals(aabb.minZ, aabb.maxZ));
-+    }
-+
-+    static boolean fuzzyEquals(double d0, double d1) {
-+        return Math.abs(d0 - d1) <= 1.0e-7;
 +    }
 +
 +    @Override
 +    public boolean isEmpty() {
-+        return this.isEmpty;
++        return this.aabb.isEmpty();
 +    }
 +
 +    @Override
@@ -221,9 +215,6 @@ index 0000000000000000000000000000000000000000..76593df295e5f462adcbc223d791316a
 +
 +    @Override
 +    public double a(EnumDirection.EnumAxis enumdirection_enumaxis, AxisAlignedBB axisalignedbb, double d0) { // collide
-+        if (this.isEmpty) {
-+            return d0;
-+        }
 +        if (Math.abs(d0) < 1.0e-7) {
 +            return 0.0;
 +        }
@@ -465,7 +456,7 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..d54bf71409fe299671aa3f72315f18a1
          return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkSection.java b/src/main/java/net/minecraft/server/ChunkSection.java
-index 3588fe10017cf2341b9121bbb0438ef3fdf8cda6..cf54336b8618071056ab8bf1ac13bbe6d29ced0e 100644
+index e52df8096e399c84ff8a2637fdd65ea57d9001d0..cebd808e273dbdb88feb16920dd7a2f60390b34f 100644
 --- a/src/main/java/net/minecraft/server/ChunkSection.java
 +++ b/src/main/java/net/minecraft/server/ChunkSection.java
 @@ -96,6 +96,7 @@ public class ChunkSection {
@@ -489,7 +480,7 @@ index 95ef96286855624590b72d69514b0fc0e08fddba..73163b417af7e522a4509bf9c1ab56d6
          T t0 = this.h.a(this.a.a(i));
  
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index efa541bdd4d6da7959d6001f1dedfa9e4d992cc8..db62601ea730c0c2fbc6469248ad92e81502f578 100644
+index 95b9619372bc39ebdc57a18091525972902e70af..c0fef2297e910ec419df9c4786e05344881ec7b3 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -136,7 +136,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -501,24 +492,16 @@ index efa541bdd4d6da7959d6001f1dedfa9e4d992cc8..db62601ea730c0c2fbc6469248ad92e8
      public boolean noclip;
      public float I;
      protected final Random random;
-@@ -655,6 +655,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
-         return this.moveStartZ;
-     }
-     // Tuinity end - detailed watchdog information
-+
-     public void move(EnumMoveType enummovetype, Vec3D vec3d) {
-         // Tuinity start - detailed watchdog information
-         com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot move an entity off-main");
-@@ -693,7 +694,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -693,7 +693,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
              // Paper end
  
              vec3d = this.a(vec3d, enummovetype);
--            Vec3D vec3d1 = this.f(vec3d);
+-            Vec3D vec3d1 = this.g(vec3d);
 +            Vec3D vec3d1 = this.performCollision(vec3d); // Tuinity - optimise collisions
  
              if (vec3d1.g() > 1.0E-7D) {
                  this.a(this.getBoundingBox().c(vec3d1));
-@@ -897,6 +898,132 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -896,6 +896,132 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return d0;
      }
  
@@ -648,38 +631,32 @@ index efa541bdd4d6da7959d6001f1dedfa9e4d992cc8..db62601ea730c0c2fbc6469248ad92e8
 +    }
 +    // Tuinity end - optimise entity movement
 +
-     private Vec3D f(Vec3D vec3d) {
+     private Vec3D g(Vec3D vec3d) {
          AxisAlignedBB axisalignedbb = this.getBoundingBox();
          VoxelShapeCollision voxelshapecollision = VoxelShapeCollision.a(this);
-@@ -932,6 +1059,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -931,6 +1057,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return vec3d1;
      }
  
-+    public static double getXZSquared(Vec3D vec3d) { return Entity.b(vec3d); } // Tuinity - OBFHELPER
-     public static double b(Vec3D vec3d) {
++    public static double getXZSquared(Vec3D vec3d) { return Entity.c(vec3d); } // Tuinity - OBFHELPER
+     public static double c(Vec3D vec3d) {
          return vec3d.x * vec3d.x + vec3d.z * vec3d.z;
      }
-@@ -1138,6 +1266,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
- 
- 
-     @Nullable public final AxisAlignedBB getCollisionBox(){return ay();} //Paper - OBFHELPER
-+    @Nullable public final AxisAlignedBB getHardCollisionBox() { return this.ay(); } // Tuinity - OBFHELPER
-     @Nullable public AxisAlignedBB ay() {
-         return null;
-     }
-@@ -2021,8 +2150,8 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -2009,10 +2136,12 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return EnumInteractionResult.PASS;
      }
  
-     public final AxisAlignedBB getHardCollisionBox(Entity entity){ return j(entity);}//Paper - OBFHELPER
--    @Nullable
--    public AxisAlignedBB j(Entity entity) {
-+    @Nullable public AxisAlignedBB getHardCollisionBoxWith(Entity entity) { return this.j(entity); } // Tuinity - OBFHELPER
-+    @Nullable public AxisAlignedBB j(Entity entity) { // Tuinity - OBFHELPER
-         return null;
++    public final boolean hardCollidesWith(Entity other) { return this.j(other); } // Tuinity - OBFHELPER
+     public boolean j(Entity entity) { // Tuinity - diff on change, hard colliding entities override this
+         return entity.aY() && !this.isSameVehicle(entity);
      }
  
++    public final boolean collisionBoxIsHard() { return this.aY(); } // Tuinity - OBFHELPER
+     public boolean aY() { // Tuinity - diff on change, hard colliding entities override this
+         return false;
+     }
 diff --git a/src/main/java/net/minecraft/server/ICollisionAccess.java b/src/main/java/net/minecraft/server/ICollisionAccess.java
-index 1cc40b1f0af9e617b2a71bcc442543e10b2dc61a..3ce2f7497a9e12082b70525ad2aaf5e0828cc068 100644
+index 25e54a1fadc5d31fb250a3f47524b4f345fc8cc6..b66c802d5e27518069bf42e577bcc9a26c4d873e 100644
 --- a/src/main/java/net/minecraft/server/ICollisionAccess.java
 +++ b/src/main/java/net/minecraft/server/ICollisionAccess.java
 @@ -46,6 +46,11 @@ public interface ICollisionAccess extends IBlockAccess {
@@ -695,22 +672,24 @@ index 1cc40b1f0af9e617b2a71bcc442543e10b2dc61a..3ce2f7497a9e12082b70525ad2aaf5e0
          return this.d(entity, axisalignedbb, predicate).allMatch(VoxelShape::isEmpty);
          } finally { if (entity != null) entity.collisionLoadChunks = false; } // Paper
 diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
-index 267a6baae89c181eed545e6758fac7115eb3882f..0edcb775e965a3d6539d44e49480068deafab7a5 100644
+index c761e5915647dc69d54474ffbaf0b99e9b2ea134..d05046042a2f0810564b3014296a9ee5bd803454 100644
 --- a/src/main/java/net/minecraft/server/IEntityAccess.java
 +++ b/src/main/java/net/minecraft/server/IEntityAccess.java
-@@ -69,6 +69,7 @@ public interface IEntityAccess {
+@@ -67,7 +67,8 @@ public interface IEntityAccess {
+         } else {
              AxisAlignedBB axisalignedbb1 = axisalignedbb.g(1.0E-7D);
  
-             // Paper start
+-            predicate = predicate.and((entity1) -> { // Tuinity - optimise entity hard collisions
 +            if (predicate == null) predicate = (e) -> true; // Tuinity - allow nullable
-             Predicate<Entity> effectivePredicate = predicate.and((entity1) -> {
-                 return entity == null || !entity.isSameVehicle(entity1);
-             });
++            predicate = predicate.and((entity1) -> { // Tuinity - optimise entity hard collisions // Tuinity - allow nullable
+                 boolean flag;
+ 
+                 if (true || entity1.getBoundingBox().c(axisalignedbb1)) { // Tuinity - always true, wtf did they think this.getEntities(entity, axisalignedbb1) does?
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 274d32439ce9a942b1b88a951fe55b426023897e..d6b1cb8c48ff731837f07b80882be3dcc0258211 100644
+index 693cf2e74e0974dcba2a11ac6c35c67af018ceee..6233b570e8358e9252fa5947859ea33c24123850 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -1317,6 +1317,8 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1321,6 +1321,8 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          }
          // Paper end
  
@@ -754,7 +733,7 @@ index 3048ba008147f4647d633f59db812db9021a7c67..84858ba3923845a630d4886ecbd001c6
          return this.x * this.x + this.y * this.y + this.z * this.z;
      }
 diff --git a/src/main/java/net/minecraft/server/VoxelShape.java b/src/main/java/net/minecraft/server/VoxelShape.java
-index c2b8c9820663f95f58f0c3a62cd9ec99c835a82f..3a98e242e06ad3a936b9c3a110c66238d172323e 100644
+index eb926b74e17fb2f88c1d6ce2fb546541f8e6e274..700660dd93b3090334bb3033d5f5fdd6ab684744 100644
 --- a/src/main/java/net/minecraft/server/VoxelShape.java
 +++ b/src/main/java/net/minecraft/server/VoxelShape.java
 @@ -8,11 +8,11 @@ import javax.annotation.Nullable;
@@ -771,8 +750,12 @@ index c2b8c9820663f95f58f0c3a62cd9ec99c835a82f..3a98e242e06ad3a936b9c3a110c66238
          this.a = voxelshapediscrete;
      }
  
-@@ -51,6 +51,12 @@ public abstract class VoxelShape {
-         return (VoxelShape) (this.isEmpty() ? VoxelShapes.a() : new VoxelShapeArray(this.a, new DoubleListOffset(this.a(EnumDirection.EnumAxis.X), d0), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Y), d1), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Z), d2)));
+@@ -48,9 +48,15 @@ public abstract class VoxelShape {
+ 
+     public final VoxelShape offset(double x, double y, double z) { return this.a(x, y, z); } // Paper - OBFHELPER
+     public VoxelShape a(double d0, double d1, double d2) {
+-        return (VoxelShape) (this.isEmpty() ? VoxelShapes.a() : new VoxelShapeArray(this.a, new DoubleListOffset(this.a(EnumDirection.EnumAxis.X), d0), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Y), d1), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Z), d2)));
++        return (VoxelShape) (this.isEmpty() ? VoxelShapes.a() : new VoxelShapeArray(this.a, new DoubleListOffset(this.a(EnumDirection.EnumAxis.X), d0), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Y), d1), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Z), d2))); // Tuinity - diff on change, copied into VoxelShapeArray override
      }
  
 +    // Tuinity start - optimise multi-aabb shapes
@@ -793,7 +776,7 @@ index c2b8c9820663f95f58f0c3a62cd9ec99c835a82f..3a98e242e06ad3a936b9c3a110c66238
          List<AxisAlignedBB> list = Lists.newArrayList();
  
 diff --git a/src/main/java/net/minecraft/server/VoxelShapeArray.java b/src/main/java/net/minecraft/server/VoxelShapeArray.java
-index caf297fe977942ca68fdb963d97dd9fc0f78d883..8d68c783f6d8c1dae62c0d3ed34e305785169579 100644
+index 3c29cb1452cde1308f630bfcb82876ef19057e8f..43b0b4c34c2613b4ef36281e63fad543250da2cf 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapeArray.java
 +++ b/src/main/java/net/minecraft/server/VoxelShapeArray.java
 @@ -3,6 +3,7 @@ package net.minecraft.server;
@@ -832,7 +815,7 @@ index caf297fe977942ca68fdb963d97dd9fc0f78d883..8d68c783f6d8c1dae62c0d3ed34e3057
          int j = voxelshapediscrete.c() + 1;
 @@ -27,6 +42,18 @@ public final class VoxelShapeArray extends VoxelShape {
          } else {
-             throw (IllegalArgumentException) SystemUtils.c(new IllegalArgumentException("Lengths of point arrays must be consistent with the size of the VoxelShape."));
+             throw (IllegalArgumentException) SystemUtils.c((Throwable) (new IllegalArgumentException("Lengths of point arrays must be consistent with the size of the VoxelShape.")));
          }
 +        // Tuinity start - optimise multi-aabb shapes
 +        this.boundingBoxesRepresentation = boundingBoxesRepresentation == null ? this.getBoundingBoxesRepresentation().toArray(EMPTY) : boundingBoxesRepresentation; // Tuinity - optimise multi-aabb shapes
@@ -900,7 +883,7 @@ index caf297fe977942ca68fdb963d97dd9fc0f78d883..8d68c783f6d8c1dae62c0d3ed34e3057
 +    // Tuinity end - optimise multi-aabb shapes
  }
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
-index 0ce2580c63c9afeae41451ca8f7cad1f404f6483..52aee91d2dc7c2459db45183b7f3dccf326bd515 100644
+index 9f4f9df09968dc45878ad59f5ee45672a3f08fbd..2d08e6cc6d808c0093cfd72e6f46edb754bd4276 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java
 +++ b/src/main/java/net/minecraft/server/VoxelShapes.java
 @@ -17,18 +17,81 @@ public final class VoxelShapes {
@@ -993,7 +976,7 @@ index 0ce2580c63c9afeae41451ca8f7cad1f404f6483..52aee91d2dc7c2459db45183b7f3dccf
              }
          } else {
 -            return new VoxelShapeArray(VoxelShapes.b.a, new double[]{axisalignedbb.minX, axisalignedbb.maxX}, new double[]{axisalignedbb.minY, axisalignedbb.maxY}, new double[]{axisalignedbb.minZ, axisalignedbb.maxZ});
-+            return new com.tuinity.tuinity.voxel.AABBVoxelShape(axisalignedbb); // Tuinity - optimise VoxelShapes for single AABB shapes
++            return axisalignedbb.isEmpty() ? VoxelShapes.empty() : new com.tuinity.tuinity.voxel.AABBVoxelShape(axisalignedbb); // Tuinity - optimise VoxelShapes for single AABB shapes
          }
      }
  
@@ -1016,25 +999,13 @@ index 0ce2580c63c9afeae41451ca8f7cad1f404f6483..52aee91d2dc7c2459db45183b7f3dccf
 +    public static boolean abstract_c(VoxelShape voxelshape, VoxelShape voxelshape1, OperatorBoolean operatorboolean) {
 +        // Tuinity end - optimise voxelshape
          if (operatorboolean.apply(false, false)) {
-             throw (IllegalArgumentException) SystemUtils.c(new IllegalArgumentException());
+             throw (IllegalArgumentException) SystemUtils.c((Throwable) (new IllegalArgumentException()));
          } else if (voxelshape == voxelshape1) {
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 37b62e742ef454290eecb823d47663265f4686bc..fd3aace4e0f2887e0d920f9e745d00b3acf381e1 100644
+index 061bb46c84ef5f574b1f59006da8ec98cda05cb1..438a7b61b75d4508d219d09f8a1a5c6ab95f1120 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -1126,6 +1126,11 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
-     public List<Entity> getHardCollidingEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Predicate<Entity> predicate) {
-         // copied from below
-         List<Entity> list = Lists.newArrayList();
-+        // Tuinity start - add list parameter
-+        return this.getHardCollidingEntities(entity, axisalignedbb, predicate, list);
-+    }
-+    public List<Entity> getHardCollidingEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Predicate<Entity> predicate, List<Entity> list) {
-+        // Tuinity end - add list parameter
-         int i = MathHelper.floor((axisalignedbb.minX - 2.0D) / 16.0D);
-         int j = MathHelper.floor((axisalignedbb.maxX + 2.0D) / 16.0D);
-         int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
-@@ -1149,8 +1154,13 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1117,8 +1117,13 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
  
      @Override
      public List<Entity> getEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Predicate<? super Entity> predicate) {
@@ -1050,7 +1021,7 @@ index 37b62e742ef454290eecb823d47663265f4686bc..fd3aace4e0f2887e0d920f9e745d00b3
          int j = MathHelper.floor((axisalignedbb.maxX + 2.0D) / 16.0D);
          int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
 diff --git a/src/main/java/net/minecraft/server/WorldBorder.java b/src/main/java/net/minecraft/server/WorldBorder.java
-index b651eb87bb23deeb2a3f4a1c626ddde9b11a7b9e..5cba3b0e613bb6c016c4441ebb931be9dba8db4e 100644
+index f011869880fedae4b69e505491e8bdbc5f51dfba..f52132604a69bfe4da8a49ca6614388f9924af57 100644
 --- a/src/main/java/net/minecraft/server/WorldBorder.java
 +++ b/src/main/java/net/minecraft/server/WorldBorder.java
 @@ -47,11 +47,43 @@ public class WorldBorder {
@@ -1091,8 +1062,7 @@ index b651eb87bb23deeb2a3f4a1c626ddde9b11a7b9e..5cba3b0e613bb6c016c4441ebb931be9
      public double a(Entity entity) {
          return this.b(entity.locX(), entity.locZ());
      }
--
-+    
+ 
      public final VoxelShape asVoxelShape(){ return c();} // Paper - OBFHELPER
 +    public final VoxelShape getCollisionShape() { return this.c(); } // Tuinity - OBFHELPER
      public VoxelShape c() {
@@ -1122,10 +1092,10 @@ index b651eb87bb23deeb2a3f4a1c626ddde9b11a7b9e..5cba3b0e613bb6c016c4441ebb931be9
          return this.j.d();
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 113aba768c4707f6b2f1470914db864bc08374cc..4ec31625b62c4217d1d09806708d1fee623e46ac 100644
+index 49d63b321ea48f33fcc84574f86fac2e35325c16..5348786cf83d6d6edd51e91f452f28ae4e9375b7 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -354,6 +354,349 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -354,6 +354,328 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          this.asyncChunkTaskManager = new com.destroystokyo.paper.io.chunk.ChunkTaskManager(this); // Paper
      }
  
@@ -1255,33 +1225,26 @@ index 113aba768c4707f6b2f1470914db864bc08374cc..4ec31625b62c4217d1d09806708d1fee
 +            return false;
 +        }
 +        AxisAlignedBB axisalignedbb1 = axisalignedbb.grow(1.0E-7D, 1.0E-7D, 1.0E-7D);
-+        List<Entity> entities = (entity != null && entity.hardCollides()) ? this.getEntities(entity, axisalignedbb, predicate == null ? IEntitySelector.notSpectator() : predicate.and(IEntitySelector.notSpectator())) : this.getHardCollidingEntities(entity, axisalignedbb1, predicate);
-+
-+        for (int i = 0, len = entities.size(); i < len; ++i) {
-+            Entity otherEntity = entities.get(i);
-+
-+            if (predicate != null && !predicate.test(otherEntity)) {
-+                continue;
++        List<Entity> entities = com.tuinity.tuinity.util.CachedLists.getTempGetEntitiesList();
++        try {
++            if (entity != null && entity.hardCollides()) {
++                this.getEntities(entity, axisalignedbb, predicate, entities);
++            } else {
++                this.getHardCollidingEntities(entity, axisalignedbb1, predicate, entities);
 +            }
 +
-+            if (entity != null) {
-+                if (entity.isSameVehicle(otherEntity)) {
-+                    continue;
-+                }
-+                AxisAlignedBB hardCollisionBox = entity.getHardCollisionBoxWith(otherEntity);
-+                if (hardCollisionBox != null && axisalignedbb1.intersects(hardCollisionBox)) {
++            for (int i = 0, len = entities.size(); i < len; ++i) {
++                Entity otherEntity = entities.get(i);
++
++                if ((entity == null || otherEntity.collisionBoxIsHard()) || entity.hardCollidesWith(otherEntity)) {
 +                    return true;
 +                }
 +            }
 +
-+            AxisAlignedBB hardCollisionBox = otherEntity.getHardCollisionBox();
-+
-+            if (hardCollisionBox != null && axisalignedbb1.intersects(hardCollisionBox)) {
-+                return true;
-+            }
++            return false;
++        } finally {
++            com.tuinity.tuinity.util.CachedLists.returnTempGetEntitiesList(entities);
 +        }
-+
-+        return false;
 +    }
 +
 +    public final boolean hasAnyCollisions(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
@@ -1418,7 +1381,7 @@ index 113aba768c4707f6b2f1470914db864bc08374cc..4ec31625b62c4217d1d09806708d1fee
 +        List<Entity> entities = com.tuinity.tuinity.util.CachedLists.getTempGetEntitiesList();
 +        try {
 +            if (entity != null && entity.hardCollides()) {
-+                this.getEntities(entity, axisalignedbb, predicate == null ? IEntitySelector.notSpectator() : predicate.and(IEntitySelector.notSpectator()), entities);
++                this.getEntities(entity, axisalignedbb, predicate, entities);
 +            } else {
 +                this.getHardCollidingEntities(entity, axisalignedbb1, predicate, entities);
 +            }
@@ -1426,24 +1389,8 @@ index 113aba768c4707f6b2f1470914db864bc08374cc..4ec31625b62c4217d1d09806708d1fee
 +            for (int i = 0, len = entities.size(); i < len; ++i) {
 +                Entity otherEntity = entities.get(i);
 +
-+                if (predicate != null && !predicate.test(otherEntity)) {
-+                    continue;
-+                }
-+
-+                if (entity != null) {
-+                    if (entity.isSameVehicle(otherEntity)) {
-+                        continue;
-+                    }
-+                    AxisAlignedBB hardCollisionBox = entity.getHardCollisionBoxWith(otherEntity);
-+                    if (hardCollisionBox != null && axisalignedbb1.intersects(hardCollisionBox)) {
-+                        list.add(hardCollisionBox);
-+                    }
-+                }
-+
-+                AxisAlignedBB hardCollisionBox = otherEntity.getHardCollisionBox();
-+
-+                if (hardCollisionBox != null && axisalignedbb1.intersects(hardCollisionBox)) {
-+                    list.add(hardCollisionBox);
++                if ((entity == null || otherEntity.collisionBoxIsHard()) || entity.hardCollidesWith(otherEntity)) {
++                    list.add(otherEntity.getBoundingBox());
 +                }
 +            }
 +        } finally {
@@ -1463,11 +1410,13 @@ index 113aba768c4707f6b2f1470914db864bc08374cc..4ec31625b62c4217d1d09806708d1fee
 +
 +    @Override
 +    public boolean getCubes(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
++        if (entity instanceof EntityArmorStand && !entity.world.paperConfig.armorStandEntityLookups) return false;
 +        return !this.hasAnyCollisions(entity, axisalignedbb);
 +    }
 +
 +    @Override
 +    public boolean getCubes(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Predicate<Entity> predicate) {
++        if (entity instanceof EntityArmorStand && !entity.world.paperConfig.armorStandEntityLookups) return false;
 +        return !this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb, true) && !this.hardCollidesWithAnyEntities(entity, axisalignedbb, predicate);
 +    }
 +    // Tuinity end - optimise collision

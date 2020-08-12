@@ -18,7 +18,7 @@ index a263cd7a0680e0cc3517f84308118eb32c487732..77df6888803093ad9527d276033f2ed7
                      // re-schedule eventually
                      toTick.tickState = STATE_SCHEDULED;
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 8e83910bdb2b8a6626874a87944cf20058b1b946..42edcc36b995b0be88eb60d55dcd5cc4321207c7 100644
+index 417cbef6177cbe60bdfc7198086a0d96c876e895..baf365185b96c77c75f783d05cce984a7640d8ee 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -892,7 +892,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -92,10 +92,10 @@ index 8e83910bdb2b8a6626874a87944cf20058b1b946..42edcc36b995b0be88eb60d55dcd5cc4
          @Override
          protected boolean executeNext() {
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 32f65f8a7b83db27898d91f5a86b2127b398e22c..274d32439ce9a942b1b88a951fe55b426023897e 100644
+index 22449c47f7451a3e4bf70023568f1a1e91afc8a7..693cf2e74e0974dcba2a11ac6c35c67af018ceee 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -987,7 +987,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -985,7 +985,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
                          // Paper end
                          tickSection = curTime;
                      }
@@ -104,7 +104,7 @@ index 32f65f8a7b83db27898d91f5a86b2127b398e22c..274d32439ce9a942b1b88a951fe55b42
                      // Spigot end
  
                      //MinecraftServer.currentTick = (int) (System.currentTimeMillis() / 50); // CraftBukkit // Paper - don't overwrite current tick time
-@@ -1080,6 +1080,76 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1078,6 +1078,76 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
      }
      // Paper end
  
@@ -181,7 +181,7 @@ index 32f65f8a7b83db27898d91f5a86b2127b398e22c..274d32439ce9a942b1b88a951fe55b42
      private void executeModerately() {
          this.executeAll();
          java.util.concurrent.locks.LockSupport.parkNanos("executing tasks", 1000L);
-@@ -1093,22 +1163,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1091,22 +1161,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          });
      }
  
@@ -205,15 +205,15 @@ index 32f65f8a7b83db27898d91f5a86b2127b398e22c..274d32439ce9a942b1b88a951fe55b42
  
      @Override
      protected TickTask postToMainThread(Runnable runnable) {
-@@ -1135,6 +1190,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1133,6 +1188,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
  
-     private boolean aZ() {
+     private boolean ba() {
          if (super.executeNext()) {
 +            this.executeMidTickTasks(); // Tuinity - execute chunk tasks mid tick
              return true;
          } else {
              if (this.canSleepForTick()) {
-@@ -1202,7 +1258,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1200,7 +1256,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          // Paper start - move oversleep into full server tick
          isOversleep = true;MinecraftTimings.serverOversleep.startTiming();
          this.awaitTasks(() -> {
@@ -222,7 +222,7 @@ index 32f65f8a7b83db27898d91f5a86b2127b398e22c..274d32439ce9a942b1b88a951fe55b42
              return !this.canOversleep();
          });
          isOversleep = false;MinecraftTimings.serverOversleep.stopTiming();
-@@ -1287,16 +1343,16 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1291,16 +1347,16 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
      }
  
      protected void b(BooleanSupplier booleansupplier) {
@@ -242,7 +242,7 @@ index 32f65f8a7b83db27898d91f5a86b2127b398e22c..274d32439ce9a942b1b88a951fe55b42
          this.methodProfiler.exitEnter("levels");
          Iterator iterator = this.getWorlds().iterator();
  
-@@ -1307,7 +1363,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1311,7 +1367,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
              processQueue.remove().run();
          }
          MinecraftTimings.processQueueTimer.stopTiming(); // Spigot
@@ -251,7 +251,7 @@ index 32f65f8a7b83db27898d91f5a86b2127b398e22c..274d32439ce9a942b1b88a951fe55b42
          MinecraftTimings.timeUpdateTimer.startTiming(); // Spigot // Paper
          // Send time updates to everyone, it will get the right time from the world the player is in.
          // Paper start - optimize time updates
-@@ -1349,12 +1405,12 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1353,12 +1409,12 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
              this.methodProfiler.enter("tick");
  
              try {
@@ -267,10 +267,10 @@ index 32f65f8a7b83db27898d91f5a86b2127b398e22c..274d32439ce9a942b1b88a951fe55b42
                  // Spigot Start
                  CrashReport crashreport;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index f911c49e7dd42546706f7797b9c579ea11a2bcba..37b62e742ef454290eecb823d47663265f4686bc 100644
+index cfb1e0682b20aa6511a55f027304e53f7fb383b2..2bdf26281e35ac074843afa4739b3e73212ef742 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
-@@ -941,6 +941,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -906,6 +906,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
              return;
              // Paper end
          }
@@ -279,7 +279,7 @@ index f911c49e7dd42546706f7797b9c579ea11a2bcba..37b62e742ef454290eecb823d4766326
      // Paper start - Prevent armor stands from doing entity lookups
      @Override
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index c6a5c52f01c579559b384c4f32e939baeb1594e5..113aba768c4707f6b2f1470914db864bc08374cc 100644
+index 060b4fa811c72fe75e206350d33653c04498d090..49d63b321ea48f33fcc84574f86fac2e35325c16 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -290,6 +290,10 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -291,8 +291,8 @@ index c6a5c52f01c579559b384c4f32e939baeb1594e5..113aba768c4707f6b2f1470914db864b
 +    // Tuinity end - execute chunk tasks mid tick
 +
      // Add env and gen to constructor, WorldData -> WorldDataServer
-     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, ResourceKey<DimensionManager> resourcekey1, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
-         super(iworlddataserver, resourcekey, resourcekey1, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
+     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
+         super(iworlddataserver, resourcekey, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
 @@ -552,7 +556,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          }
          timings.scheduledBlocks.stopTiming(); // Paper
@@ -304,7 +304,7 @@ index c6a5c52f01c579559b384c4f32e939baeb1594e5..113aba768c4707f6b2f1470914db864b
          this.persistentRaid.a();
 @@ -561,7 +565,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          timings.doSounds.startTiming(); // Spigot
-         this.ah();
+         this.aj();
          timings.doSounds.stopTiming(); // Spigot
 -        this.getMinecraftServer().midTickLoadChunks(); // Paper
 +        // Tuinity - replace logic
