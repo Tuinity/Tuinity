@@ -13,7 +13,7 @@ git submodule update --init --recursive
 if [[ "$1" == up* ]]; then
     (
         cd "$basedir/Paper/"
-        git fetch billy && git reset --hard billy/progress/1.16.2
+        git fetch && git reset --hard origin/progress/1.16.2
         cd ../
         git add Paper
     )
