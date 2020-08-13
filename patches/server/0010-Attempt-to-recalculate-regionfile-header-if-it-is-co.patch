@@ -55,7 +55,7 @@ index 582a5695bac7d078e3022b8ee70c512c0680d992..5601088cd5024a40e8296bab979f43de
          // Paper - nuke IOWorker
      }
 diff --git a/src/main/java/net/minecraft/server/RegionFile.java b/src/main/java/net/minecraft/server/RegionFile.java
-index 1751fb6934d9242e475c1a44b2a4a1ade6987766..7e9cc6caf5bb43fe3c588d37265a5377b01d0464 100644
+index 1751fb6934d9242e475c1a44b2a4a1ade6987766..850673aa69e9b099f8376033ec0943f5de960f7d 100644
 --- a/src/main/java/net/minecraft/server/RegionFile.java
 +++ b/src/main/java/net/minecraft/server/RegionFile.java
 @@ -5,6 +5,7 @@ import java.io.BufferedInputStream;
@@ -465,7 +465,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..7e9cc6caf5bb43fe3c588d37265a5377
                          // Spigot start
                          if (j1 == 255) {
                              // We're maxed out, so we need to read the proper length from the section
-@@ -112,6 +461,7 @@ public class RegionFile implements AutoCloseable {
+@@ -112,33 +461,105 @@ public class RegionFile implements AutoCloseable {
                              this.dataFile.read(realLen, i1 * 4096);
                              j1 = (realLen.getInt(0) + 4) / 4096 + 1;
                          }
@@ -473,16 +473,24 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..7e9cc6caf5bb43fe3c588d37265a5377
                          // Spigot end
  
                          if (i1 < 2) {
-@@ -124,21 +474,93 @@ public class RegionFile implements AutoCloseable {
+                             RegionFile.LOGGER.warn("Region file {} has invalid sector at index: {}; sector {} overlaps with header", java_nio_file_path, k, i1);
+-                            this.h.put(k, 0);
+-                        } else if (j1 == 0) {
++                            //this.h.put(k, 0); // Tuinity - we catch this, but need it in the header for the summary change
++                        } else if (j1 <= 0) { // Tuinity - <= 0, not ==
+                             RegionFile.LOGGER.warn("Region file {} has an invalid sector at index: {}; size has to be > 0", java_nio_file_path, k);
+-                            this.h.put(k, 0);
++                            //this.h.put(k, 0); // Tuinity - we catch this, but need it in the header for the summary change
+                         } else if ((long) i1 * 4096L > j) {
                              RegionFile.LOGGER.warn("Region file {} has an invalid sector at index: {}; sector {} is out of bounds", java_nio_file_path, k, i1);
-                             this.h.put(k, 0);
+-                            this.h.put(k, 0);
++                            //this.h.put(k, 0); // Tuinity - we catch this, but need it in the header for the summary change
                          } else {
 -                            this.freeSectors.a(i1, j1);
-+                            //this.freeSectors.a(i1, j1); // Tuinity - move this down so we can check if it allocates
++                            //this.freeSectors.a(i1, j1); // Tuinity - move this down so we can check if it fails to allocate
                          }
 +                        // Tuinity start - recalculate header on header corruption
-+                        if (offset < 0 || sectorLength < 0 || (offset + sectorLength) < 0
-+                                || ((offset + sectorLength) * 4096 - 1) < 0 || ((offset + sectorLength) * 4096 - 1) > regionFileSize) {
++                        if (offset < 2 || sectorLength <= 0 || ((long)offset * 4096L) > regionFileSize) {
 +                            if (canRecalcHeader) {
 +                                MinecraftServer.LOGGER.error("Detected invalid header for regionfile " + this.file.getAbsolutePath() + "! Recalculating header...");
 +                                needsHeaderRecalc = true;
@@ -569,7 +577,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..7e9cc6caf5bb43fe3c588d37265a5377
      @Nullable public synchronized DataInputStream getReadStream(ChunkCoordIntPair chunkCoordIntPair) throws IOException { return a(chunkCoordIntPair);} // Paper - OBFHELPER
      @Nullable
      public synchronized DataInputStream a(ChunkCoordIntPair chunkcoordintpair) throws IOException {
-@@ -162,6 +584,12 @@ public class RegionFile implements AutoCloseable {
+@@ -162,6 +583,12 @@ public class RegionFile implements AutoCloseable {
              this.dataFile.read(bytebuffer, (long) (j * 4096));
              ((java.nio.Buffer) bytebuffer).flip();
              if (bytebuffer.remaining() < 5) {
@@ -582,7 +590,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..7e9cc6caf5bb43fe3c588d37265a5377
                  RegionFile.LOGGER.error("Chunk {} header is truncated: expected {} but read {}", chunkcoordintpair, l, bytebuffer.remaining());
                  return null;
              } else {
-@@ -170,6 +598,12 @@ public class RegionFile implements AutoCloseable {
+@@ -170,6 +597,12 @@ public class RegionFile implements AutoCloseable {
  
                  if (i1 == 0) {
                      RegionFile.LOGGER.warn("Chunk {} is allocated, but stream is missing", chunkcoordintpair);
@@ -595,7 +603,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..7e9cc6caf5bb43fe3c588d37265a5377
                      return null;
                  } else {
                      int j1 = i1 - 1;
-@@ -182,9 +616,21 @@ public class RegionFile implements AutoCloseable {
+@@ -182,9 +615,21 @@ public class RegionFile implements AutoCloseable {
                          return this.a(chunkcoordintpair, b(b0));
                      } else if (j1 > bytebuffer.remaining()) {
                          RegionFile.LOGGER.error("Chunk {} stream is truncated: expected {} but read {}", chunkcoordintpair, j1, bytebuffer.remaining());
@@ -617,7 +625,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..7e9cc6caf5bb43fe3c588d37265a5377
                          return null;
                      } else {
                          return this.a(chunkcoordintpair, b0, a(bytebuffer, j1));
-@@ -347,10 +793,15 @@ public class RegionFile implements AutoCloseable {
+@@ -347,10 +792,15 @@ public class RegionFile implements AutoCloseable {
      }
  
      private ByteBuffer b() {
@@ -634,7 +642,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..7e9cc6caf5bb43fe3c588d37265a5377
          ((java.nio.Buffer) bytebuffer).flip();
          return bytebuffer;
      }
-@@ -387,6 +838,7 @@ public class RegionFile implements AutoCloseable {
+@@ -387,6 +837,7 @@ public class RegionFile implements AutoCloseable {
          };
      }
  
