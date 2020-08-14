@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 13 Aug 2020 18:56:36 -0700
+Subject: [PATCH] Fix swamp hut cat generation deadlock
+
+The worldgen thread will attempt to get structure references
+via the world's getChunkAt method, which is fine if the gen is
+not cancelled - but if the chunk was unloaded, the call will block
+indefinitely. Instead of using the world state, we use the already
+supplied generatoraccess which will always have the chunk available.
+
+diff --git a/src/main/java/net/minecraft/server/EntityCat.java b/src/main/java/net/minecraft/server/EntityCat.java
+index 20497c3962a2d025b11f66b4659402c9217825cf..14f604a8a364b136fa62971f3329d428d755b47d 100644
+--- a/src/main/java/net/minecraft/server/EntityCat.java
++++ b/src/main/java/net/minecraft/server/EntityCat.java
+@@ -292,7 +292,7 @@ public class EntityCat extends EntityTameableAnimal {
+ 
+         World world = generatoraccess.getMinecraftWorld();
+ 
+-        if (world instanceof WorldServer && ((WorldServer) world).getStructureManager().a(this.getChunkCoordinates(), true, StructureGenerator.SWAMP_HUT).e()) {
++        if (world instanceof WorldServer && ((WorldServer) world).getStructureManager().getStructureStarts(this.getChunkCoordinates(), true, StructureGenerator.SWAMP_HUT, generatoraccess).e()) { // Tuinity - fix deadlock on chunk gen
+             this.setCatType(10);
+             this.setPersistent();
+         }
+diff --git a/src/main/java/net/minecraft/server/StructureManager.java b/src/main/java/net/minecraft/server/StructureManager.java
+index 6c7804ac0e994ec03b95eda7a24139b65a59db7e..6e9118a25aa83365f40753865ac1e63ab2fe9a10 100644
+--- a/src/main/java/net/minecraft/server/StructureManager.java
++++ b/src/main/java/net/minecraft/server/StructureManager.java
+@@ -34,8 +34,13 @@ public class StructureManager {
+ 
+     // Paper start - remove structure streams
+     public java.util.List<StructureStart<?>> getFeatureStarts(SectionPosition sectionPosition, StructureGenerator<?> structureGenerator) {
++        // Tuinity start - add world parameter
++        return this.getFeatureStarts(sectionPosition, structureGenerator, null);
++    }
++    public java.util.List<StructureStart<?>> getFeatureStarts(SectionPosition sectionPosition, StructureGenerator<?> structureGenerator, IWorldReader world) {
++        // Tuinity end - add world parameter
+         java.util.List<StructureStart<?>> list = new  it.unimi.dsi.fastutil.objects.ObjectArrayList<>();
+-        for (Long curLong: getLevel().getChunkAt(sectionPosition.a(), sectionPosition.c(), ChunkStatus.STRUCTURE_REFERENCES).b(structureGenerator)) {
++        for (Long curLong: (world == null ? getLevel() : world).getChunkAt(sectionPosition.a(), sectionPosition.c(), ChunkStatus.STRUCTURE_REFERENCES).b(structureGenerator)) { // Tuinity - fix deadlock on world gen - chunk can be unloaded while generating, so we should be using the generator's regionlimitedaccess so we always get the chunk
+             SectionPosition sectionPosition1 = SectionPosition.a(new ChunkCoordIntPair(curLong), 0);
+             StructureStart<?> structurestart = a(sectionPosition1, structureGenerator, getLevel().getChunkAt(sectionPosition1.a(), sectionPosition1.c(), ChunkStatus.STRUCTURE_STARTS));
+             if (structurestart != null && structurestart.e()) {
+@@ -64,8 +69,12 @@ public class StructureManager {
+     }
+ 
+     public StructureStart<?> a(BlockPosition blockposition, boolean flag, StructureGenerator<?> structuregenerator) {
++        // Tuinity start - add world parameter
++        return this.getStructureStarts(blockposition,flag, structuregenerator, null);
++    }
++    public StructureStart<?> getStructureStarts(BlockPosition blockposition, boolean flag, StructureGenerator<?> structuregenerator, IWorldReader world) {
+         // Paper start - remove structure streams
+-        for (StructureStart<?> structurestart : getFeatureStarts(SectionPosition.a(blockposition), structuregenerator)) {
++        for (StructureStart<?> structurestart : getFeatureStarts(SectionPosition.a(blockposition), structuregenerator, world)) { // Tuinity end - add world parameter
+             if (structurestart.c().b(blockposition)) {
+                 if (!flag) {
+                     return structurestart;
