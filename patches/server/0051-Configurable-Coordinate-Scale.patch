@@ -1,0 +1,117 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Chase Whipple <chasewhip20@gmail.com>
+Date: Sun, 16 Aug 2020 23:53:25 -0600
+Subject: [PATCH] Configurable Coordinate Scale
+
+
+diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+index 996be9b7f1ffcac703a0f59eac051ed91ddc8b5e..ca8329977ff36cb0f4372e394827738843724916 100644
+--- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
++++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+@@ -268,6 +268,12 @@ public final class TuinityConfig {
+             this.spawnLimitAmbient = this.getInt(path + ".ambient", -1);
+         }
+ 
++        public double coordinateScale;
++
++        private void configurableCoordinateScale(){
++            this.coordinateScale = this.getDouble("coordinate-scale", -1);
++        }
++
+     }
+ 
+ }
+\ No newline at end of file
+diff --git a/src/main/java/net/minecraft/server/DimensionManager.java b/src/main/java/net/minecraft/server/DimensionManager.java
+index 286ffd7e62af8484c2e80a5a7bf297d5975cec4f..9de087dea0faa39f5347b580f5f23e9b6856842c 100644
+--- a/src/main/java/net/minecraft/server/DimensionManager.java
++++ b/src/main/java/net/minecraft/server/DimensionManager.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.server;
+ 
++import com.mojang.datafixers.util.Function3;
+ import com.mojang.serialization.Codec;
+ import com.mojang.serialization.DataResult;
+ import com.mojang.serialization.Dynamic;
+@@ -45,7 +46,7 @@ public class DimensionManager {
+     private final boolean hasCeiling;
+     private final boolean ultraWarm;
+     private final boolean natural;
+-    private final double coordinateScale;
++    private double coordinateScale; // Tuinity - Configurable Coordinate Scale
+     private final boolean createDragonBattle;
+     private final boolean piglinSafe;
+     private final boolean bedWorks;
+@@ -121,10 +122,12 @@ public class DimensionManager {
+     public static IRegistryCustom.Dimension a(IRegistryCustom.Dimension iregistrycustom_dimension) {
+         IRegistryWritable<DimensionManager> iregistrywritable = iregistrycustom_dimension.b(IRegistry.K);
+ 
+-        iregistrywritable.a(DimensionManager.OVERWORLD, (Object) DimensionManager.OVERWORLD_IMPL, Lifecycle.stable());
+-        iregistrywritable.a(DimensionManager.l, (Object) DimensionManager.m, Lifecycle.stable());
+-        iregistrywritable.a(DimensionManager.THE_NETHER, (Object) DimensionManager.THE_NETHER_IMPL, Lifecycle.stable());
+-        iregistrywritable.a(DimensionManager.THE_END, (Object) DimensionManager.THE_END_IMPL, Lifecycle.stable());
++        // Tuinity start - Decompile Fix
++        iregistrywritable.a(DimensionManager.OVERWORLD, DimensionManager.OVERWORLD_IMPL, Lifecycle.stable());
++        iregistrywritable.a(DimensionManager.l, DimensionManager.m, Lifecycle.stable());
++        iregistrywritable.a(DimensionManager.THE_NETHER, DimensionManager.THE_NETHER_IMPL, Lifecycle.stable());
++        iregistrywritable.a(DimensionManager.THE_END, DimensionManager.THE_END_IMPL, Lifecycle.stable());
++        // Tuinity end - Decompile Fix
+         return iregistrycustom_dimension;
+     }
+ 
+@@ -133,9 +136,16 @@ public class DimensionManager {
+             return (GeneratorSettingBase) iregistry1.d(GeneratorSettingBase.f);
+         });
+     }
++    // Tuinity start - Decompile Fix
++    private static class WorldChunkManagerMultiNoiseProxy extends WorldChunkManagerMultiNoise.b{
++        public WorldChunkManagerMultiNoiseProxy(MinecraftKey var0, Function3<WorldChunkManagerMultiNoise.b, IRegistry<BiomeBase>, Long, WorldChunkManagerMultiNoise> var1) {
++            super(var0, var1);
++        }
++    }
++    // Tuinity end - Decompile Fix
+ 
+     private static ChunkGenerator b(IRegistry<BiomeBase> iregistry, IRegistry<GeneratorSettingBase> iregistry1, long i) {
+-        return new ChunkGeneratorAbstract(WorldChunkManagerMultiNoise.b.a.a(iregistry, i), i, () -> {
++        return new ChunkGeneratorAbstract(WorldChunkManagerMultiNoiseProxy.a.a(iregistry, i), i, () -> { // Tuinity - Decompile Fix
+             return (GeneratorSettingBase) iregistry1.d(GeneratorSettingBase.e);
+         });
+     }
+@@ -143,10 +153,10 @@ public class DimensionManager {
+     public static RegistryMaterials<WorldDimension> a(IRegistry<DimensionManager> iregistry, IRegistry<BiomeBase> iregistry1, IRegistry<GeneratorSettingBase> iregistry2, long i) {
+         RegistryMaterials<WorldDimension> registrymaterials = new RegistryMaterials<>(IRegistry.M, Lifecycle.experimental());
+ 
+-        registrymaterials.a(WorldDimension.THE_NETHER, (Object) (new WorldDimension(() -> {
++        registrymaterials.a(WorldDimension.THE_NETHER, (new WorldDimension(() -> {
+             return (DimensionManager) iregistry.d(DimensionManager.THE_NETHER);
+         }, b(iregistry1, iregistry2, i))), Lifecycle.stable());
+-        registrymaterials.a(WorldDimension.THE_END, (Object) (new WorldDimension(() -> {
++        registrymaterials.a(WorldDimension.THE_END, (new WorldDimension(() -> {
+             return (DimensionManager) iregistry.d(DimensionManager.THE_END);
+         }, a(iregistry1, iregistry2, i))), Lifecycle.stable());
+         return registrymaterials;
+@@ -244,4 +254,10 @@ public class DimensionManager {
+     public boolean a(DimensionManager dimensionmanager) {
+         return this == dimensionmanager ? true : this.hasSkylight == dimensionmanager.hasSkylight && this.hasCeiling == dimensionmanager.hasCeiling && this.ultraWarm == dimensionmanager.ultraWarm && this.natural == dimensionmanager.natural && this.coordinateScale == dimensionmanager.coordinateScale && this.createDragonBattle == dimensionmanager.createDragonBattle && this.piglinSafe == dimensionmanager.piglinSafe && this.bedWorks == dimensionmanager.bedWorks && this.respawnAnchorWorks == dimensionmanager.respawnAnchorWorks && this.hasRaids == dimensionmanager.hasRaids && this.logicalHeight == dimensionmanager.logicalHeight && Float.compare(dimensionmanager.ambientLight, this.ambientLight) == 0 && this.fixedTime.equals(dimensionmanager.fixedTime) && this.genLayerZoomer.equals(dimensionmanager.genLayerZoomer) && this.infiniburn.equals(dimensionmanager.infiniburn) && this.effects.equals(dimensionmanager.effects);
+     }
++
++    // Tuinity start - Configurable Coordinate Scale
++    public void setCoordinateScale(double coordinateScale) {
++        this.coordinateScale = coordinateScale;
++    }
++    // Tuinity end - Configurable Coordinate Scale
+ }
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 4834f7569a865fb01c0c905d78bb391e05370475..ec8361dd08ec41bc7a28717e247933ac7a792ef5 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -144,6 +144,9 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+         this.x = dimensionmanager;
+         this.dimensionKey = resourcekey;
+         this.isClientSide = flag;
++
++        dimensionmanager.setCoordinateScale(tuinityConfig.coordinateScale == -1 ? dimensionmanager.getCoordinateScale() : tuinityConfig.coordinateScale);  //Tuinity - Configurable Coordinate Scale
++
+         if (dimensionmanager.getCoordinateScale() != 1.0D) {
+             this.worldBorder = new WorldBorder() {
+                 @Override
