@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Wed, 19 Aug 2020 10:57:08 -0700
+Subject: [PATCH] Range check flag dirty calls in PlayerChunk
+
+Simply return.
+
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index 577f0a234b5774bb71d60c1993c61e74da00b3cc..a65da4e7d18146a74ebcfa7d1946e2c153e430b4 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -361,7 +361,7 @@ public class PlayerChunk {
+     public void a(BlockPosition blockposition) {
+         Chunk chunk = this.getSendingChunk(); // Paper - no-tick view distance
+ 
+-        if (chunk != null) {
++        if (chunk != null && (blockposition.getY() >= 0 && blockposition.getY() <= 255)) { // Tuinity - updates cannot happen in sections that don't exist
+             byte b0 = (byte) SectionPosition.a(blockposition.getY());
+ 
+             if (this.dirtyBlocks[b0] == null) {
+@@ -419,7 +419,7 @@ public class PlayerChunk {
+                         this.a(world, blockposition, iblockdata);
+                     } else {
+                         ChunkSection chunksection = chunk.getSections()[sectionposition.getY()];
+-                        if (chunksection == null) chunksection = new ChunkSection(sectionposition.getY(), chunk, world, true); // Paper - make a new chunk section if none was found
++                        //if (chunksection == null) chunksection = new ChunkSection(sectionposition.getY(), chunk, world, true); // Paper - make a new chunk section if none was found // Tuinity - handled better by spigot
+                         PacketPlayOutMultiBlockChange packetplayoutmultiblockchange = new PacketPlayOutMultiBlockChange(sectionposition, shortset, chunksection, this.x);
+ 
+                         this.a(packetplayoutmultiblockchange, false);
