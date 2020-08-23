@@ -49,7 +49,13 @@ Requirements:
 - You need `jdk` 8+ installed to compile (and `jre` 8+ to run)
 - Anything else that `paper` requires to build
 
-If all you want is a paperclip server jar, just run `./tuinity jar`
+**Git Bash:**
+
+> git clone  --recurse-submodules https://github.com/Spottedleaf/Tuinity.git
+
+> cd Tuinity
+
+> If all you want is a paperclip server jar, just run `./tuinity jar`
 
 Otherwise, to setup the `Tuinity-API` and `Tuinity-Server` repo, just run the following command
 in your project root `./tuinity patch` additionally, after you run `./tuinity patch` you can run `./tuinity build` to build the 
