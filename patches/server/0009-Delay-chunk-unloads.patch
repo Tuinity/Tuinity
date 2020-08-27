@@ -47,7 +47,7 @@ index 67e9a32c2b56e0ca70ef138873b1dc9dc215e452..4b71f4c55e5f3dceac3c46eb40d5457f
      public static final class WorldConfig {
  
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index d3588e238506ea859407b72da0d0cf291945b2ec..0c4aed5f5f5ea391c6997cf84b5bfb47ba635dcb 100644
+index d3588e238506ea859407b72da0d0cf291945b2ec..1b750da9e09fa2c9e16db63dff165336ce12e087 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
@@ -122,7 +122,7 @@ index d3588e238506ea859407b72da0d0cf291945b2ec..0c4aed5f5f5ea391c6997cf84b5bfb47
 +                if (com.tuinity.tuinity.config.TuinityConfig.delayChunkUnloadsBy <= 0) {
 +                    return ret;
 +                }
-+                if (ret && ticket.getTicketType() != TicketType.DELAYED_UNLOAD && ticket.getTicketLevel() < tempLevel[0]) {
++                if (ret && ticket.getTicketType().delayUnloadViable && ticket.getTicketLevel() < tempLevel[0]) {
 +                    tempLevel[0] = ticket.getTicketLevel();
 +                }
 +                if (ticket.getTicketType() == TicketType.DELAYED_UNLOAD && ticket.isCached) {
@@ -163,7 +163,7 @@ index d3588e238506ea859407b72da0d0cf291945b2ec..0c4aed5f5f5ea391c6997cf84b5bfb47
 -                    arraysetsorted.add(delayUnload);
 -                }
 +            // Tuinity start - delay chunk unloads
-+            if (com.tuinity.tuinity.config.TuinityConfig.delayChunkUnloadsBy > 0 && ticket.getTicketType() != TicketType.DELAYED_UNLOAD) {
++            if (com.tuinity.tuinity.config.TuinityConfig.delayChunkUnloadsBy > 0 && ticket.getTicketType().delayUnloadViable) {
 +                this.computeDelayedTicketFor(i, ticket.getTicketLevel(), arraysetsorted);
              }
 -            // Paper end
@@ -209,18 +209,29 @@ index e41cb8613efc86499dfe3be36c9130ab6dc9b89e..c19ffb925a02d123da8a5c77186e6105
          return j != 0L && i - this.d > j;
      }
 diff --git a/src/main/java/net/minecraft/server/TicketType.java b/src/main/java/net/minecraft/server/TicketType.java
-index 5c789b25f1df2eae8ea8ceb4ba977ba336fe6d5e..358d87102eddd5bb11ca9b33c484fb36ca1b823c 100644
+index 5c789b25f1df2eae8ea8ceb4ba977ba336fe6d5e..ab0417b3897911ba29602d696f4842bfb77cee16 100644
 --- a/src/main/java/net/minecraft/server/TicketType.java
 +++ b/src/main/java/net/minecraft/server/TicketType.java
-@@ -26,7 +26,7 @@ public class TicketType<T> {
+@@ -26,8 +26,18 @@ public class TicketType<T> {
      public static final TicketType<Long> ASYNC_LOAD = a("async_load", Long::compareTo); // Paper
      public static final TicketType<ChunkCoordIntPair> PRIORITY = a("priority", Comparator.comparingLong(ChunkCoordIntPair::pair), 300); // Paper
      public static final TicketType<ChunkCoordIntPair> URGENT = a("urgent", Comparator.comparingLong(ChunkCoordIntPair::pair), 300); // Paper
 -    public static final TicketType<Long> DELAY_UNLOAD = a("delay_unload", Long::compareTo, 300); // Paper
 +    public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo); // Tuinity - delay chunk unloads
  
++    // Tuinity start - delay chunk unloads
++    boolean delayUnloadViable = true;
++    static {
++        TicketType.LIGHT.delayUnloadViable = false;
++        TicketType.PLUGIN.delayUnloadViable = false;
++        TicketType.PRIORITY.delayUnloadViable = false;
++        TicketType.URGENT.delayUnloadViable = false;
++        TicketType.DELAYED_UNLOAD.delayUnloadViable = false;
++    }
++    // Tuinity end - delay chunk unloads
      public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
          return new TicketType<>(s, comparator, 0L);
+     }
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 index 299f57ca2a65887a0d7e7c584fc1bd5c783b0db2..f74aefc804f783a016bdda64aec64e4eedccf155 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
