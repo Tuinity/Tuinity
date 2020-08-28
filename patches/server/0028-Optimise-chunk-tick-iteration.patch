@@ -6,10 +6,23 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 6025dc4c3cf99c19a94e561fd19527941b677d5b..b8c8777d3534f763afc7fe5fab4ba458a3d4bb8d 100644
+index f56874395736527ee7ecbdf4ee37f1ada299164a..aa8e051d1119acbdd8b0ddd986d4bab8327301bd 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -908,6 +908,16 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -22,6 +22,12 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap; // Paper
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ 
++// Tuinity start
++import it.unimi.dsi.fastutil.objects.Object2BooleanLinkedOpenHashMap;
++import it.unimi.dsi.fastutil.objects.ObjectBidirectionalIterator;
++import it.unimi.dsi.fastutil.objects.Object2BooleanMap;
++// Tuinity end
++
+ public class ChunkProviderServer extends IChunkProvider {
+ 
+     private static final List<ChunkStatus> b = ChunkStatus.a(); static final List<ChunkStatus> getPossibleChunkStatuses() { return ChunkProviderServer.b; } // Paper - OBFHELPER
+@@ -909,6 +915,16 @@ public class ChunkProviderServer extends IChunkProvider {
          this.clearCache();
      }
  
@@ -20,13 +33,13 @@ index 6025dc4c3cf99c19a94e561fd19527941b677d5b..b8c8777d3534f763afc7fe5fab4ba458
 +    // chunk map that will give the same behaviour as previous - without COW.
 +    final com.destroystokyo.paper.util.maplist.ChunkList entityTickingChunks = new com.destroystokyo.paper.util.maplist.ChunkList();
 +    boolean isTickingChunks;
-+    final it.unimi.dsi.fastutil.objects.Object2BooleanLinkedOpenHashMap<Chunk> pendingEntityTickingChunkChanges = new it.unimi.dsi.fastutil.objects.Object2BooleanLinkedOpenHashMap<>(16, 0.8f);
++    final Object2BooleanLinkedOpenHashMap<Chunk> pendingEntityTickingChunkChanges = new Object2BooleanLinkedOpenHashMap<>(16, 0.8f);
 +    // Tuinity end - optimise chunk tick iteration
 +
      private void tickChunks() {
          long i = this.world.getTime();
          long j = i - this.lastTickTime;
-@@ -979,19 +989,21 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -980,19 +996,21 @@ public class ChunkProviderServer extends IChunkProvider {
              //List<PlayerChunk> list = Lists.newArrayList(this.playerChunkMap.f()); // Paper
              //Collections.shuffle(list); // Paper
              // Paper - moved up
@@ -56,7 +69,7 @@ index 6025dc4c3cf99c19a94e561fd19527941b677d5b..b8c8777d3534f763afc7fe5fab4ba458
                          ChunkCoordIntPair chunkcoordintpair = playerchunk.i();
  
                          if (!this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false)) { // Paper - optimise isOutsideOfRange
-@@ -1007,7 +1019,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1008,7 +1026,23 @@ public class ChunkProviderServer extends IChunkProvider {
                          }
                      }
                  }
@@ -66,8 +79,8 @@ index 6025dc4c3cf99c19a94e561fd19527941b677d5b..b8c8777d3534f763afc7fe5fab4ba458
 +            if (!this.pendingEntityTickingChunkChanges.isEmpty()) {
 +                // iterate backwards: fastutil maps have better remove times when iterating backwards
 +                // (this is due to the fact that we likely wont shift entries on remove calls)
-+                for (it.unimi.dsi.fastutil.objects.ObjectBidirectionalIterator<it.unimi.dsi.fastutil.objects.Object2BooleanMap.Entry<Chunk>> iterator = this.pendingEntityTickingChunkChanges.object2BooleanEntrySet().fastIterator(this.pendingEntityTickingChunkChanges.object2BooleanEntrySet().last()); iterator.hasPrevious();) {
-+                    it.unimi.dsi.fastutil.objects.Object2BooleanMap.Entry<Chunk> entry = iterator.previous();
++                for (ObjectBidirectionalIterator<Object2BooleanMap.Entry<Chunk>> iterator = this.pendingEntityTickingChunkChanges.object2BooleanEntrySet().fastIterator(this.pendingEntityTickingChunkChanges.object2BooleanEntrySet().last()); iterator.hasPrevious();) {
++                    Object2BooleanMap.Entry<Chunk> entry = iterator.previous();
 +
 +                    if (entry.getBooleanValue()) {
 +                        this.entityTickingChunks.add(entry.getKey());
@@ -82,10 +95,10 @@ index 6025dc4c3cf99c19a94e561fd19527941b677d5b..b8c8777d3534f763afc7fe5fab4ba458
              if (flag1) {
                  try (co.aikar.timings.Timing ignored = this.world.timings.miscMobSpawning.startTiming()) { // Paper - timings
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 35ceb0734bc25e44ebde0d3a817f1d7ad636dffc..d003ac55a6a29fb9a28458b9f2c0eb7a6a4efed3 100644
+index 0c2cfdbc0dafbc1a17c031f3efb67f7169eee95f..f52543b791326c8e9a2678c85522b3d799d65e85 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -691,7 +691,14 @@ public class PlayerChunk {
+@@ -700,7 +700,14 @@ public class PlayerChunk {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      Chunk entityTickingChunk = either.left().get();
                      PlayerChunk.this.isEntityTickingReady = true;
@@ -101,7 +114,7 @@ index 35ceb0734bc25e44ebde0d3a817f1d7ad636dffc..d003ac55a6a29fb9a28458b9f2c0eb7a
  
  
  
-@@ -703,6 +710,17 @@ public class PlayerChunk {
+@@ -712,6 +719,17 @@ public class PlayerChunk {
  
          if (flag6 && !flag7) {
              this.entityTickingFuture.complete(PlayerChunk.UNLOADED_CHUNK); this.isEntityTickingReady = false; // Paper - cache chunk ticking stage

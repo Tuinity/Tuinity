@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Sat, 11 Jul 2020 05:09:28 -0700
+Subject: [PATCH] Separate lookup locking from state access in UserCache
+
+Prevent lookups from stalling simple state access/write calls
+
+diff --git a/src/main/java/net/minecraft/server/UserCache.java b/src/main/java/net/minecraft/server/UserCache.java
+index 2484293b12d9ec88b8a2570aa853a12f0d858193..1496c43fc9487caf6ddb3782a9d1c79ef6ca1e94 100644
+--- a/src/main/java/net/minecraft/server/UserCache.java
++++ b/src/main/java/net/minecraft/server/UserCache.java
+@@ -49,6 +49,11 @@ public class UserCache {
+     private final File g;
+     private final AtomicLong h = new AtomicLong();
+ 
++    // Tuinity start
++    protected final java.util.concurrent.locks.ReentrantLock stateLock = new java.util.concurrent.locks.ReentrantLock();
++    protected final java.util.concurrent.locks.ReentrantLock lookupLock = new java.util.concurrent.locks.ReentrantLock();
++    // Tuinity end
++
+     public UserCache(GameProfileRepository gameprofilerepository, File file) {
+         this.e = gameprofilerepository;
+         this.g = file;
+@@ -56,6 +61,7 @@ public class UserCache {
+     }
+ 
+     private void a(UserCache.UserCacheEntry usercache_usercacheentry) {
++        try { this.stateLock.lock(); // Tuinity - allow better concurrency
+         GameProfile gameprofile = usercache_usercacheentry.a();
+ 
+         usercache_usercacheentry.a(this.d());
+@@ -70,6 +76,7 @@ public class UserCache {
+         if (uuid != null) {
+             this.d.put(uuid, usercache_usercacheentry);
+         }
++        } finally { this.stateLock.unlock(); } // Tuinity - allow better concurrency
+ 
+     }
+ 
+@@ -107,7 +114,7 @@ public class UserCache {
+     }
+ 
+     public void saveProfile(GameProfile gameprofile) { a(gameprofile); } // Paper - OBFHELPER
+-    public synchronized void a(GameProfile gameprofile) { // Paper - synchronize
++    public void a(GameProfile gameprofile) { // Paper - synchronize  // Tuinity - allow better concurrency
+         Calendar calendar = Calendar.getInstance();
+ 
+         calendar.setTime(new Date());
+@@ -124,8 +131,9 @@ public class UserCache {
+     }
+ 
+     @Nullable
+-    public synchronized GameProfile getProfile(String s) { // Paper - synchronize
++    public GameProfile getProfile(String s) { // Paper - synchronize // Tuinity start - allow better concurrency
+         String s1 = s.toLowerCase(Locale.ROOT);
++        boolean stateLocked = true; try { this.stateLock.lock(); // Tuinity - allow better concurrency
+         UserCache.UserCacheEntry usercache_usercacheentry = (UserCache.UserCacheEntry) this.c.get(s1);
+         boolean flag = false;
+ 
+@@ -139,10 +147,14 @@ public class UserCache {
+         GameProfile gameprofile;
+ 
+         if (usercache_usercacheentry != null) {
++            stateLocked = false; this.stateLock.unlock(); // Tuinity - allow better concurrency
+             usercache_usercacheentry.a(this.d());
+             gameprofile = usercache_usercacheentry.a();
+         } else {
++            stateLocked = false; this.stateLock.unlock(); // Tuinity - allow better concurrency
++            try { this.lookupLock.lock(); // Tuinity - allow better concurrency
+             gameprofile = a(this.e, s); // Spigot - use correct case for offline players
++            } finally { this.lookupLock.unlock(); } // Tuinity - allow better concurrency
+             if (gameprofile != null) {
+                 this.a(gameprofile);
+                 flag = false;
+@@ -154,6 +166,7 @@ public class UserCache {
+         }
+ 
+         return gameprofile;
++        } finally { if (stateLocked) {  this.stateLock.unlock(); } } // Tuinity - allow better concurrency
+     }
+ 
+     // Paper start
+@@ -287,7 +300,9 @@ public class UserCache {
+     }
+ 
+     private Stream<UserCache.UserCacheEntry> a(int i) {
++        try { this.stateLock.lock(); // Tuinity - allow better concurrency
+         return ImmutableList.copyOf(this.d.values()).stream().sorted(Comparator.comparing(UserCache.UserCacheEntry::c).reversed()).limit((long) i);
++        } finally { this.stateLock.unlock(); } // Tuinity - allow better concurrency
+     }
+ 
+     private static JsonElement a(UserCache.UserCacheEntry usercache_usercacheentry, DateFormat dateformat) {

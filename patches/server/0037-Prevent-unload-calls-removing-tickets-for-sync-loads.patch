@@ -5,10 +5,10 @@ Subject: [PATCH] Prevent unload() calls removing tickets for sync loads
 
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index b8c8777d3534f763afc7fe5fab4ba458a3d4bb8d..812825d4c8dd96ca565b745bfb65c9d93308e255 100644
+index aa8e051d1119acbdd8b0ddd986d4bab8327301bd..11ce31795468a010261fdfe51061a2d62ed02857 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -702,6 +702,8 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -709,6 +709,8 @@ public class ChunkProviderServer extends IChunkProvider {
          Arrays.fill(this.cacheChunk, (Object) null);
      }
  
@@ -17,7 +17,7 @@ index b8c8777d3534f763afc7fe5fab4ba458a3d4bb8d..812825d4c8dd96ca565b745bfb65c9d9
      private CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getChunkFutureMainThread(int i, int j, ChunkStatus chunkstatus, boolean flag) {
          // Paper start - add isUrgent - old sig left in place for dirty nms plugins
          return getChunkFutureMainThread(i, j, chunkstatus, flag, false);
-@@ -720,9 +722,12 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -727,9 +729,12 @@ public class ChunkProviderServer extends IChunkProvider {
              PlayerChunk.State currentChunkState = PlayerChunk.getChunkState(playerchunk.getTicketLevel());
              currentlyUnloading = (oldChunkState.isAtLeast(PlayerChunk.State.BORDER) && !currentChunkState.isAtLeast(PlayerChunk.State.BORDER));
          }
@@ -30,12 +30,12 @@ index b8c8777d3534f763afc7fe5fab4ba458a3d4bb8d..812825d4c8dd96ca565b745bfb65c9d9
              if (isUrgent) this.chunkMapDistance.markUrgent(chunkcoordintpair); // Paper
              if (this.a(playerchunk, l)) {
                  GameProfilerFiller gameprofilerfiller = this.world.getMethodProfiler();
-@@ -733,12 +738,20 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -740,12 +745,20 @@ public class ChunkProviderServer extends IChunkProvider {
                  playerchunk = this.getChunk(k);
                  gameprofilerfiller.exit();
                  if (this.a(playerchunk, l)) {
 +                    this.chunkMapDistance.removeTicketAtLevel(TicketType.REQUIRED_LOAD, chunkcoordintpair, l, identifier); // Tuinity
-                     throw (IllegalStateException) SystemUtils.c(new IllegalStateException("No chunk holder after ticket has been added"));
+                     throw (IllegalStateException) SystemUtils.c((Throwable) (new IllegalStateException("No chunk holder after ticket has been added")));
                  }
              }
 -        }
@@ -53,7 +53,7 @@ index b8c8777d3534f763afc7fe5fab4ba458a3d4bb8d..812825d4c8dd96ca565b745bfb65c9d9
              future.thenAccept(either -> this.chunkMapDistance.clearUrgent(chunkcoordintpair));
          }
 diff --git a/src/main/java/net/minecraft/server/TicketType.java b/src/main/java/net/minecraft/server/TicketType.java
-index 358d87102eddd5bb11ca9b33c484fb36ca1b823c..4657b05a4213c534a653aefd991645e27a6a4b3b 100644
+index ab0417b3897911ba29602d696f4842bfb77cee16..25cff70b45aa2c92a9ffb2cd968ffef5bb1a6c2f 100644
 --- a/src/main/java/net/minecraft/server/TicketType.java
 +++ b/src/main/java/net/minecraft/server/TicketType.java
 @@ -27,6 +27,7 @@ public class TicketType<T> {
@@ -62,5 +62,5 @@ index 358d87102eddd5bb11ca9b33c484fb36ca1b823c..4657b05a4213c534a653aefd991645e2
      public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo); // Tuinity - delay chunk unloads
 +    public static final TicketType<Long> REQUIRED_LOAD = a("required_load", Long::compareTo); // Tuinity - make sure getChunkAt does not fail
  
-     public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
-         return new TicketType<>(s, comparator, 0L);
+     // Tuinity start - delay chunk unloads
+     boolean delayUnloadViable = true;
