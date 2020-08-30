@@ -1,0 +1,471 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 27 Aug 2020 09:40:16 -0700
+Subject: [PATCH] Optimise closest entity lookup used by AI goals
+
+Use a special entity slice for tracking entities by class as well
+as counts per chunk. This should reduce the number of entities searched.
+
+By default, use a lookup method that is optimised to search the
+nearest chunk first and return the closest entity in the nearest chunk.
+In the cases that there is an entity targetted, this will hopefully
+reduce the total number of chunks searched in the first place.
+This deviates a bit from vanilla, so there will be a config option.
+
+diff --git a/src/main/java/com/tuinity/tuinity/chunk/ChunkEntitiesByClass.java b/src/main/java/com/tuinity/tuinity/chunk/ChunkEntitiesByClass.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..d7eeaf28fddb6096297626ccb3b5a5202063bfa9
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/chunk/ChunkEntitiesByClass.java
+@@ -0,0 +1,207 @@
++package com.tuinity.tuinity.chunk;
++
++
++import com.destroystokyo.paper.util.maplist.EntityList;
++import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
++import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
++import net.minecraft.server.AxisAlignedBB;
++import net.minecraft.server.Chunk;
++import net.minecraft.server.Entity;
++import net.minecraft.server.EntityComplexPart;
++import net.minecraft.server.EntityEnderDragon;
++import net.minecraft.server.MathHelper;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.function.Predicate;
++
++public final class ChunkEntitiesByClass {
++
++    // this class attempts to restore the original intent of nms.EntitySlice and improve upon it:
++    // fast lookups for specific entity types in a chunk. However vanilla does not track things on a
++    // chunk-wide basis, which is very important to our optimisations here: we want to eliminate chunks
++    // before searching multiple slices. We also want to maintain only lists that we need to maintain for memory purposes:
++    // so we have no choice but to lazily initialise mappings of class -> entity.
++    // Typically these are used for entity AI lookups, which means we take a heavy initial cost but ultimately win
++    // since AI lookups happen a lot.
++
++    // This optimisation is only half of the battle with entity AI, we need to be smarter about picking the closest entity.
++    // See World#getClosestEntity
++
++    // aggressively high load factors for each map here + fastutil collections: we want the smallest memory footprint
++    private final ExposedReference2IntOpenHashMap<Class<?>> chunkWideCount = new ExposedReference2IntOpenHashMap<>(4, 0.9f);
++    {
++        this.chunkWideCount.defaultReturnValue(Integer.MIN_VALUE);
++    }
++    private final ChunkEntitiesByClass.EntitySlice[] slices = new ChunkEntitiesByClass.EntitySlice[16];
++    private final Chunk chunk;
++
++    public ChunkEntitiesByClass(final Chunk chunk) {
++        this.chunk = chunk;
++    }
++
++    public boolean hasEntitiesMaybe(final Class<?> clazz) {
++        final int count = this.chunkWideCount.getInt(clazz);
++        return count == Integer.MIN_VALUE || count > 0;
++    }
++
++    public void addEntity(final Entity entity, final int sectionY) {
++        if (this.chunkWideCount.isEmpty()) {
++            return;
++        }
++
++        final Object[] keys = this.chunkWideCount.getKey();
++        final int[] values = this.chunkWideCount.getValue();
++
++        EntitySlice slice = this.slices[sectionY];
++        if (slice == null) {
++            slice = this.slices[sectionY] = new EntitySlice();
++        }
++
++        for (int i = 0, len = keys.length; i < len; ++i) {
++            final Object _key = keys[i];
++            if (!(_key instanceof Class)) {
++                continue;
++            }
++            final Class<?> key = (Class<?>)_key;
++            if (key.isInstance(entity)) {
++                ++values[i];
++                slice.entitiesByLookupClass.computeIfAbsent(key, (keyInMap) -> {
++                    return new ArrayList<>();
++                }).add(entity);
++            }
++        }
++    }
++
++    public void removeEntity(final Entity entity, final int sectionY) {
++        if (this.chunkWideCount.isEmpty()) {
++            return;
++        }
++
++        final Object[] keys = this.chunkWideCount.getKey();
++        final int[] values = this.chunkWideCount.getValue();
++
++        EntitySlice slice = this.slices[sectionY];
++        if (slice == null) {
++            return; // seriously brain damaged plugins
++        }
++
++        for (int i = 0, len = keys.length; i < len; ++i) {
++            final Object _key = keys[i];
++            if (!(_key instanceof Class)) {
++                continue;
++            }
++            final Class<?> key = (Class<?>)_key;
++            if (key.isInstance(entity)) {
++                --values[i];
++                final ArrayList<Entity> list = slice.entitiesByLookupClass.get(key);
++                if (list == null) {
++                    return; // seriously brain damaged plugins
++                }
++                list.remove(entity);
++            }
++        }
++    }
++
++
++    private void computeClass(final Class<?> clazz) {
++        int totalCount = 0;
++
++        EntityList entityList = this.chunk.entities;
++        Entity[] entities = entityList.getRawData();
++        for (int i = 0, len = entityList.size(); i < len; ++i) {
++            final Entity entity = entities[i];
++
++            if (clazz.isInstance(entity)) {
++                ++totalCount;
++                EntitySlice slice = this.slices[entity.chunkY];
++                if (slice == null) {
++                    slice = this.slices[entity.chunkY] = new EntitySlice();
++                }
++                slice.entitiesByLookupClass.computeIfAbsent(clazz, (keyInMap) -> {
++                    return new ArrayList<>();
++                }).add(entity);
++            }
++        }
++
++        this.chunkWideCount.put(clazz, totalCount);
++    }
++
++    public void lookupClass(final Class<?> clazz, final Entity entity, final AxisAlignedBB boundingBox, final Predicate<Entity> predicate, final List<Entity> into) {
++        final int count = this.chunkWideCount.getInt(clazz);
++        if (count == Integer.MIN_VALUE) {
++            this.computeClass(clazz);
++            if (this.chunkWideCount.getInt(clazz) <= 0) {
++                return;
++            }
++        } else if (count <= 0) {
++            return;
++        }
++
++        // copied from getEntities
++        int min = MathHelper.floor((boundingBox.minY - 2.0D) / 16.0D);
++        int max = MathHelper.floor((boundingBox.maxY + 2.0D) / 16.0D);
++
++        min = MathHelper.clamp(min, 0, this.slices.length - 1);
++        max = MathHelper.clamp(max, 0, this.slices.length - 1);
++
++        for (int y = min; y <= max; ++y) {
++            final ChunkEntitiesByClass.EntitySlice slice = this.slices[y];
++            if (slice == null) {
++                continue;
++            }
++
++            final ArrayList<Entity> entities = slice.entitiesByLookupClass.get(clazz);
++            if (entities == null) {
++                continue;
++            }
++
++            for (int i = 0, len = entities.size(); i < len; ++i) {
++                Entity entity1 = entities.get(i);
++                if (entity1.shouldBeRemoved) continue; // Paper
++
++                if (entity1 != entity && entity1.getBoundingBox().intersects(boundingBox)) {
++                    if (predicate == null || predicate.test(entity1)) {
++                        into.add(entity1);
++                    }
++
++                    if (!(entity1 instanceof EntityEnderDragon)) {
++                        continue;
++                    }
++
++                    EntityComplexPart[] aentitycomplexpart = ((EntityEnderDragon)entity1).children;
++                    int l = aentitycomplexpart.length;
++
++                    for (int i1 = 0; i1 < l; ++i1) {
++                        EntityComplexPart entitycomplexpart = aentitycomplexpart[i1];
++
++                        if (entitycomplexpart != entity && entitycomplexpart.getBoundingBox().intersects(boundingBox) && (predicate == null || predicate.test(entitycomplexpart))) {
++                            into.add(entitycomplexpart);
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++
++    static final class EntitySlice {
++
++        final Reference2ObjectOpenHashMap<Class<?>, ArrayList<Entity>> entitiesByLookupClass = new Reference2ObjectOpenHashMap<>(4, 0.9f);
++
++    }
++
++    static final class ExposedReference2IntOpenHashMap<K> extends Reference2IntOpenHashMap<K> {
++
++        public ExposedReference2IntOpenHashMap(final int expected, final float loadFactor) {
++            super(expected, loadFactor);
++        }
++
++        public Object[] getKey() {
++            return this.key;
++        }
++
++        public int[] getValue() {
++            return this.value;
++        }
++    }
++}
+diff --git a/src/main/java/com/tuinity/tuinity/util/CachedLists.java b/src/main/java/com/tuinity/tuinity/util/CachedLists.java
+index a54f516ba72806c0470259436f889faa8f6e7586..40da31d07206e3239ab7eabad3d5cbde2f1c181a 100644
+--- a/src/main/java/com/tuinity/tuinity/util/CachedLists.java
++++ b/src/main/java/com/tuinity/tuinity/util/CachedLists.java
+@@ -1,6 +1,7 @@
+ package com.tuinity.tuinity.util;
+ 
+ import net.minecraft.server.AxisAlignedBB;
++import net.minecraft.server.Chunk;
+ import net.minecraft.server.Entity;
+ import org.bukkit.Bukkit;
+ import org.bukkit.craftbukkit.util.UnsafeList;
+@@ -46,6 +47,25 @@ public class CachedLists {
+         tempGetEntitiesListInUse = false;
+     }
+ 
++    static final UnsafeList<Chunk> TEMP_GET_CHUNKS_LIST = new UnsafeList<>(1024);
++    static boolean tempGetChunksListInUse;
++
++    public static UnsafeList<Chunk> getTempGetChunksList() {
++        if (!Bukkit.isPrimaryThread() || tempGetChunksListInUse) {
++            return new UnsafeList<>();
++        }
++        tempGetChunksListInUse = true;
++        return TEMP_GET_CHUNKS_LIST;
++    }
++
++    public static void returnTempGetChunksList(List<Chunk> list) {
++        if (list != TEMP_GET_CHUNKS_LIST) {
++            return;
++        }
++        ((UnsafeList)list).setSize(0);
++        tempGetChunksListInUse = false;
++    }
++
+     public static void reset() {
+         TEMP_COLLISION_LIST.completeReset();
+         TEMP_GET_ENTITIES_LIST.completeReset();
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index ac6e5e3309affc830d4db07fd9b8d809c3085033..90728ce0c02335fde9084292be49db5dec9069e4 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -141,6 +141,18 @@ public class Chunk implements IChunkAccess {
+     }
+     // Tuinity end - optimise hard collision handling
+ 
++    // Tuinity start - entity slices by class
++    private final com.tuinity.tuinity.chunk.ChunkEntitiesByClass entitiesByClass = new com.tuinity.tuinity.chunk.ChunkEntitiesByClass(this);
++
++    public boolean hasEntitiesMaybe(Class<?> clazz) {
++        return this.entitiesByClass.hasEntitiesMaybe(clazz);
++    }
++
++    public final void getEntitiesClass(Class<?> clazz, Entity entity, AxisAlignedBB boundingBox, Predicate<Entity> predicate, List<Entity> into) {
++        this.entitiesByClass.lookupClass(clazz, entity, boundingBox, predicate, into);
++    }
++    // Tuinity end - entity slices by class
++
+     public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeStorage biomestorage, ChunkConverter chunkconverter, TickList<Block> ticklist, TickList<FluidType> ticklist1, long i, @Nullable ChunkSection[] achunksection, @Nullable Consumer<Chunk> consumer) {
+         this.sections = new ChunkSection[16];
+         this.e = Maps.newHashMap();
+@@ -640,7 +652,7 @@ public class Chunk implements IChunkAccess {
+         entity.chunkX = this.loc.x;
+         entity.chunkY = k;
+         entity.chunkZ = this.loc.z;
+-        this.entities.add(entity); // Paper - per chunk entity list
++        this.entities.add(entity); this.entitiesByClass.addEntity(entity, entity.chunkY); // Paper - per chunk entity list // Tuinity - entities by class
+         this.entitySlices[k].add(entity); if (entity.hardCollides()) this.hardCollidingEntities[k].add(entity); // Tuinity - optimise hard colliding entities
+         // Paper start
+         if (entity instanceof EntityItem) {
+@@ -679,7 +691,7 @@ public class Chunk implements IChunkAccess {
+             entity.entitySlice = null;
+             entity.inChunk = false;
+         }
+-        if (entity.hardCollides()) this.hardCollidingEntities[i].remove(entity); if (!this.entitySlices[i].remove(entity)) { // Tuinity - optimise hard colliding entities
++        if (entity.hardCollides()) this.hardCollidingEntities[i].remove(entity); this.entitiesByClass.removeEntity(entity, i); if (!this.entitySlices[i].remove(entity)) { // Tuinity - optimise hard colliding entities // Tuinity - entities by class
+             return;
+         }
+         if (entity instanceof EntityItem) {
+diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
+index 882b82d8952d34f6e3c639404d1a1521dedf1bb0..269efe42b0a491371c0d0f0a7d9cdbb4a4349574 100644
+--- a/src/main/java/net/minecraft/server/IEntityAccess.java
++++ b/src/main/java/net/minecraft/server/IEntityAccess.java
+@@ -189,12 +189,12 @@ public interface IEntityAccess {
+     }
+ 
+     @Nullable
+-    default <T extends EntityLiving> T a(Class<? extends T> oclass, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2, AxisAlignedBB axisalignedbb) {
++    default <T extends EntityLiving> T a(Class<? extends T> oclass, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2, AxisAlignedBB axisalignedbb) { // Tuinity - diff on change, override in World - this should be "get closest entity by class that matches path finder target condition"
+         return this.a(this.a(oclass, axisalignedbb, null), pathfindertargetcondition, entityliving, d0, d1, d2); // Paper - decompile fix
+     }
+ 
+     @Nullable
+-    default <T extends EntityLiving> T b(Class<? extends T> oclass, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2, AxisAlignedBB axisalignedbb) {
++    default <T extends EntityLiving> T b(Class<? extends T> oclass, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2, AxisAlignedBB axisalignedbb) { // Tuinity - diff on change, override in World - this should be "get closest entity by class that matches path finder target condition"
+         return this.a(this.b(oclass, axisalignedbb, null), pathfindertargetcondition, entityliving, d0, d1, d2); // Paper - decompile fix
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/PathfinderTargetCondition.java b/src/main/java/net/minecraft/server/PathfinderTargetCondition.java
+index 253377c6238594de1f76cafcbf8223592e4d3f6b..3ebe3d0dc4c2c6aee6ea349006a74cbe5aa8e78f 100644
+--- a/src/main/java/net/minecraft/server/PathfinderTargetCondition.java
++++ b/src/main/java/net/minecraft/server/PathfinderTargetCondition.java
+@@ -51,6 +51,7 @@ public class PathfinderTargetCondition {
+         return this;
+     }
+ 
++    public final boolean test(@Nullable EntityLiving entityliving, EntityLiving entityliving1) { return this.a(entityliving, entityliving1); } // Tuinity - OBFHELPER
+     public boolean a(@Nullable EntityLiving entityliving, EntityLiving entityliving1) {
+         if (entityliving == entityliving1) {
+             return false;
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 699dc4343384b2e347f144125a1f703f59f7cbbe..4e30cb82b312a671419668626aaab20c09b1a5bf 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -1180,7 +1180,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+                 Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
+ 
+                 if (chunk != null) {
+-                    chunk.a(oclass, axisalignedbb, list, predicate);
++                    chunk.getEntitiesClass(oclass, null, axisalignedbb, (Predicate)predicate, (List)list); // Tuinity - optimise lookup by entity class
+                 }
+             }
+         }
+@@ -1203,7 +1203,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+                 Chunk chunk = (Chunk)this.getChunkIfLoadedImmediately(i1, j1); // Paper
+ 
+                 if (chunk != null) {
+-                    chunk.a(oclass, axisalignedbb, list, predicate);
++                    chunk.getEntitiesClass(oclass, null, axisalignedbb, (Predicate)predicate, (List)list); // Tuinity - optimise lookup by entity class
+                 }
+             }
+         }
+@@ -1211,6 +1211,93 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+         return list;
+     }
+ 
++    // Tuinity start
++    @Override
++    public <T extends EntityLiving> T b(Class<? extends T> oclass, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2, AxisAlignedBB axisalignedbb) {
++        return this.getClosestEntity(oclass, pathfindertargetcondition, entityliving, d0, d1, d2, axisalignedbb);
++    }
++
++    @Override
++    public <T extends EntityLiving> T a(Class<? extends T> oclass, PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2, AxisAlignedBB axisalignedbb) {
++        return this.getClosestEntity(oclass, pathfindertargetcondition, entityliving, d0, d1, d2, axisalignedbb);
++    }
++
++    public final <T extends EntityLiving> T getClosestEntity(Class<? extends T> clazz,
++                                                             PathfinderTargetCondition condition,
++                                                             @Nullable EntityLiving source,
++                                                             double x, double y, double z,
++                                                             AxisAlignedBB boundingBox) {
++        org.bukkit.craftbukkit.util.UnsafeList<Entity> entities = com.tuinity.tuinity.util.CachedLists.getTempGetEntitiesList();
++        try {
++            int lowerX = MathHelper.floor((boundingBox.minX - 2.0D) / 16.0D);
++            int upperX = MathHelper.f((boundingBox.maxX + 2.0D) / 16.0D);
++            int lowerZ = MathHelper.floor((boundingBox.minZ - 2.0D) / 16.0D);
++            int upperZ = MathHelper.f((boundingBox.maxZ + 2.0D) / 16.0D);
++
++            T closest = null;
++            double closestDistance = Double.MAX_VALUE;
++
++            org.bukkit.craftbukkit.util.UnsafeList<Chunk> chunks =
++                    com.tuinity.tuinity.util.CachedLists.getTempGetChunksList();
++            try {
++                ChunkProviderServer chunkProvider = ((WorldServer)this).getChunkProvider();
++                for (int currZ = lowerZ; currZ <= upperZ; ++currZ) {
++                    for (int currX = lowerX; currX <= upperX; ++currX) {
++                        final Chunk chunk = chunkProvider.getChunkAtIfLoadedImmediately(currX, currZ);
++                        if (chunk == null || !chunk.hasEntitiesMaybe(clazz)) {
++                            continue;
++                        }
++                        chunks.add(chunk);
++                    }
++                }
++
++                chunks.sort((Chunk c1, Chunk c2) -> {
++                    ChunkCoordIntPair c1Pos = c1.getPos();
++                    ChunkCoordIntPair c2Pos = c2.getPos();
++                    double c1X = (double)(c1Pos.x << 4) + 7.5;
++                    double c1Z = (double)(c1Pos.z << 4) + 7.5;
++                    double diff1X = c1X - x;
++                    double diff1Z = c1Z - z;
++
++                    double c2X = (double)(c2Pos.x << 4) + 7.5;
++                    double c2Z = (double)(c2Pos.z << 4) + 7.5;
++                    double diff2X = c2X - x;
++                    double diff2Z = c2Z - z;
++
++                    return Double.compare(diff1X * diff1X + diff1Z * diff1Z, diff2X * diff2X + diff2Z * diff2Z);
++                });
++
++                for (int i = 0, chunks_len = chunks.size(); i < chunks_len; ++i) {
++                    Chunk chunk = chunks.get(i);
++
++                    chunk.getEntitiesClass(clazz, source, boundingBox, null, entities);
++
++                    for (int k = 0, entities_len = entities.size(); k < entities_len; ++k) {
++                        T entity = (T) entities.unsafeGet(k);
++                        double distance = entity.getDistanceSquared(x, y, z);
++                        // check distance first, as it's the least expensive
++                        if (distance < closestDistance && condition.test(source, entity)) {
++                            closest = entity;
++                            closestDistance = distance;
++                        }
++                    }
++
++                    // by returning here it's actually possible we only return a very close entity - not the closest.
++                    // TODO add a config option
++                    if (closest != null) {
++                        return closest;
++                    }
++                }
++            } finally {
++                com.tuinity.tuinity.util.CachedLists.returnTempGetChunksList(chunks);
++            }
++            return null;
++        } finally {
++            com.tuinity.tuinity.util.CachedLists.returnTempGetEntitiesList(entities);
++        }
++    }
++    // Tuinity end
++
+     @Nullable
+     public abstract Entity getEntity(int i);
+ 
+diff --git a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+index 50f855b931dba60754fff9c7cdf5e0e744f00fdd..7c0d90552eeb6de7dab174e2ba4acfc89a7b3db0 100644
+--- a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
++++ b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+@@ -35,6 +35,13 @@ public class UnsafeList<E> extends AbstractList<E> implements List<E>, RandomAcc
+         iterPool[0] = new Itr();
+     }
+ 
++    // Tuinity start
++    @Override
++    public void sort(java.util.Comparator<? super E> c) {
++        Arrays.sort((E[])this.data, 0, size, c);
++    }
++    // Tuinity end
++
+     public UnsafeList(int capacity) {
+         this(capacity, 5);
+     }

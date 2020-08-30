@@ -1,0 +1,525 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 27 Aug 2020 09:42:42 -0700
+Subject: [PATCH] fixup! Highly optimise single and multi-AABB VoxelShapes and
+ collisions
+
+
+diff --git a/src/main/java/com/tuinity/tuinity/util/CachedLists.java b/src/main/java/com/tuinity/tuinity/util/CachedLists.java
+index 40da31d07206e3239ab7eabad3d5cbde2f1c181a..104a5c7bdce38abe85f6d1c4fd44c5139df396d9 100644
+--- a/src/main/java/com/tuinity/tuinity/util/CachedLists.java
++++ b/src/main/java/com/tuinity/tuinity/util/CachedLists.java
+@@ -12,7 +12,7 @@ public class CachedLists {
+     static final UnsafeList<AxisAlignedBB> TEMP_COLLISION_LIST = new UnsafeList<>(1024);
+     static boolean tempCollisionListInUse;
+ 
+-    public static List<AxisAlignedBB> getTempCollisionList() {
++    public static UnsafeList<AxisAlignedBB> getTempCollisionList() {
+         if (!Bukkit.isPrimaryThread() || tempCollisionListInUse) {
+             return new UnsafeList<>(16);
+         }
+@@ -31,7 +31,7 @@ public class CachedLists {
+     static final UnsafeList<Entity> TEMP_GET_ENTITIES_LIST = new UnsafeList<>(1024);
+     static boolean tempGetEntitiesListInUse;
+ 
+-    public static List<Entity> getTempGetEntitiesList() {
++    public static UnsafeList<Entity> getTempGetEntitiesList() {
+         if (!Bukkit.isPrimaryThread() || tempGetEntitiesListInUse) {
+             return new UnsafeList<>(16);
+         }
+diff --git a/src/main/java/net/minecraft/server/ChunkCache.java b/src/main/java/net/minecraft/server/ChunkCache.java
+index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..28e47b3d7d03c4db2116f0f48b93df4fe520d7b3 100644
+--- a/src/main/java/net/minecraft/server/ChunkCache.java
++++ b/src/main/java/net/minecraft/server/ChunkCache.java
+@@ -12,6 +12,138 @@ public class ChunkCache implements IBlockAccess, ICollisionAccess {
+     protected boolean d;
+     protected final World e; protected final World getWorld() { return e; } // Paper - OBFHELPER
+ 
++    // Tuinity start - optimise pathfinder collision detection
++    @Override
++    public boolean getCubes(Entity entity) {
++        return this.getCubes(entity, entity.getBoundingBox(), null);
++    }
++
++    @Override
++    public boolean getCubes(Entity entity, AxisAlignedBB axisalignedbb) {
++        return this.getCubes(entity, axisalignedbb, null);
++    }
++
++    @Override
++    public boolean getCubes(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Predicate<Entity> predicate) {
++        if (entity != null) {
++            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
++                return true;
++            }
++        }
++
++        int minBlockX = MathHelper.floor(axisalignedbb.minX - MCUtil.COLLISION_EPSILON) - 1;
++        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + MCUtil.COLLISION_EPSILON) + 1;
++
++        int minBlockY = MathHelper.floor(axisalignedbb.minY - MCUtil.COLLISION_EPSILON) - 1;
++        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + MCUtil.COLLISION_EPSILON) + 1;
++
++        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - MCUtil.COLLISION_EPSILON) - 1;
++        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + MCUtil.COLLISION_EPSILON) + 1;
++
++
++        BlockPosition.MutableBlockPosition mutablePos = new BlockPosition.MutableBlockPosition();
++        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity); // TODO make this lazy
++
++        // special cases:
++        if (minBlockY > 255 || maxBlockY < 0) {
++            // no point in checking
++            return false;
++        }
++
++        int minYIterate = Math.max(0, minBlockY);
++        int maxYIterate = Math.min(255, maxBlockY);
++
++        int minChunkX = minBlockX >> 4;
++        int maxChunkX = maxBlockX >> 4;
++
++        int minChunkZ = minBlockZ >> 4;
++        int maxChunkZ = maxBlockZ >> 4;
++
++        // TODO special case single chunk?
++
++        for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++            int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++            int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++
++            for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++                int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++                int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++
++                int chunkXGlobalPos = currChunkX << 4;
++                int chunkZGlobalPos = currChunkZ << 4;
++                Chunk chunk = (Chunk)this.getChunkIfLoaded(chunkXGlobalPos, chunkZGlobalPos);
++
++                if (chunk == null) {
++                    return true;
++                }
++
++                ChunkSection[] sections = chunk.getSections();
++
++                // bound y
++
++                for (int currY = minYIterate; currY <= maxYIterate; ++currY) {
++                    ChunkSection section = sections[currY >>> 4];
++                    if (section == null || section.isFullOfAir()) {
++                        // empty
++                        // skip to next section
++                        currY = (currY & ~(15)) + 15; // increment by 15: iterator loop increments by the extra one
++                        continue;
++                    }
++
++                    DataPaletteBlock<IBlockData> blocks = section.blockIds;
++                    int blockKeyY = (currY & 15) << 8;
++
++                    int edgeCountY = (currY == minBlockY || currY == maxBlockY) ? 1 : 0;
++
++                    for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                        int blockKeyZY = blockKeyY | (currZ << 4);
++                        int blockZ = currZ | chunkZGlobalPos; // world position
++
++                        int edgeCountZY;
++                        if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                            edgeCountZY = edgeCountY + 1;
++                        } else {
++                            edgeCountZY = edgeCountY;
++                        }
++
++                        for (int currX = minX; currX <= maxX; ++currX) {
++                            int blockX = currX | chunkXGlobalPos; // world position
++
++                            int edgeCountFull;
++                            if (blockX == minBlockX || blockX == maxBlockX) {
++                                edgeCountFull = edgeCountZY + 1;
++                            } else {
++                                edgeCountFull = edgeCountZY;
++                            }
++
++                            if (edgeCountFull == 3) {
++                                continue;
++                            }
++
++                            int blockKeyFull = blockKeyZY | currX;
++                            IBlockData blockData = blocks.rawGet(blockKeyFull);
++
++                            if (!blockData.isAir() && (edgeCountFull != 1 || blockData.shapeExceedsCube()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                                mutablePos.setValues(blockX, currY, blockZ);
++                                VoxelShape voxelshape2 = blockData.getCollisionShape(this, mutablePos, collisionShape);
++                                if (voxelshape2 != VoxelShapes.getEmptyShape()) {
++                                    VoxelShape voxelshape3 = voxelshape2.offset((double)blockX, (double)currY, (double)blockZ);
++
++                                    if (voxelshape3.intersects(axisalignedbb)) {
++                                        return true;
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        return false;
++    }
++    // Tuinity end - optimise pathfinder collision detection
++
+     public ChunkCache(World world, BlockPosition blockposition, BlockPosition blockposition1) {
+         this.e = world;
+         this.a = blockposition.getX() >> 4;
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index fd633ab8d24753ceebd7183ac2208ff56e14e612..611961d38b955f32d5cac1211dabac4f73aca156 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -797,11 +797,33 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+             float f2 = this.getBlockSpeedFactor();
+ 
+             this.setMot(this.getMot().d((double) f2, 1.0D, (double) f2));
+-            if (this.world.c(this.getBoundingBox().shrink(0.001D)).noneMatch((iblockdata1) -> {
+-                return iblockdata1.a((Tag) TagsBlock.FIRE) || iblockdata1.a(Blocks.LAVA);
+-            }) && this.fireTicks <= 0) {
+-                this.setFireTicks(-this.getMaxFireTicks());
++            // Tuinity start - remove streams here
++            if (this.fireTicks <= 0) {
++                AxisAlignedBB boundingBox = this.getBoundingBox().shrink(0.001D);
++                BlockPosition.MutableBlockPosition mutablePos = new BlockPosition.MutableBlockPosition();
++                int minX = MathHelper.floor(boundingBox.minX);
++                int minY = MathHelper.floor(boundingBox.minY);
++                int minZ = MathHelper.floor(boundingBox.minZ);
++                int maxX = MathHelper.floor(boundingBox.maxX);
++                int maxY = MathHelper.floor(boundingBox.maxY);
++                int maxZ = MathHelper.floor(boundingBox.maxZ);
++                if (this.world.isAreaLoaded(minX, minY, minZ, maxX, maxY, maxZ)) {
++                    fire_search:
++                    for (int currY = minY; currY <= maxY; ++currY) {
++                        for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                            for (int currX = minX; currX <= maxX; ++currX) {
++                                mutablePos.setValues(currX, currY, currZ);
++                                IBlockData type = this.getWorld().getType(mutablePos);
++                                if (type.a(TagsBlock.FIRE) || type.a(Blocks.LAVA)) {
++                                    this.setFireTicks(-this.getMaxFireTicks());
++                                    break fire_search;
++                                }
++                            }
++                        }
++                    }
++                }
+             }
++            // Tuinity end - remove streams here
+ 
+             if (this.aF() && this.isBurning()) {
+                 this.playSound(SoundEffects.ENTITY_GENERIC_EXTINGUISH_FIRE, 0.7F, 1.6F + (this.random.nextFloat() - this.random.nextFloat()) * 0.4F);
+@@ -2132,9 +2154,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+             float f1 = this.size.width * 0.8F;
+             AxisAlignedBB axisalignedbb = AxisAlignedBB.g((double) f1, 0.10000000149011612D, (double) f1).d(this.locX(), this.getHeadY(), this.locZ());
+ 
+-            return this.world.b(this, axisalignedbb, (iblockdata, blockposition) -> {
++            return ((WorldServer)this.world).collidesWithAnyBlockOrWorldBorder(this, axisalignedbb, false, (iblockdata, blockposition) -> { // Tuinity - use optimised method
+                 return iblockdata.o(this.world, blockposition);
+-            }).findAny().isPresent();
++            }); // Tuinity - use optimised method
+         }
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/VoxelShapeArray.java b/src/main/java/net/minecraft/server/VoxelShapeArray.java
+index d318ec207cdc5f0ef6a0480567225ab476d6e074..c14b7bd63e3917bc5f495655c40d8825a8d2062f 100644
+--- a/src/main/java/net/minecraft/server/VoxelShapeArray.java
++++ b/src/main/java/net/minecraft/server/VoxelShapeArray.java
+@@ -79,6 +79,23 @@ public final class VoxelShapeArray extends VoxelShape {
+         return new VoxelShapeArray(this.a, new DoubleListOffset(this.a(EnumDirection.EnumAxis.X), d0), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Y), d1), new DoubleListOffset(this.a(EnumDirection.EnumAxis.Z), d2), this, this.boundingBoxesRepresentation, d0, d1, d2);
+     }
+ 
++    @Override
++    public List<AxisAlignedBB> d() { // getBoundingBoxesRepresentation
++        if (this.boundingBoxesRepresentation == null) {
++            return super.d();
++        }
++        List<AxisAlignedBB> ret = new java.util.ArrayList<>(this.boundingBoxesRepresentation.length);
++
++        double offX = this.offsetX;
++        double offY = this.offsetY;
++        double offZ = this.offsetZ;
++        for (AxisAlignedBB boundingBox : this.boundingBoxesRepresentation) {
++            ret.add(boundingBox.offset(offX, offY, offZ));
++        }
++
++        return ret;
++    }
++
+     public final AxisAlignedBB[] getBoundingBoxesRepresentationRaw() {
+         return this.boundingBoxesRepresentation;
+     }
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index 37c4abec6a2058bd08a90f5f4c6394aca7b472fd..f9e6ccacf8f725da4684f5210c0ae02312e737cc 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -395,13 +395,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+         ChunkProviderServer chunkProvider = (ChunkProviderServer)this.chunkProvider;
+         // TODO special case single chunk?
+ 
+-        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
+-            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
+-            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++        for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++            int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++            int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
+ 
+-            for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
+-                int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
+-                int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++            for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++                int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++                int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
+ 
+                 int chunkXGlobalPos = currChunkX << 4;
+                 int chunkZGlobalPos = currChunkZ << 4;
+@@ -429,32 +429,32 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+ 
+                     int edgeCountY = (currY == minBlockY || currY == maxBlockY) ? 1 : 0;
+ 
+-                    for (int currX = minX; currX <= maxX; ++currX) {
+-                        int blockKeyXY = blockKeyY | currX;
+-                        int blockX = currX | chunkXGlobalPos; // world position
++                    for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                        int blockKeyZY = blockKeyY | (currZ << 4);
++                        int blockZ = currZ | chunkZGlobalPos; // world position
+ 
+-                        int edgeCountXY;
+-                        if (blockX == minBlockX || blockX == maxBlockX) {
+-                            edgeCountXY = edgeCountY + 1;
++                        int edgeCountZY;
++                        if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                            edgeCountZY = edgeCountY + 1;
+                         } else {
+-                            edgeCountXY = edgeCountY;
++                            edgeCountZY = edgeCountY;
+                         }
+ 
+-                        for (int currZ = minZ; currZ <= maxZ; ++currZ) {
+-                            int blockZ = currZ | chunkZGlobalPos; // world position
++                        for (int currX = minX; currX <= maxX; ++currX) {
++                            int blockX = currX | chunkXGlobalPos; // world position
+ 
+                             int edgeCountFull;
+-                            if (blockZ == minBlockZ || blockZ == maxBlockZ) {
+-                                edgeCountFull = edgeCountXY + 1;
++                            if (blockX == minBlockX || blockX == maxBlockX) {
++                                edgeCountFull = edgeCountZY + 1;
+                             } else {
+-                                edgeCountFull = edgeCountXY;
++                                edgeCountFull = edgeCountZY;
+                             }
+ 
+                             if (edgeCountFull == 3) {
+                                 continue;
+                             }
+ 
+-                            int blockKeyFull = blockKeyXY | (currZ << 4);
++                            int blockKeyFull = blockKeyZY | currX;
+                             IBlockData blockData = blocks.rawGet(blockKeyFull);
+ 
+                             if (!blockData.isAir() && (edgeCountFull != 1 || blockData.shapeExceedsCube()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
+@@ -477,6 +477,126 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+         return false;
+     }
+ 
++    public boolean collidesWithAnyBlockOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb, boolean loadChunks, java.util.function.BiPredicate<IBlockData, BlockPosition> predicate) {
++        if (entity != null) {
++            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
++                return true;
++            }
++        }
++
++        int minBlockX = MathHelper.floor(axisalignedbb.minX - MCUtil.COLLISION_EPSILON) - 1;
++        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + MCUtil.COLLISION_EPSILON) + 1;
++
++        int minBlockY = MathHelper.floor(axisalignedbb.minY - MCUtil.COLLISION_EPSILON) - 1;
++        int maxBlockY = MathHelper.floor(axisalignedbb.maxY + MCUtil.COLLISION_EPSILON) + 1;
++
++        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - MCUtil.COLLISION_EPSILON) - 1;
++        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + MCUtil.COLLISION_EPSILON) + 1;
++
++
++        BlockPosition.MutableBlockPosition mutablePos = new BlockPosition.MutableBlockPosition();
++        VoxelShapeCollision collisionShape = entity == null ? VoxelShapeCollision.a() : VoxelShapeCollision.a(entity); // TODO make this lazy
++
++        // special cases:
++        if (minBlockY > 255 || maxBlockY < 0) {
++            // no point in checking
++            return false;
++        }
++
++        int minYIterate = Math.max(0, minBlockY);
++        int maxYIterate = Math.min(255, maxBlockY);
++
++        int minChunkX = minBlockX >> 4;
++        int maxChunkX = maxBlockX >> 4;
++
++        int minChunkZ = minBlockZ >> 4;
++        int maxChunkZ = maxBlockZ >> 4;
++
++        ChunkProviderServer chunkProvider = (ChunkProviderServer)this.chunkProvider;
++        // TODO special case single chunk?
++
++        for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++            int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++            int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++
++            for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++                int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++                int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++
++                int chunkXGlobalPos = currChunkX << 4;
++                int chunkZGlobalPos = currChunkZ << 4;
++                Chunk chunk = loadChunks ? chunkProvider.getChunkAt(currChunkX, currChunkZ, true) : chunkProvider.getChunkAtIfLoadedImmediately(currChunkX, currChunkZ);
++
++                if (chunk == null) {
++                    return true;
++                }
++
++                ChunkSection[] sections = chunk.getSections();
++
++                // bound y
++
++                for (int currY = minYIterate; currY <= maxYIterate; ++currY) {
++                    ChunkSection section = sections[currY >>> 4];
++                    if (section == null || section.isFullOfAir()) {
++                        // empty
++                        // skip to next section
++                        currY = (currY & ~(15)) + 15; // increment by 15: iterator loop increments by the extra one
++                        continue;
++                    }
++
++                    DataPaletteBlock<IBlockData> blocks = section.blockIds;
++                    int blockKeyY = (currY & 15) << 8;
++
++                    int edgeCountY = (currY == minBlockY || currY == maxBlockY) ? 1 : 0;
++
++                    for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                        int blockKeyZY = blockKeyY | (currZ << 4);
++                        int blockZ = currZ | chunkZGlobalPos; // world position
++
++                        int edgeCountZY;
++                        if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                            edgeCountZY = edgeCountY + 1;
++                        } else {
++                            edgeCountZY = edgeCountY;
++                        }
++
++                        for (int currX = minX; currX <= maxX; ++currX) {
++                            int blockX = currX | chunkXGlobalPos; // world position
++
++                            int edgeCountFull;
++                            if (blockX == minBlockX || blockX == maxBlockX) {
++                                edgeCountFull = edgeCountZY + 1;
++                            } else {
++                                edgeCountFull = edgeCountZY;
++                            }
++
++                            if (edgeCountFull == 3) {
++                                continue;
++                            }
++
++                            int blockKeyFull = blockKeyZY | currX;
++                            IBlockData blockData = blocks.rawGet(blockKeyFull);
++
++                            if (!blockData.isAir() && (edgeCountFull != 1 || blockData.shapeExceedsCube()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
++                                mutablePos.setValues(blockX, currY, blockZ);
++                                VoxelShape voxelshape2 = blockData.getCollisionShape(this, mutablePos, collisionShape);
++                                if (voxelshape2 != VoxelShapes.getEmptyShape()) {
++                                    VoxelShape voxelshape3 = voxelshape2.offset((double)blockX, (double)currY, (double)blockZ);
++
++                                    if (voxelshape3.intersects(axisalignedbb) && (predicate == null || predicate.test(blockData, mutablePos))) {
++                                        return true;
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++        return false;
++    }
++
+     public final boolean hardCollidesWithAnyEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Predicate<Entity> predicate) {
+         if (axisalignedbb.isEmpty()) {
+             return false;
+@@ -512,7 +632,6 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+         return this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb, loadChunks) || this.hardCollidesWithAnyEntities(entity, axisalignedbb, null);
+     }
+ 
+-    // Tuinity start - optimise collision
+     public void getCollisionsForBlocksOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<AxisAlignedBB> list, boolean loadChunks) {
+         if (entity != null) {
+             if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
+@@ -551,13 +670,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+         ChunkProviderServer chunkProvider = (ChunkProviderServer)this.chunkProvider;
+         // TODO special case single chunk?
+ 
+-        for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
+-            int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
+-            int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
++        for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
++            int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
++            int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
+ 
+-            for (int currChunkZ = minChunkZ; currChunkZ <= maxChunkZ; ++currChunkZ) {
+-                int minZ = currChunkZ == minChunkZ ? minBlockZ & 15 : 0; // coordinate in chunk
+-                int maxZ = currChunkZ == maxChunkZ ? maxBlockZ & 15 : 15; // coordinate in chunk
++            for (int currChunkX = minChunkX; currChunkX <= maxChunkX; ++currChunkX) {
++                int minX = currChunkX == minChunkX ? minBlockX & 15 : 0; // coordinate in chunk
++                int maxX = currChunkX == maxChunkX ? maxBlockX & 15 : 15; // coordinate in chunk
+ 
+                 int chunkXGlobalPos = currChunkX << 4;
+                 int chunkZGlobalPos = currChunkZ << 4;
+@@ -586,32 +705,32 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+ 
+                     int edgeCountY = (currY == minBlockY || currY == maxBlockY) ? 1 : 0;
+ 
+-                    for (int currX = minX; currX <= maxX; ++currX) {
+-                        int blockKeyXY = blockKeyY | currX;
+-                        int blockX = currX | chunkXGlobalPos; // world position
++                    for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                        int blockKeyZY = blockKeyY | (currZ << 4);
++                        int blockZ = currZ | chunkZGlobalPos; // world position
+ 
+-                        int edgeCountXY;
+-                        if (blockX == minBlockX || blockX == maxBlockX) {
+-                            edgeCountXY = edgeCountY + 1;
++                        int edgeCountZY;
++                        if (blockZ == minBlockZ || blockZ == maxBlockZ) {
++                            edgeCountZY = edgeCountY + 1;
+                         } else {
+-                            edgeCountXY = edgeCountY;
++                            edgeCountZY = edgeCountY;
+                         }
+ 
+-                        for (int currZ = minZ; currZ <= maxZ; ++currZ) {
+-                            int blockZ = currZ | chunkZGlobalPos; // world position
++                        for (int currX = minX; currX <= maxX; ++currX) {
++                            int blockX = currX | chunkXGlobalPos; // world position
+ 
+                             int edgeCountFull;
+-                            if (blockZ == minBlockZ || blockZ == maxBlockZ) {
+-                                edgeCountFull = edgeCountXY + 1;
++                            if (blockX == minBlockX || blockX == maxBlockX) {
++                                edgeCountFull = edgeCountZY + 1;
+                             } else {
+-                                edgeCountFull = edgeCountXY;
++                                edgeCountFull = edgeCountZY;
+                             }
+ 
+                             if (edgeCountFull == 3) {
+                                 continue;
+                             }
+ 
+-                            int blockKeyFull = blockKeyXY | (currZ << 4);
++                            int blockKeyFull = blockKeyZY | currX;
+                             IBlockData blockData = blocks.rawGet(blockKeyFull);
+ 
+                             if (!blockData.isAir() && (edgeCountFull != 1 || blockData.shapeExceedsCube()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
