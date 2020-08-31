@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 31 Aug 2020 11:19:18 -0700
+Subject: [PATCH] fixup! Util patch
+
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 615a71a78cdb2f80e410919c75873cd6aa7c31ee..65aa3bd9b3277bb244c5847093806db0e678dd10 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -155,6 +155,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+     public org.bukkit.command.RemoteConsoleCommandSender remoteConsole;
+     //public ConsoleReader reader; // Paper
+     public static int currentTick = 0; // Paper - Further improve tick loop
++    public static long currentTickLong = 0L; // Tuinity
+     public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
+     public int autosavePeriod;
+     public boolean serverAutoSave = false; // Paper
+@@ -971,6 +972,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+                         this.lastOverloadTime = this.nextTick;
+                     }
+ 
++                    ++MinecraftServer.currentTickLong; // Tuinity
+                     if ( ++MinecraftServer.currentTick % SAMPLE_INTERVAL == 0 )
+                     {
+                         final long diff = curTime - tickSection;
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index 35714a14dd68efee889e007c94b26f04795b98f5..9e635bc057f3f38de73f5e91cc438e4baf851bc3 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -1777,6 +1777,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         return chunkHolder == null ? null : chunkHolder.getAvailableChunkNow();
+     }
+     // Paper end
++    // Tuinity start
++    public PlayerChunk getUnloadingPlayerChunk(int chunkX, int chunkZ) {
++        return this.pendingUnload.get(ChunkCoordIntPair.pair(chunkX, chunkZ));
++    }
++    // Tuinity end
+ 
+ 
+     // Paper start - async io

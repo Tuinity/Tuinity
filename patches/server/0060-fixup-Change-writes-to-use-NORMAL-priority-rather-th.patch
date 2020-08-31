@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 31 Aug 2020 11:14:57 -0700
+Subject: [PATCH] fixup! Change writes to use NORMAL priority rather than LOW
+
+
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index 0677b00f379af3fd56df3d7ccdc14dc592b3e2fe..35714a14dd68efee889e007c94b26f04795b98f5 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -1693,7 +1693,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         if (Thread.currentThread() != com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE) {
+             com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE.scheduleSave(
+                 this.world, chunkcoordintpair.x, chunkcoordintpair.z, null, nbttagcompound,
+-                com.destroystokyo.paper.io.IOUtil.getPriorityForCurrentThread());
++                com.destroystokyo.paper.io.PrioritizedTaskQueue.NORMAL_PRIORITY); // Tuinity - writes are async, no need for priority
+             return;
+         }
+         super.write(chunkcoordintpair, nbttagcompound);
+diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
+index c92343669a33da5d6609621d14a8b478ad430d3a..62dcd9a3c1a58207cd2e9e2b07d74980ad79cc72 100644
+--- a/src/main/java/net/minecraft/server/VillagePlace.java
++++ b/src/main/java/net/minecraft/server/VillagePlace.java
+@@ -406,7 +406,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+         if (this.world != null && Thread.currentThread() != com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE) {
+             com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE.scheduleSave(
+                 this.world, chunkcoordintpair.x, chunkcoordintpair.z, nbttagcompound, null,
+-                com.destroystokyo.paper.io.IOUtil.getPriorityForCurrentThread());
++                com.destroystokyo.paper.io.PrioritizedTaskQueue.NORMAL_PRIORITY); // Tuinity - writes are async, no need for priority
+             return;
+         }
+         super.write(chunkcoordintpair, nbttagcompound);

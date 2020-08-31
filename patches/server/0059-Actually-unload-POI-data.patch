@@ -1,0 +1,299 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 31 Aug 2020 11:08:17 -0700
+Subject: [PATCH] Actually unload POI data
+
+While it's not likely for a poi data leak to be meaningful,
+sometimes it is.
+
+This patch also prevents the saving/unloading of POI data when
+world saving is disabled.
+
+diff --git a/src/main/java/net/minecraft/server/LightEngineGraphSection.java b/src/main/java/net/minecraft/server/LightEngineGraphSection.java
+index 13d067f48647dea63ef1bf3a2a3e0868074ba75f..04afd7f285db2f281a038e0be6f557b8a692936b 100644
+--- a/src/main/java/net/minecraft/server/LightEngineGraphSection.java
++++ b/src/main/java/net/minecraft/server/LightEngineGraphSection.java
+@@ -74,8 +74,10 @@ public abstract class LightEngineGraphSection extends LightEngineGraph {
+         return i == Long.MAX_VALUE ? this.b(j) : k + 1;
+     }
+ 
++    public final int getSource(long coordinate) { return this.b(coordinate); } // Tuinity - OBFHELPER
+     protected abstract int b(long i);
+ 
++    public final void update(long coordinate, int level, boolean flag) { this.b(coordinate, level, flag); } // Tuinity - OBFHELPER
+     public void b(long i, int j, boolean flag) {
+         this.a(Long.MAX_VALUE, i, j, flag);
+     }
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index 57c832ce3194db079263bbd8610620a08ff225ab..0677b00f379af3fd56df3d7ccdc14dc592b3e2fe 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -836,6 +836,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.p, this);
+                     this.dataRegionManager.addChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
+                 }
++                this.getVillagePlace().dequeueUnload(playerchunk.location.pair()); // Tuinity - unload POI data
+ 
+                 this.updatingChunks.put(i, playerchunk);
+                 this.updatingChunksModified = true;
+@@ -961,7 +962,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+     }
+ 
+-    private static final double UNLOAD_QUEUE_RESIZE_FACTOR = 0.90; // Spigot // Paper - unload more
++    static final double UNLOAD_QUEUE_RESIZE_FACTOR = 0.90; // Spigot // Paper - unload more // Tuinity - private -> package private
+ 
+     protected void unloadChunks(BooleanSupplier booleansupplier) {
+         GameProfilerFiller gameprofilerfiller = this.world.getMethodProfiler();
+@@ -1101,6 +1102,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     this.lightEngine.queueUpdate();
+                     this.worldLoadListener.a(ichunkaccess.getPos(), (ChunkStatus) null);
+                     this.dataRegionManager.removeChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
++                    this.getVillagePlace().queueUnload(ichunkaccess.getPos().pair(), MinecraftServer.currentTickLong + 1); // Tuinity - unload POI data
+                 }
+ 
+             }
+@@ -1193,6 +1195,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+                 this.getVillagePlace().loadInData(chunkcoordintpair, chunkHolder.poiData);
+                 chunkHolder.tasks.forEach(Runnable::run);
++                this.getVillagePlace().dequeueUnload(chunkcoordintpair.pair()); // Tuinity
+                 // Paper end
+ 
+                 if (chunkHolder.protoChunk != null) {try (Timing ignored2 = this.world.timings.chunkLoadLevelTimer.startTimingIfSync()) { // Paper start - timings // Paper - chunk is created async
+diff --git a/src/main/java/net/minecraft/server/RegionFileSection.java b/src/main/java/net/minecraft/server/RegionFileSection.java
+index d9362b74fda2ea937281f897fbc2cb501775a275..79a11d17a2822b192dec5981d0344ae689c3d385 100644
+--- a/src/main/java/net/minecraft/server/RegionFileSection.java
++++ b/src/main/java/net/minecraft/server/RegionFileSection.java
+@@ -25,8 +25,8 @@ public class RegionFileSection<R> extends RegionFileCache implements AutoCloseab
+ 
+     private static final Logger LOGGER = LogManager.getLogger();
+     // Paper - nuke IOWorker
+-    private final Long2ObjectMap<Optional<R>> c = new Long2ObjectOpenHashMap();
+-    protected final LongLinkedOpenHashSet d = new LongLinkedOpenHashSet(); // Paper - private -> protected
++    private final Long2ObjectMap<Optional<R>> c = new Long2ObjectOpenHashMap(); protected final Long2ObjectMap<Optional<R>> getDataBySection() { return this.c; } // Tuinity - OBFHELPER
++    protected final LongLinkedOpenHashSet d = new LongLinkedOpenHashSet(); protected final LongLinkedOpenHashSet getDirtySections() { return this.d; } // Paper - private -> protected // Tuinity - OBFHELPER
+     private final Function<Runnable, Codec<R>> e;
+     private final Function<Runnable, R> f;
+     private final DataFixer g;
+@@ -50,6 +50,40 @@ public class RegionFileSection<R> extends RegionFileCache implements AutoCloseab
+ 
+     }
+ 
++    // Tuinity start - actually unload POI data
++    public void unloadData(long coordinate) {
++        ChunkCoordIntPair chunkPos = new ChunkCoordIntPair(coordinate);
++        this.writeDirtyData(chunkPos);
++
++        Long2ObjectMap<Optional<R>> data = this.getDataBySection();
++        int before = data.size();
++
++        for (int section = 0; section < 16; ++section) {
++            data.remove(SectionPosition.asLong(chunkPos.x, section, chunkPos.z));
++        }
++
++        if (before != data.size()) {
++            this.onUnload(coordinate);
++        }
++    }
++
++    protected void onUnload(long coordinate) {}
++
++    public boolean isEmpty(long coordinate) {
++        Long2ObjectMap<Optional<R>> data = this.getDataBySection();
++        int x = MCUtil.getCoordinateX(coordinate);
++        int z = MCUtil.getCoordinateZ(coordinate);
++        for (int section = 0; section < 16; ++section) {
++            Optional<R> optional = data.get(SectionPosition.asLong(x, section, z));
++            if (optional != null && optional.orElse(null) != null) {
++                return false;
++            }
++        }
++
++        return true;
++    }
++    // Tuinity end - actually unload POI data
++
+     @Nullable protected Optional<R> getIfLoaded(long value) { return this.c(value); } // Tuinity - OBFHELPER
+     @Nullable protected Optional<R> c(long i) { // Tuinity - OBFHELPER
+         return (Optional) this.c.get(i);
+@@ -150,6 +184,7 @@ public class RegionFileSection<R> extends RegionFileCache implements AutoCloseab
+                 });
+             }
+         }
++        if (this instanceof VillagePlace) { ((VillagePlace)this).queueUnload(chunkcoordintpair.pair(), MinecraftServer.currentTickLong + 1); } // Tuinity - unload POI data
+ 
+     }
+ 
+@@ -221,6 +256,7 @@ public class RegionFileSection<R> extends RegionFileCache implements AutoCloseab
+         return dynamic.get("DataVersion").asInt(1945);
+     }
+ 
++    public final void writeDirtyData(ChunkCoordIntPair chunkcoordintpair) { this.a(chunkcoordintpair); } // Tuinity - OBFHELPER
+     public void a(ChunkCoordIntPair chunkcoordintpair) {
+         if (!this.d.isEmpty()) {
+             for (int i = 0; i < 16; ++i) {
+diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
+index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..c92343669a33da5d6609621d14a8b478ad430d3a 100644
+--- a/src/main/java/net/minecraft/server/VillagePlace.java
++++ b/src/main/java/net/minecraft/server/VillagePlace.java
+@@ -4,6 +4,7 @@ import com.mojang.datafixers.DataFixer;
+ import com.mojang.datafixers.util.Pair;
+ import it.unimi.dsi.fastutil.longs.Long2ByteMap;
+ import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
++import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap; // Tuinity
+ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+ import it.unimi.dsi.fastutil.longs.LongSet;
+ import java.io.File;
+@@ -22,8 +23,8 @@ import java.util.stream.Stream;
+ 
+ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+ 
+-    private final VillagePlace.a a = new VillagePlace.a();
+-    private final LongSet b = new LongOpenHashSet();
++    private final VillagePlace.a a = new VillagePlace.a(); private final VillagePlace.a getVillageDistanceTracker() { return this.a; } // Tuinity - OBFHELPER
++    private final LongSet b = new LongOpenHashSet(); private final LongSet getLoadedChunks() { return this.b; } // Tuinity - OBFHELPER
+ 
+     private final WorldServer world; // Paper
+ 
+@@ -34,9 +35,119 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+     public VillagePlace(File file, DataFixer datafixer, boolean flag, WorldServer world) {
+         super(file, VillagePlaceSection::a, VillagePlaceSection::new, datafixer, DataFixTypes.POI_CHUNK, flag);
+         this.world = world;
++        if (world == null) { throw new IllegalStateException("world must be non-null"); }// Tuinity - require non-null
+         // Paper end - add world parameter
+     }
+ 
++    // Tuinity start - actually unload POI data
++    private final java.util.TreeSet<QueuedUnload> queuedUnloads = new java.util.TreeSet<>();
++    private final Long2ObjectOpenHashMap<QueuedUnload> queuedUnloadsByCoordinate = new Long2ObjectOpenHashMap<>();
++
++    static final class QueuedUnload implements Comparable<QueuedUnload> {
++
++        private final long unloadTick;
++        private final long coordinate;
++
++        public QueuedUnload(long unloadTick, long coordinate) {
++            this.unloadTick = unloadTick;
++            this.coordinate = coordinate;
++        }
++
++        @Override
++        public int compareTo(QueuedUnload other) {
++            if (other.unloadTick == this.unloadTick) {
++                return Long.compare(this.coordinate, other.coordinate);
++            } else {
++                return Long.compare(this.unloadTick, other.unloadTick);
++            }
++        }
++
++        @Override
++        public int hashCode() {
++            int hash = 1;
++            hash = hash * 31 + Long.hashCode(this.unloadTick);
++            hash = hash * 31 + Long.hashCode(this.coordinate);
++            return hash;
++        }
++
++        @Override
++        public boolean equals(Object obj) {
++            if (obj == null || obj.getClass() != QueuedUnload.class) {
++                return false;
++            }
++            QueuedUnload other = (QueuedUnload)obj;
++            return other.unloadTick == this.unloadTick && other.coordinate == this.coordinate;
++        }
++    }
++
++    long determineDelay(long coordinate) {
++        if (this.isEmpty(coordinate)) {
++            return 60 * 20;
++        } else {
++            return 5 * 20;
++        }
++    }
++
++    public void queueUnload(long coordinate, long minTarget) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("async poi unload queue");
++        QueuedUnload unload = new QueuedUnload(minTarget + this.determineDelay(coordinate), coordinate);
++        QueuedUnload existing = this.queuedUnloadsByCoordinate.put(coordinate, unload);
++        if (existing != null) {
++            this.queuedUnloads.remove(existing);
++        }
++        this.queuedUnloads.add(unload);
++    }
++
++    public void dequeueUnload(long coordinate) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("async poi unload dequeue");
++        QueuedUnload unload = this.queuedUnloadsByCoordinate.remove(coordinate);
++        if (unload != null) {
++            this.queuedUnloads.remove(unload);
++        }
++    }
++
++    public void pollUnloads(BooleanSupplier canSleepForTick) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("async poi unload");
++        long currentTick = MinecraftServer.currentTickLong;
++        ChunkProviderServer chunkProvider = this.world.getChunkProvider();
++        PlayerChunkMap playerChunkMap = chunkProvider.playerChunkMap;
++        // copied target determination from PlayerChunkMap
++        int target = Math.min(this.queuedUnloads.size() - 100,  (int) (this.queuedUnloads.size() * PlayerChunkMap.UNLOAD_QUEUE_RESIZE_FACTOR)); // Paper - Make more aggressive
++        for (java.util.Iterator<QueuedUnload> iterator = this.queuedUnloads.iterator();
++             iterator.hasNext() && (this.queuedUnloads.size() > target || canSleepForTick.getAsBoolean());) {
++            QueuedUnload unload = iterator.next();
++            if (unload.unloadTick > currentTick) {
++                break;
++            }
++
++            long coordinate = unload.coordinate;
++
++            iterator.remove();
++            this.queuedUnloadsByCoordinate.remove(coordinate);
++
++            if (playerChunkMap.getUnloadingPlayerChunk(MCUtil.getCoordinateX(coordinate), MCUtil.getCoordinateZ(coordinate)) != null
++                || playerChunkMap.getUpdatingChunk(coordinate) != null) {
++                continue;
++            }
++
++            this.unloadData(coordinate);
++        }
++    }
++
++    @Override
++    public void unloadData(long coordinate) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("async unloading poi data");
++        super.unloadData(coordinate);
++    }
++
++    @Override
++    protected void onUnload(long coordinate) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("async poi unload callback");
++        this.getLoadedChunks().remove(coordinate);
++        this.getVillageDistanceTracker().update(coordinate, this.getVillageDistanceTracker().getSource(coordinate), false);
++    }
++    // Tuinity end - actually unload POI data
++
+     public void a(BlockPosition blockposition, VillagePlaceType villageplacetype) {
+         ((VillagePlaceSection) this.e(SectionPosition.a(blockposition).s())).a(blockposition, villageplacetype);
+     }
+@@ -157,7 +268,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+             super.a(booleansupplier);
+         } else {
+             //super.a(booleansupplier); // re-implement below
+-            while (!((RegionFileSection)this).d.isEmpty() && booleansupplier.getAsBoolean()) {
++            while (!((RegionFileSection)this).d.isEmpty() && booleansupplier.getAsBoolean() && !this.world.isSavingDisabled()) { // Tuinity - unload POI data - don't write to disk if saving is disabled
+                 ChunkCoordIntPair chunkcoordintpair = SectionPosition.a(((RegionFileSection)this).d.firstLong()).r();
+ 
+                 NBTTagCompound data;
+@@ -168,6 +279,11 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+                     chunkcoordintpair.x, chunkcoordintpair.z, data, null, com.destroystokyo.paper.io.PrioritizedTaskQueue.NORMAL_PRIORITY); // Tuinity - use normal priority
+             }
+         }
++        // Tuinity start - unload POI data
++        if (!this.world.isSavingDisabled()) { // don't write to disk if saving is disabled
++            this.pollUnloads(booleansupplier);
++        }
++        // Tuinity end - unload POI data
+         // Paper end
+         this.a.a();
+     }
