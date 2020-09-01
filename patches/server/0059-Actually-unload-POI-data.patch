@@ -134,7 +134,7 @@ index d9362b74fda2ea937281f897fbc2cb501775a275..79a11d17a2822b192dec5981d0344ae6
          if (!this.d.isEmpty()) {
              for (int i = 0; i < 16; ++i) {
 diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
-index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..c92343669a33da5d6609621d14a8b478ad430d3a 100644
+index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..f202e80c8bbd1b3854a329248141f55eb0ee06cf 100644
 --- a/src/main/java/net/minecraft/server/VillagePlace.java
 +++ b/src/main/java/net/minecraft/server/VillagePlace.java
 @@ -4,6 +4,7 @@ import com.mojang.datafixers.DataFixer;
@@ -156,7 +156,7 @@ index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..c92343669a33da5d6609621d14a8b478
  
      private final WorldServer world; // Paper
  
-@@ -34,9 +35,119 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+@@ -34,9 +35,124 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
      public VillagePlace(File file, DataFixer datafixer, boolean flag, WorldServer world) {
          super(file, VillagePlaceSection::a, VillagePlaceSection::new, datafixer, DataFixTypes.POI_CHUNK, flag);
          this.world = world;
@@ -269,14 +269,19 @@ index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..c92343669a33da5d6609621d14a8b478
 +    protected void onUnload(long coordinate) {
 +        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("async poi unload callback");
 +        this.getLoadedChunks().remove(coordinate);
-+        this.getVillageDistanceTracker().update(coordinate, this.getVillageDistanceTracker().getSource(coordinate), false);
++        int chunkX = MCUtil.getCoordinateX(coordinate);
++        int chunkZ = MCUtil.getCoordinateZ(coordinate);
++        for (int section = 0; section < 16; ++section) {
++            long sectionPos = SectionPosition.asLong(chunkX, section, chunkZ);
++            this.getVillageDistanceTracker().update(sectionPos, this.getVillageDistanceTracker().getSource(sectionPos), false);
++        }
 +    }
 +    // Tuinity end - actually unload POI data
 +
      public void a(BlockPosition blockposition, VillagePlaceType villageplacetype) {
          ((VillagePlaceSection) this.e(SectionPosition.a(blockposition).s())).a(blockposition, villageplacetype);
      }
-@@ -157,7 +268,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+@@ -157,7 +273,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
              super.a(booleansupplier);
          } else {
              //super.a(booleansupplier); // re-implement below
@@ -285,7 +290,7 @@ index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..c92343669a33da5d6609621d14a8b478
                  ChunkCoordIntPair chunkcoordintpair = SectionPosition.a(((RegionFileSection)this).d.firstLong()).r();
  
                  NBTTagCompound data;
-@@ -168,6 +279,11 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+@@ -168,6 +284,11 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
                      chunkcoordintpair.x, chunkcoordintpair.z, data, null, com.destroystokyo.paper.io.PrioritizedTaskQueue.NORMAL_PRIORITY); // Tuinity - use normal priority
              }
          }
