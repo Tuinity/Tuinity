@@ -99,10 +99,10 @@ index 90728ce0c02335fde9084292be49db5dec9069e4..9474768529371b2a4a8e7607cb5bb95e
          this.sections = new ChunkSection[16];
          this.e = Maps.newHashMap();
 diff --git a/src/main/java/net/minecraft/server/EntityInsentient.java b/src/main/java/net/minecraft/server/EntityInsentient.java
-index 9cf496b5e59b228ed65dca7b6b2fea725fd361d9..d53d5d8f3f041780b6c9b228d9a66aa66a4764e7 100644
+index 9cf496b5e59b228ed65dca7b6b2fea725fd361d9..978391b6d323c482fb86f5b575ddd51b939c4eca 100644
 --- a/src/main/java/net/minecraft/server/EntityInsentient.java
 +++ b/src/main/java/net/minecraft/server/EntityInsentient.java
-@@ -707,7 +707,10 @@ public abstract class EntityInsentient extends EntityLiving {
+@@ -707,7 +707,13 @@ public abstract class EntityInsentient extends EntityLiving {
          if (this.world.getDifficulty() == EnumDifficulty.PEACEFUL && this.L()) {
              this.die();
          } else if (!this.isPersistent() && !this.isSpecialPersistence()) {
@@ -110,6 +110,9 @@ index 9cf496b5e59b228ed65dca7b6b2fea725fd361d9..d53d5d8f3f041780b6c9b228d9a66aa6
 +            // Tuinity start - optimise checkDespawn
 +            Chunk chunk = this.getCurrentChunk();
 +            EntityHuman entityhuman = chunk == null || this.world.paperConfig.hardDespawnDistance >= (31 * 16 * 31 * 16) ? this.world.findNearbyPlayer(this, -1.0D, IEntitySelector.affectsSpawning) : chunk.findNearestPlayer(this, IEntitySelector.affectsSpawning); // Paper
++            if (entityhuman == null) {
++                entityhuman = ((WorldServer)this.world).playersAffectingSpawning.isEmpty() ? null : ((WorldServer)this.world).playersAffectingSpawning.get(0);
++            }
 +            // Tuinity end - optimise checkDespawn
  
              if (entityhuman != null) {
@@ -238,3 +241,33 @@ index 4e30cb82b312a671419668626aaab20c09b1a5bf..1e1d7f83453a537b57fe50807fd309dc
      protected World(WorldDataMutable worlddatamutable, ResourceKey<World> resourcekey, final DimensionManager dimensionmanager, Supplier<GameProfilerFiller> supplier, boolean flag, boolean flag1, long i, org.bukkit.generator.ChunkGenerator gen, org.bukkit.World.Environment env, java.util.concurrent.Executor executor) { // Paper
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig(((WorldDataServer) worlddatamutable).getName()); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig((((WorldDataServer)worlddatamutable).getName()), this.spigotConfig); // Paper
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index f9e6ccacf8f725da4684f5210c0ae02312e737cc..931556a5c2b44e2a2e2eef9b9c7ba9d943d7753a 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -296,6 +296,10 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+     long lastMidTickExecuteFailure;
+     // Tuinity end - execute chunk tasks mid tick
+ 
++    // Tuinity start - optimise checkDespawn
++    final List<EntityPlayer> playersAffectingSpawning = new java.util.ArrayList<>();
++    // Tuinity end - optimise checkDespawn
++
+     // Add env and gen to constructor, WorldData -> WorldDataServer
+     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
+         super(iworlddataserver, resourcekey, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
+@@ -850,6 +854,14 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+ 
+     public void doTick(BooleanSupplier booleansupplier) {
+         GameProfilerFiller gameprofilerfiller = this.getMethodProfiler();
++        // Tuinity start - optimise checkDespawn
++        this.playersAffectingSpawning.clear();
++        for (EntityPlayer player : this.getPlayers()) {
++            if (IEntitySelector.affectsSpawning.test(player)) {
++                this.playersAffectingSpawning.add(player);
++            }
++        }
++        // Tuinity end - optimise checkDespawn
+ 
+         this.ticking = true;
+         gameprofilerfiller.enter("world border");
