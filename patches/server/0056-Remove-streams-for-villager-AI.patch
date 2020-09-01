@@ -9,6 +9,8 @@ overheard. Use the good ol iterator method to remove that overhead.
 
 The rest is just standard stream removal.
 
+Also remove streams for poi searching in some zombie pathfinding.
+
 diff --git a/src/main/java/net/minecraft/server/Behavior.java b/src/main/java/net/minecraft/server/Behavior.java
 index 65af976527133ee5c2f52e411e19c4f7f06df3ef..0b9d469a92decfb0632805791868ef7faa88c535 100644
 --- a/src/main/java/net/minecraft/server/Behavior.java
@@ -23,10 +25,10 @@ index 65af976527133ee5c2f52e411e19c4f7f06df3ef..0b9d469a92decfb0632805791868ef7f
      private final int d;
      private final int e;
 diff --git a/src/main/java/net/minecraft/server/BehaviorFindPosition.java b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-index 63a761ebef80d4af09cdc2682e496d78492c4a3a..2f148a5b4754341c36f131b5da0ffe82ea5bb0d7 100644
+index 63a761ebef80d4af09cdc2682e496d78492c4a3a..8d445e9c0875db6cf45e4d8bcfce7cd3d5094d94 100644
 --- a/src/main/java/net/minecraft/server/BehaviorFindPosition.java
 +++ b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-@@ -55,6 +55,216 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
+@@ -55,6 +55,227 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
          }
      }
  
@@ -137,6 +139,17 @@ index 63a761ebef80d4af09cdc2682e496d78492c4a3a..2f148a5b4754341c36f131b5da0ffe82
 +        }
 +    }
 +
++    protected static BlockPosition findAnyFirstPoi(VillagePlace poiStorage,
++                                                   Predicate<VillagePlaceType> villagePlaceType,
++                                                   Predicate<BlockPosition> positionPredicate,
++                                                   BlockPosition sourcePosition,
++                                                   int range, // distance on x y z axis
++                                                   VillagePlace.Occupancy occupancy) {
++        Set<BlockPosition> ret = new java.util.HashSet<>();
++        findPoi(poiStorage, villagePlaceType, positionPredicate, sourcePosition, range, occupancy, 1, ret);
++        return ret.isEmpty() ? null : ret.iterator().next();
++    }
++
 +    protected static Set<BlockPosition> findPoi(VillagePlace poiStorage,
 +                                                Predicate<VillagePlaceType> villagePlaceType,
 +                                                Predicate<BlockPosition> positionPredicate,
@@ -243,7 +256,7 @@ index 63a761ebef80d4af09cdc2682e496d78492c4a3a..2f148a5b4754341c36f131b5da0ffe82
      protected void a(WorldServer worldserver, EntityCreature entitycreature, long i) {
          this.f = i + 20L + (long) worldserver.getRandom().nextInt(20);
          VillagePlace villageplace = worldserver.y();
-@@ -74,7 +284,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
+@@ -74,7 +295,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
                  return true;
              }
          };
@@ -252,7 +265,7 @@ index 63a761ebef80d4af09cdc2682e496d78492c4a3a..2f148a5b4754341c36f131b5da0ffe82
          PathEntity pathentity = entitycreature.getNavigation().a(set, this.b.d());
  
          if (pathentity != null && pathentity.j()) {
-@@ -84,7 +294,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
+@@ -84,7 +305,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
                  villageplace.a(this.b.c(), (blockposition1) -> {
                      return blockposition1.equals(blockposition);
                  }, blockposition, 1);
@@ -473,6 +486,28 @@ index 94533e416fcb0814ea4898742b740d882f66093d..bd0538eb16a2b4cface64ed49034b054
      }
  
      @Nullable
+diff --git a/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java b/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java
+index 475c0764b97b056f17720f37b1ca3eb1a2375334..9f48d476c05dbeabbfe3c650ce4ad33ec691a56a 100644
+--- a/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java
++++ b/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java
+@@ -50,7 +50,7 @@ public class PathfinderGoalMoveThroughVillage extends PathfinderGoal {
+                         if (!worldserver.a_(blockposition1)) {
+                             return Double.NEGATIVE_INFINITY;
+                         } else {
+-                            Optional<BlockPosition> optional = worldserver.y().c(VillagePlaceType.b, this::a, blockposition1, 10, VillagePlace.Occupancy.IS_OCCUPIED);
++                            Optional<BlockPosition> optional = Optional.ofNullable(BehaviorFindPosition.findAnyFirstPoi(worldserver.y(), VillagePlaceType.b, this::a, blockposition1, 10, VillagePlace.Occupancy.IS_OCCUPIED)); // Tuinity - remove streams here
+ 
+                             return !optional.isPresent() ? Double.NEGATIVE_INFINITY : -((BlockPosition) optional.get()).j(blockposition);
+                         }
+@@ -59,7 +59,7 @@ public class PathfinderGoalMoveThroughVillage extends PathfinderGoal {
+                     if (vec3d == null) {
+                         return false;
+                     } else {
+-                        Optional<BlockPosition> optional = worldserver.y().c(VillagePlaceType.b, this::a, new BlockPosition(vec3d), 10, VillagePlace.Occupancy.IS_OCCUPIED);
++                        Optional<BlockPosition> optional = Optional.ofNullable(BehaviorFindPosition.findAnyFirstPoi(worldserver.y(), VillagePlaceType.b, this::a, new BlockPosition(vec3d), 10, VillagePlace.Occupancy.IS_OCCUPIED)); // Tuinity - remove streams here
+ 
+                         if (!optional.isPresent()) {
+                             return false;
 diff --git a/src/main/java/net/minecraft/server/RegionFileSection.java b/src/main/java/net/minecraft/server/RegionFileSection.java
 index 04256a95108b8182e8f808e856e0d2b62165e242..d9362b74fda2ea937281f897fbc2cb501775a275 100644
 --- a/src/main/java/net/minecraft/server/RegionFileSection.java
