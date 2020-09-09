@@ -6,10 +6,10 @@ Subject: [PATCH] Util patch
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..3d1b6b900e4b8abf5c371af86754a7b54681015b
+index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69003dc235
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
-@@ -0,0 +1,326 @@
+@@ -0,0 +1,346 @@
 +package com.tuinity.tuinity.chunk;
 +
 +import co.aikar.timings.MinecraftTimings;
@@ -19,6 +19,7 @@ index 0000000000000000000000000000000000000000..3d1b6b900e4b8abf5c371af86754a7b5
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 +import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
++import net.minecraft.server.ChunkCoordIntPair;
 +import net.minecraft.server.MCUtil;
 +import net.minecraft.server.WorldServer;
 +import java.util.ArrayList;
@@ -173,6 +174,7 @@ index 0000000000000000000000000000000000000000..3d1b6b900e4b8abf5c371af86754a7b5
 +    protected void recalculateRegion(final Region<T> region) {
 +        this.regionRecalculateTimings.startTiming();
 +        try {
++            region.markedForRecalc = false;
 +            // clear unused regions
 +            for (final Iterator<RegionSection<T>> iterator = region.deadSections.iterator(); iterator.hasNext(); ) {
 +                final RegionSection<T> deadRegion = iterator.next();
@@ -259,7 +261,7 @@ index 0000000000000000000000000000000000000000..3d1b6b900e4b8abf5c371af86754a7b5
 +
 +        protected void markRegionDead(final RegionSection<T> section) {
 +            this.deadSections.add(section);
-+            if (!this.markedForRecalc && this.sections.size() >= this.regionManager.minSectionRecalcCount && this.getDeadSectionPercent() >= this.regionManager.maxDeadRegionPercent) {
++            if (!this.markedForRecalc && (this.sections.size() >= this.regionManager.minSectionRecalcCount || this.sections.size() == this.deadSections.size()) && this.getDeadSectionPercent() >= this.regionManager.maxDeadRegionPercent) {
 +                this.regionManager.addToRecalcQueue(this);
 +                this.markedForRecalc = true;
 +            }
@@ -312,9 +314,16 @@ index 0000000000000000000000000000000000000000..3d1b6b900e4b8abf5c371af86754a7b5
 +            this.data.put(key, data);
 +        }
 +
++        private static long getChunkIndex(final int chunkX, final int chunkZ) {
++            return 1L << ((chunkX & (REGION_CHUNK_SIZE - 1)) | ((chunkZ & (REGION_CHUNK_SIZE - 1)) << REGION_CHUNK_SIZE_SHIFT));
++        }
++
 +        protected void addChunk(final int chunkX, final int chunkZ) {
 +            final long bitset = this.chunksBitset;
-+            this.chunksBitset = bitset | (1L << ((chunkX & (REGION_CHUNK_SIZE - 1)) | ((chunkZ & (REGION_CHUNK_SIZE - 1)) << REGION_CHUNK_SIZE_SHIFT)));
++            final long after = this.chunksBitset = bitset | getChunkIndex(chunkX, chunkZ);
++            if (after == bitset) {
++                throw new IllegalStateException("Cannot add a chunk to a region which already has the chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
++            }
 +            if (bitset != 0L) {
 +                return;
 +            }
@@ -322,11 +331,22 @@ index 0000000000000000000000000000000000000000..3d1b6b900e4b8abf5c371af86754a7b5
 +        }
 +
 +        protected void removeChunk(final int chunkX, final int chunkZ) {
-+            final long bitset = this.chunksBitset |= ~(1L << ((chunkX & (REGION_CHUNK_SIZE - 1)) | ((chunkZ & (REGION_CHUNK_SIZE - 1)) << REGION_CHUNK_SIZE_SHIFT)));
++            final long before = this.chunksBitset;
++            final long bitset = this.chunksBitset = before & ~getChunkIndex(chunkX, chunkZ);
++            if (before == bitset) {
++                throw new IllegalStateException("Cannot remove a chunk from a region which does not have that chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
++            }
 +            if (bitset != 0L) {
 +                return;
 +            }
 +            this.region.markRegionDead(this);
++        }
++
++        @Override
++        public String toString() {
++            return "RegionSection{" +
++                    "regionCoordinate=" + new ChunkCoordIntPair(this.regionCoordinate).toString() +
++                    '}';
 +        }
 +    }
 +
@@ -936,7 +956,7 @@ index fc6197dd5bc7527ed66839c7e8316fb23ab5d14e..0c2cfdbc0dafbc1a17c031f3efb67f71
          int i = chunkstatus.c();
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index fcd3388d88aad6e897b73e2c823267ada327cbda..1c7fb9c18a1316cd83de1b514b98b34ee0ceabfb 100644
+index fcd3388d88aad6e897b73e2c823267ada327cbda..56b5acaa5ee37e6b175a657667e7e01a2e44673c 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -277,6 +277,21 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -979,14 +999,25 @@ index fcd3388d88aad6e897b73e2c823267ada327cbda..1c7fb9c18a1316cd83de1b514b98b34e
                  }
  
                  this.updatingChunks.put(i, playerchunk);
-@@ -1043,6 +1062,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                     this.lightEngine.a(ichunkaccess.getPos());
+@@ -1020,7 +1039,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             if (completablefuture1 != completablefuture) {
+                 this.a(i, playerchunk);
+             } else {
+-                if (this.pendingUnload.remove(i, playerchunk) && ichunkaccess != null) {
++                // Tuinity start
++                boolean removed;
++                if ((removed = this.pendingUnload.remove(i, playerchunk)) && ichunkaccess != null) { // Tuinity end
+                     if (ichunkaccess instanceof Chunk) {
+                         ((Chunk) ichunkaccess).setLoaded(false);
+                     }
+@@ -1044,6 +1065,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      this.lightEngine.queueUpdate();
                      this.worldLoadListener.a(ichunkaccess.getPos(), (ChunkStatus) null);
-+                    this.dataRegionManager.removeChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
                  }
++                if (removed) this.dataRegionManager.removeChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
  
              }
+         };
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
 index e21c747b6c39155c44bf30860681d67b0b29fb12..9f4f9df09968dc45878ad59f5ee45672a3f08fbd 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java
