@@ -6,20 +6,13 @@ Subject: [PATCH] Optimise closest entity lookup used by AI goals
 Use a special entity slice for tracking entities by class as well
 as counts per chunk. This should reduce the number of entities searched.
 
-By default, use a lookup method that is optimised to search the
-nearest chunk first and return the closest entity in the nearest chunk.
-In the cases that there is an entity targetted, this will hopefully
-reduce the total number of chunks searched in the first place.
-This deviates a bit from vanilla, so there will be a config option.
-
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/ChunkEntitiesByClass.java b/src/main/java/com/tuinity/tuinity/chunk/ChunkEntitiesByClass.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a4e6a0784
+index 0000000000000000000000000000000000000000..d795281c5376c346c0eb26545cdbbd0c92a16674
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/ChunkEntitiesByClass.java
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,182 @@
 +package com.tuinity.tuinity.chunk;
-+
 +
 +import com.destroystokyo.paper.util.maplist.EntityList;
 +import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
@@ -27,8 +20,6 @@ index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a
 +import net.minecraft.server.AxisAlignedBB;
 +import net.minecraft.server.Chunk;
 +import net.minecraft.server.Entity;
-+import net.minecraft.server.EntityComplexPart;
-+import net.minecraft.server.EntityEnderDragon;
 +import net.minecraft.server.MathHelper;
 +import java.util.ArrayList;
 +import java.util.List;
@@ -52,7 +43,7 @@ index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a
 +    {
 +        this.chunkWideCount.defaultReturnValue(Integer.MIN_VALUE);
 +    }
-+    private final ChunkEntitiesByClass.EntitySlice[] slices = new ChunkEntitiesByClass.EntitySlice[16];
++    private final Reference2ObjectOpenHashMap<Class<?>, ArrayList<Entity>>[] slices = new Reference2ObjectOpenHashMap[16];
 +    private final Chunk chunk;
 +
 +    public ChunkEntitiesByClass(final Chunk chunk) {
@@ -72,9 +63,9 @@ index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a
 +        final Object[] keys = this.chunkWideCount.getKey();
 +        final int[] values = this.chunkWideCount.getValue();
 +
-+        EntitySlice slice = this.slices[sectionY];
++        Reference2ObjectOpenHashMap<Class<?>, ArrayList<Entity>> slice = this.slices[sectionY];
 +        if (slice == null) {
-+            slice = this.slices[sectionY] = new EntitySlice();
++            slice = this.slices[sectionY] = new Reference2ObjectOpenHashMap<>(4, 0.9f);
 +        }
 +
 +        for (int i = 0, len = keys.length; i < len; ++i) {
@@ -85,7 +76,7 @@ index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a
 +            final Class<?> key = (Class<?>)_key;
 +            if (key.isInstance(entity)) {
 +                ++values[i];
-+                slice.entitiesByLookupClass.computeIfAbsent(key, (keyInMap) -> {
++                slice.computeIfAbsent(key, (keyInMap) -> {
 +                    return new ArrayList<>();
 +                }).add(entity);
 +            }
@@ -100,7 +91,7 @@ index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a
 +        final Object[] keys = this.chunkWideCount.getKey();
 +        final int[] values = this.chunkWideCount.getValue();
 +
-+        EntitySlice slice = this.slices[sectionY];
++        Reference2ObjectOpenHashMap<Class<?>, ArrayList<Entity>> slice = this.slices[sectionY];
 +        if (slice == null) {
 +            return; // seriously brain damaged plugins
 +        }
@@ -113,7 +104,7 @@ index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a
 +            final Class<?> key = (Class<?>)_key;
 +            if (key.isInstance(entity)) {
 +                --values[i];
-+                final ArrayList<Entity> list = slice.entitiesByLookupClass.get(key);
++                final ArrayList<Entity> list = slice.get(key);
 +                if (list == null) {
 +                    return; // seriously brain damaged plugins
 +                }
@@ -133,11 +124,11 @@ index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a
 +
 +            if (clazz.isInstance(entity)) {
 +                ++totalCount;
-+                EntitySlice slice = this.slices[entity.chunkY];
++                Reference2ObjectOpenHashMap<Class<?>, ArrayList<Entity>> slice = this.slices[entity.chunkY];
 +                if (slice == null) {
-+                    slice = this.slices[entity.chunkY] = new EntitySlice();
++                    slice = this.slices[entity.chunkY] = new Reference2ObjectOpenHashMap<>(4, 0.9f);
 +                }
-+                slice.entitiesByLookupClass.computeIfAbsent(clazz, (keyInMap) -> {
++                slice.computeIfAbsent(clazz, (keyInMap) -> {
 +                    return new ArrayList<>();
 +                }).add(entity);
 +            }
@@ -165,12 +156,12 @@ index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a
 +        max = MathHelper.clamp(max, 0, this.slices.length - 1);
 +
 +        for (int y = min; y <= max; ++y) {
-+            final ChunkEntitiesByClass.EntitySlice slice = this.slices[y];
++            final Reference2ObjectOpenHashMap<Class<?>, ArrayList<Entity>> slice = this.slices[y];
 +            if (slice == null) {
 +                continue;
 +            }
 +
-+            final ArrayList<Entity> entities = slice.entitiesByLookupClass.get(clazz);
++            final ArrayList<Entity> entities = slice.get(clazz);
 +            if (entities == null) {
 +                continue;
 +            }
@@ -186,13 +177,6 @@ index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a
 +                }
 +            }
 +        }
-+    }
-+
-+
-+    static final class EntitySlice {
-+
-+        final Reference2ObjectOpenHashMap<Class<?>, ArrayList<Entity>> entitiesByLookupClass = new Reference2ObjectOpenHashMap<>(4, 0.9f);
-+
 +    }
 +
 +    static final class ExposedReference2IntOpenHashMap<K> extends Reference2IntOpenHashMap<K> {
@@ -322,7 +306,7 @@ index 253377c6238594de1f76cafcbf8223592e4d3f6b..3ebe3d0dc4c2c6aee6ea349006a74cbe
          if (entityliving == entityliving1) {
              return false;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..581f49801f9d3480c1ccf614ce3b520b78cd30e0 100644
+index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..fc0d8c05d033ca021d65e0efd4acbea88b2d1cb7 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -1180,7 +1180,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
@@ -343,7 +327,7 @@ index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..581f49801f9d3480c1ccf614ce3b520b
                  }
              }
          }
-@@ -1211,6 +1211,93 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1211,6 +1211,104 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          return list;
      }
  
@@ -365,51 +349,65 @@ index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..581f49801f9d3480c1ccf614ce3b520b
 +                                                             AxisAlignedBB boundingBox) {
 +        org.bukkit.craftbukkit.util.UnsafeList<Entity> entities = com.tuinity.tuinity.util.CachedLists.getTempGetEntitiesList();
 +        try {
-+            int lowerX = MathHelper.floor((boundingBox.minX - 2.0D) / 16.0D);
-+            int upperX = MathHelper.f((boundingBox.maxX + 2.0D) / 16.0D);
-+            int lowerZ = MathHelper.floor((boundingBox.minZ - 2.0D) / 16.0D);
-+            int upperZ = MathHelper.f((boundingBox.maxZ + 2.0D) / 16.0D);
++            int lowerX = MCUtil.fastFloor((boundingBox.minX - 2.0D) / 16.0D);
++            int upperX = MCUtil.fastFloor((boundingBox.maxX + 2.0D) / 16.0D);
++            int lowerZ = MCUtil.fastFloor((boundingBox.minZ - 2.0D) / 16.0D);
++            int upperZ = MCUtil.fastFloor((boundingBox.maxZ + 2.0D) / 16.0D);
 +
-+            T closest = null;
-+            double closestDistance = Double.MAX_VALUE;
-+
-+            org.bukkit.craftbukkit.util.UnsafeList<Chunk> chunks =
-+                    com.tuinity.tuinity.util.CachedLists.getTempGetChunksList();
++            org.bukkit.craftbukkit.util.UnsafeList<Chunk> chunks = com.tuinity.tuinity.util.CachedLists.getTempGetChunksList();
 +            try {
++                T closest = null;
++                double closestDistance = Double.MAX_VALUE;
 +                ChunkProviderServer chunkProvider = ((WorldServer)this).getChunkProvider();
-+                for (int currZ = lowerZ; currZ <= upperZ; ++currZ) {
-+                    for (int currX = lowerX; currX <= upperX; ++currX) {
-+                        final Chunk chunk = chunkProvider.getChunkAtIfLoadedImmediately(currX, currZ);
-+                        if (chunk == null || !chunk.hasEntitiesMaybe(clazz)) {
-+                            continue;
++
++                int centerX = MCUtil.fastFloor((boundingBox.minX + boundingBox.maxX) / 2.0) >> 4;
++                int centerZ = MCUtil.fastFloor((boundingBox.minX + boundingBox.maxX) / 2.0) >> 4;
++                // Copied from MCUtil.getSpiralOutChunks
++                Chunk temp = null;
++                if ((temp = chunkProvider.getChunkAtIfLoadedImmediately(centerX, centerZ)) != null && temp.hasEntitiesMaybe(clazz)) {
++                    chunks.add(temp);
++                }
++                int radius = Math.max((upperX - lowerX + 1) >> 1, (upperZ - lowerZ + 1) >> 1);
++                for (int r = 1; r <= radius; r++) {
++                    int ox = -r;
++                    int oz = r;
++
++                    // Iterates the edge of half of the box; then negates for other half.
++                    while (ox <= r && oz > -r) {
++                        {
++                            int cx = centerX + ox;
++                            int cz = centerZ + oz;
++                            if (cx >= lowerX && cx <= upperX && cz >= lowerZ && cz <= upperZ &&
++                                    (temp = chunkProvider.getChunkAtIfCachedImmediately(cx, cx)) != null &&
++                                    temp.hasEntitiesMaybe(clazz)) {
++                                chunks.add(temp);
++                            }
 +                        }
-+                        chunks.add(chunk);
++                        {
++                            int cx = centerX - ox;
++                            int cz = centerZ - oz;
++                            if (cx >= lowerX && cx <= upperX && cz >= lowerZ && cz <= upperZ &&
++                                    (temp = chunkProvider.getChunkAtIfCachedImmediately(cx, cx)) != null &&
++                                    temp.hasEntitiesMaybe(clazz)) {
++                                chunks.add(temp);
++                            }
++                        }
++
++                        if (ox < r) {
++                            ox++;
++                        } else {
++                            oz--;
++                        }
 +                    }
 +                }
 +
-+                chunks.sort((Chunk c1, Chunk c2) -> {
-+                    ChunkCoordIntPair c1Pos = c1.getPos();
-+                    ChunkCoordIntPair c2Pos = c2.getPos();
-+                    double c1X = (double)(c1Pos.x << 4) + 7.5;
-+                    double c1Z = (double)(c1Pos.z << 4) + 7.5;
-+                    double diff1X = c1X - x;
-+                    double diff1Z = c1Z - z;
-+
-+                    double c2X = (double)(c2Pos.x << 4) + 7.5;
-+                    double c2Z = (double)(c2Pos.z << 4) + 7.5;
-+                    double diff2X = c2X - x;
-+                    double diff2Z = c2Z - z;
-+
-+                    return Double.compare(diff1X * diff1X + diff1Z * diff1Z, diff2X * diff2X + diff2Z * diff2Z);
-+                });
-+
-+                for (int i = 0, chunks_len = chunks.size(); i < chunks_len; ++i) {
-+                    Chunk chunk = chunks.get(i);
++                for (int cindex = 0, clen = chunks.size(); cindex < clen; ++cindex) {
++                    final Chunk chunk = chunks.unsafeGet(cindex);
 +
 +                    chunk.getEntitiesClass(clazz, source, boundingBox, null, entities);
 +
 +                    for (int k = 0, entities_len = entities.size(); k < entities_len; ++k) {
-+                        T entity = (T) entities.unsafeGet(k);
++                        T entity = (T)entities.unsafeGet(k);
 +                        double distance = entity.getDistanceSquared(x, y, z);
 +                        // check distance first, as it's the least expensive
 +                        if (distance < closestDistance && condition.test(source, entity)) {
@@ -418,16 +416,13 @@ index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..581f49801f9d3480c1ccf614ce3b520b
 +                        }
 +                    }
 +
-+                    // by returning here it's actually possible we only return a very close entity - not the closest.
-+                    // TODO add a config option
-+                    if (closest != null) {
-+                        return closest;
-+                    }
++                    entities.setSize(0);
 +                }
++
++                return closest;
 +            } finally {
 +                com.tuinity.tuinity.util.CachedLists.returnTempGetChunksList(chunks);
 +            }
-+            return null;
 +        } finally {
 +            com.tuinity.tuinity.util.CachedLists.returnTempGetEntitiesList(entities);
 +        }
