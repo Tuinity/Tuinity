@@ -14,10 +14,10 @@ This deviates a bit from vanilla, so there will be a config option.
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/ChunkEntitiesByClass.java b/src/main/java/com/tuinity/tuinity/chunk/ChunkEntitiesByClass.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..d7eeaf28fddb6096297626ccb3b5a5202063bfa9
+index 0000000000000000000000000000000000000000..fa050ab74870e5f33a78f4e5b8571b8a4e6a0784
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/ChunkEntitiesByClass.java
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,192 @@
 +package com.tuinity.tuinity.chunk;
 +
 +
@@ -183,21 +183,6 @@ index 0000000000000000000000000000000000000000..d7eeaf28fddb6096297626ccb3b5a520
 +                    if (predicate == null || predicate.test(entity1)) {
 +                        into.add(entity1);
 +                    }
-+
-+                    if (!(entity1 instanceof EntityEnderDragon)) {
-+                        continue;
-+                    }
-+
-+                    EntityComplexPart[] aentitycomplexpart = ((EntityEnderDragon)entity1).children;
-+                    int l = aentitycomplexpart.length;
-+
-+                    for (int i1 = 0; i1 < l; ++i1) {
-+                        EntityComplexPart entitycomplexpart = aentitycomplexpart[i1];
-+
-+                        if (entitycomplexpart != entity && entitycomplexpart.getBoundingBox().intersects(boundingBox) && (predicate == null || predicate.test(entitycomplexpart))) {
-+                            into.add(entitycomplexpart);
-+                        }
-+                    }
 +                }
 +            }
 +        }
@@ -264,10 +249,10 @@ index a54f516ba72806c0470259436f889faa8f6e7586..40da31d07206e3239ab7eabad3d5cbde
          TEMP_COLLISION_LIST.completeReset();
          TEMP_GET_ENTITIES_LIST.completeReset();
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index ac6e5e3309affc830d4db07fd9b8d809c3085033..90728ce0c02335fde9084292be49db5dec9069e4 100644
+index ac6e5e3309affc830d4db07fd9b8d809c3085033..ab4869d3401b73908865e3ddce4ebcd9e8344026 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -141,6 +141,18 @@ public class Chunk implements IChunkAccess {
+@@ -141,6 +141,19 @@ public class Chunk implements IChunkAccess {
      }
      // Tuinity end - optimise hard collision handling
  
@@ -279,6 +264,7 @@ index ac6e5e3309affc830d4db07fd9b8d809c3085033..90728ce0c02335fde9084292be49db5d
 +    }
 +
 +    public final void getEntitiesClass(Class<?> clazz, Entity entity, AxisAlignedBB boundingBox, Predicate<Entity> predicate, List<Entity> into) {
++        org.spigotmc.AsyncCatcher.catchOp("getEntitiesByClass");
 +        this.entitiesByClass.lookupClass(clazz, entity, boundingBox, predicate, into);
 +    }
 +    // Tuinity end - entity slices by class
@@ -286,7 +272,7 @@ index ac6e5e3309affc830d4db07fd9b8d809c3085033..90728ce0c02335fde9084292be49db5d
      public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeStorage biomestorage, ChunkConverter chunkconverter, TickList<Block> ticklist, TickList<FluidType> ticklist1, long i, @Nullable ChunkSection[] achunksection, @Nullable Consumer<Chunk> consumer) {
          this.sections = new ChunkSection[16];
          this.e = Maps.newHashMap();
-@@ -640,7 +652,7 @@ public class Chunk implements IChunkAccess {
+@@ -640,7 +653,7 @@ public class Chunk implements IChunkAccess {
          entity.chunkX = this.loc.x;
          entity.chunkY = k;
          entity.chunkZ = this.loc.z;
@@ -295,7 +281,7 @@ index ac6e5e3309affc830d4db07fd9b8d809c3085033..90728ce0c02335fde9084292be49db5d
          this.entitySlices[k].add(entity); if (entity.hardCollides()) this.hardCollidingEntities[k].add(entity); // Tuinity - optimise hard colliding entities
          // Paper start
          if (entity instanceof EntityItem) {
-@@ -679,7 +691,7 @@ public class Chunk implements IChunkAccess {
+@@ -679,7 +692,7 @@ public class Chunk implements IChunkAccess {
              entity.entitySlice = null;
              entity.inChunk = false;
          }

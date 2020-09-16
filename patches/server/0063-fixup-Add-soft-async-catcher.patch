@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Wed, 16 Sep 2020 01:05:51 -0700
+Subject: [PATCH] fixup! Add soft async catcher
+
+
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index c91cd298b4afc88e7ffd736ea14c3c076f01ab10..4d4d0140585ae448f2e097c9cfbc7478a86f4d5a 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -686,7 +686,7 @@ public class Chunk implements IChunkAccess {
+ 
+     @Override
+     public void a(Entity entity) {
+-        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async addEntity call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk add entity"); // Tuinity
+         this.q = true;
+         int i = MathHelper.floor(entity.locX() / 16.0D);
+         int j = MathHelper.floor(entity.locZ() / 16.0D);
+@@ -756,7 +756,7 @@ public class Chunk implements IChunkAccess {
+     }
+ 
+     public void a(Entity entity, int i) {
+-        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async removeEntity call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk remove entity"); // Tuinity // Tuinity
+         if (i < 0) {
+             i = 0;
+         }
+@@ -1014,7 +1014,7 @@ public class Chunk implements IChunkAccess {
+     }
+ 
+     public void a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<Entity> list, @Nullable Predicate<? super Entity> predicate) {
+-        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk get entities call"); // Tuinity
+         int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
+         int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
+ 
+@@ -1054,7 +1054,7 @@ public class Chunk implements IChunkAccess {
+     }
+ 
+     public <T extends Entity> void a(@Nullable EntityTypes<?> entitytypes, AxisAlignedBB axisalignedbb, List<? super T> list, Predicate<? super T> predicate) {
+-        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk get entities (by type) call"); // Tuinity
+         int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
+         int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
+ 
+@@ -1085,7 +1085,7 @@ public class Chunk implements IChunkAccess {
+     }
+ 
+     public <T extends Entity> void a(Class<? extends T> oclass, AxisAlignedBB axisalignedbb, List<T> list, @Nullable Predicate<? super T> predicate) {
+-        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk get entities (by class) call"); // Tuinity
+         int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
+         int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
+ 
+diff --git a/src/main/java/org/spigotmc/AsyncCatcher.java b/src/main/java/org/spigotmc/AsyncCatcher.java
+index c3ac1a46c3e06bfe06ad9ff9f4ec49c055a790b0..51e9c54cddf4b28ba3d3d892322c487774bdab70 100644
+--- a/src/main/java/org/spigotmc/AsyncCatcher.java
++++ b/src/main/java/org/spigotmc/AsyncCatcher.java
+@@ -12,6 +12,7 @@ public class AsyncCatcher
+     {
+         if ( ( enabled || com.tuinity.tuinity.util.TickThread.STRICT_THREAD_CHECKS ) && !org.bukkit.Bukkit.isPrimaryThread() ) // Tuinity
+         {
++            MinecraftServer.LOGGER.fatal("Thread " + Thread.currentThread().getName() + " failed thread check for reason: Asynchronous " + reason, new Throwable()); // Tuinity - not all exceptions are printed
+             throw new IllegalStateException( "Asynchronous " + reason + "!" );
+         }
+     }
