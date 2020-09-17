@@ -306,7 +306,7 @@ index 253377c6238594de1f76cafcbf8223592e4d3f6b..3ebe3d0dc4c2c6aee6ea349006a74cbe
          if (entityliving == entityliving1) {
              return false;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..fc0d8c05d033ca021d65e0efd4acbea88b2d1cb7 100644
+index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..0a3856508f3e7a741ae738f4e54d46373731edf0 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -1180,7 +1180,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
@@ -327,7 +327,7 @@ index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..fc0d8c05d033ca021d65e0efd4acbea8
                  }
              }
          }
-@@ -1211,6 +1211,104 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+@@ -1211,6 +1211,106 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
          return list;
      }
  
@@ -349,10 +349,10 @@ index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..fc0d8c05d033ca021d65e0efd4acbea8
 +                                                             AxisAlignedBB boundingBox) {
 +        org.bukkit.craftbukkit.util.UnsafeList<Entity> entities = com.tuinity.tuinity.util.CachedLists.getTempGetEntitiesList();
 +        try {
-+            int lowerX = MCUtil.fastFloor((boundingBox.minX - 2.0D) / 16.0D);
-+            int upperX = MCUtil.fastFloor((boundingBox.maxX + 2.0D) / 16.0D);
-+            int lowerZ = MCUtil.fastFloor((boundingBox.minZ - 2.0D) / 16.0D);
-+            int upperZ = MCUtil.fastFloor((boundingBox.maxZ + 2.0D) / 16.0D);
++            int lowerX = MCUtil.fastFloor((boundingBox.minX - 2.0D)) >> 4;
++            int upperX = MCUtil.fastFloor((boundingBox.maxX + 2.0D)) >> 4;
++            int lowerZ = MCUtil.fastFloor((boundingBox.minZ - 2.0D)) >> 4;
++            int upperZ = MCUtil.fastFloor((boundingBox.maxZ + 2.0D)) >> 4;
 +
 +            org.bukkit.craftbukkit.util.UnsafeList<Chunk> chunks = com.tuinity.tuinity.util.CachedLists.getTempGetChunksList();
 +            try {
@@ -360,10 +360,10 @@ index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..fc0d8c05d033ca021d65e0efd4acbea8
 +                double closestDistance = Double.MAX_VALUE;
 +                ChunkProviderServer chunkProvider = ((WorldServer)this).getChunkProvider();
 +
-+                int centerX = MCUtil.fastFloor((boundingBox.minX + boundingBox.maxX) / 2.0) >> 4;
-+                int centerZ = MCUtil.fastFloor((boundingBox.minX + boundingBox.maxX) / 2.0) >> 4;
++                int centerX = (lowerX + upperX) >> 1;
++                int centerZ = (lowerZ + upperZ) >> 1;
 +                // Copied from MCUtil.getSpiralOutChunks
-+                Chunk temp = null;
++                Chunk temp;
 +                if ((temp = chunkProvider.getChunkAtIfLoadedImmediately(centerX, centerZ)) != null && temp.hasEntitiesMaybe(clazz)) {
 +                    chunks.add(temp);
 +                }
@@ -378,7 +378,7 @@ index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..fc0d8c05d033ca021d65e0efd4acbea8
 +                            int cx = centerX + ox;
 +                            int cz = centerZ + oz;
 +                            if (cx >= lowerX && cx <= upperX && cz >= lowerZ && cz <= upperZ &&
-+                                    (temp = chunkProvider.getChunkAtIfCachedImmediately(cx, cx)) != null &&
++                                    (temp = chunkProvider.getChunkAtIfLoadedImmediately(cx, cz)) != null &&
 +                                    temp.hasEntitiesMaybe(clazz)) {
 +                                chunks.add(temp);
 +                            }
@@ -387,7 +387,7 @@ index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..fc0d8c05d033ca021d65e0efd4acbea8
 +                            int cx = centerX - ox;
 +                            int cz = centerZ - oz;
 +                            if (cx >= lowerX && cx <= upperX && cz >= lowerZ && cz <= upperZ &&
-+                                    (temp = chunkProvider.getChunkAtIfCachedImmediately(cx, cx)) != null &&
++                                    (temp = chunkProvider.getChunkAtIfLoadedImmediately(cx, cz)) != null &&
 +                                    temp.hasEntitiesMaybe(clazz)) {
 +                                chunks.add(temp);
 +                            }
@@ -401,13 +401,15 @@ index a490662e06285ea604bb5a58aa110fcbdcd3d9c6..fc0d8c05d033ca021d65e0efd4acbea8
 +                    }
 +                }
 +
++                Object[] chunkData = chunks.getRawDataArray();
 +                for (int cindex = 0, clen = chunks.size(); cindex < clen; ++cindex) {
-+                    final Chunk chunk = chunks.unsafeGet(cindex);
++                    final Chunk chunk = (Chunk)chunkData[cindex];
 +
 +                    chunk.getEntitiesClass(clazz, source, boundingBox, null, entities);
 +
-+                    for (int k = 0, entities_len = entities.size(); k < entities_len; ++k) {
-+                        T entity = (T)entities.unsafeGet(k);
++                    Object[] entityData = entities.getRawDataArray();
++                    for (int eindex = 0, entities_len = entities.size(); eindex < entities_len; ++eindex) {
++                        T entity = (T)entityData[eindex];
 +                        double distance = entity.getDistanceSquared(x, y, z);
 +                        // check distance first, as it's the least expensive
 +                        if (distance < closestDistance && condition.test(source, entity)) {
