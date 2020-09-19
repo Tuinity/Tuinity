@@ -135,7 +135,7 @@ index d4fd01cd299dfe00979ab410dc7e4c6326735900..e5bdf10448cf00be08c0286fb3aba85b
      // Paper end - optimise isOutsideOfRange
      // Paper start - optimize chunk status progression without jumping through thread pool
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 6016a7bc59980509b58e1ac7e62d2ad375faa72d..d97ef7dfaedcba11a13c43ad6247d70ca0d12bc1 100644
+index d2d58758119f52f5acbd694a0db8228cc8f32b22..0b359dc8f12c225a72a6fe3bb9f4ab9c417edcc3 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -195,6 +195,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -180,7 +180,7 @@ index 6016a7bc59980509b58e1ac7e62d2ad375faa72d..d97ef7dfaedcba11a13c43ad6247d70c
  
 @@ -470,6 +482,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          // Tuinity start
-         this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 10, (1.0 / 3.0), "Data");
+         this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
          // Tuinity end
 +        // Tuinity start - optimise checkDespawn
 +        this.playerGeneralAreaMap = new com.destroystokyo.paper.util.misc.PlayerAreaMap(this.pooledLinkedPlayerHashSets,
@@ -203,7 +203,7 @@ index 6016a7bc59980509b58e1ac7e62d2ad375faa72d..d97ef7dfaedcba11a13c43ad6247d70c
      // Paper start - Chunk Prioritization
      public void queueHolderUpdate(PlayerChunk playerchunk) {
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 0a3856508f3e7a741ae738f4e54d46373731edf0..5622b35db3dcfafac9bbbccfd9e1b83de2b75971 100644
+index 1889d41f88bf3a250e89244576e2d6960b10d2b1..27d0ddc628a45d5b49386d77483fae0688e5998c 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -123,6 +123,34 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
@@ -242,7 +242,7 @@ index 0a3856508f3e7a741ae738f4e54d46373731edf0..5622b35db3dcfafac9bbbccfd9e1b83d
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig(((WorldDataServer) worlddatamutable).getName()); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig((((WorldDataServer)worlddatamutable).getName()), this.spigotConfig); // Paper
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 8bc24e4e804280f80f83b773d3d982e0d8c77b3c..b05b9a2fca0999af79c4015be8b1c56dced5064b 100644
+index a8ed56b8a201afba6f0ef49afb3021964738485d..250c01ed1fefb4e6ff179418f4a5e5412f18223a 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -296,6 +296,10 @@ public class WorldServer extends World implements GeneratorAccessSeed {

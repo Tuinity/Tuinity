@@ -82,10 +82,10 @@ index e7624948ea4aa1a07d84ed3d295cfe2dd354fd14..a263cd7a0680e0cc3517f84308118eb3
          int ret = 0;
  
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
-index a8a786d33577f0277ae28e141f2bbb69003dc235..b57006d049cf53da2244fc734987ec1d7576b95c 100644
+index e8cf605389aa625d4fd0eb8f3efc32690d95173a..0f42e5158bc34e4611215fe5b569247745f6593b 100644
 --- a/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 +++ b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
-@@ -130,6 +130,7 @@ public final class SingleThreadChunkRegionManager<T extends Enum<T> & SingleThre
+@@ -137,6 +137,7 @@ public final class SingleThreadChunkRegionManager<T extends Enum<T> & SingleThre
      }
  
      public void addChunk(final int chunkX, final int chunkZ) {
@@ -93,7 +93,7 @@ index a8a786d33577f0277ae28e141f2bbb69003dc235..b57006d049cf53da2244fc734987ec1d
          this.addChunkTimings.startTiming();
          try {
              this.getOrCreateAndMergeSection(chunkX >> REGION_CHUNK_SIZE_SHIFT, chunkZ >> REGION_CHUNK_SIZE_SHIFT, null).addChunk(chunkX, chunkZ);
-@@ -139,6 +140,7 @@ public final class SingleThreadChunkRegionManager<T extends Enum<T> & SingleThre
+@@ -146,6 +147,7 @@ public final class SingleThreadChunkRegionManager<T extends Enum<T> & SingleThre
      }
  
      public void removeChunk(final int chunkX, final int chunkZ) {
@@ -101,7 +101,7 @@ index a8a786d33577f0277ae28e141f2bbb69003dc235..b57006d049cf53da2244fc734987ec1d
          this.removeChunkTimings.startTiming();
          try {
              final RegionSection<T> section = this.regionsBySection.get(
-@@ -152,6 +154,7 @@ public final class SingleThreadChunkRegionManager<T extends Enum<T> & SingleThre
+@@ -159,6 +161,7 @@ public final class SingleThreadChunkRegionManager<T extends Enum<T> & SingleThre
      }
  
      public void recalculateRegions() {
@@ -268,7 +268,7 @@ index 4efc40c01ec12b80bd7cf9d35cf0ea0df973baf7..f322dccd834ff56b99f8796309709b5b
  
          if (!list.equals(this.p)) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 56b5acaa5ee37e6b175a657667e7e01a2e44673c..16fdab9eb60a43e57c77420f3fdee133849745bd 100644
+index dc1a559d430fc176c0600e8525c80d9708ac4be8..d1e58c73fa65e0bd38241fb8596cd0d0ec014a87 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -200,6 +200,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -328,14 +328,14 @@ index 56b5acaa5ee37e6b175a657667e7e01a2e44673c..16fdab9eb60a43e57c77420f3fdee133
  
          this.noTickViewDistance = viewDistance;
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 3b13816529af468388a536849a947504d39310f1..06e4f46b690b4f0e8a4b2832b054277e46d39cd8 100644
+index 3b13816529af468388a536849a947504d39310f1..6773dcd6e740188f1e5ad6cd6dceafc29c7d1818 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -372,6 +372,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
  
      @Override
      public boolean a(BlockPosition blockposition, IBlockData iblockdata, int i, int j) {
-+        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async set type call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("set type call"); // Tuinity
          // CraftBukkit start - tree generation
          if (this.captureTreeGeneration) {
              // Paper start
@@ -347,6 +347,18 @@ index 3b13816529af468388a536849a947504d39310f1..06e4f46b690b4f0e8a4b2832b054277e
          IBlockData iblockdata = newBlock;
          IBlockData iblockdata1 = oldBlock;
          IBlockData iblockdata2 = actualBlock;
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index a3c3b1123dfaf6e4da50cca45381e8e76e0882f3..3ada80fb4995946f5b0e787952eaeee6f15789f4 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -1651,6 +1651,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+ 
+     @Override
+     public void notify(BlockPosition blockposition, IBlockData iblockdata, IBlockData iblockdata1, int i) {
++        org.spigotmc.AsyncCatcher.catchOp("notify call"); // Tuinity
+         this.getChunkProvider().flagDirty(blockposition);
+         VoxelShape voxelshape = iblockdata.getCollisionShape(this, blockposition);
+         VoxelShape voxelshape1 = iblockdata1.getCollisionShape(this, blockposition);
 diff --git a/src/main/java/org/spigotmc/AsyncCatcher.java b/src/main/java/org/spigotmc/AsyncCatcher.java
 index 10606ed03e88e4e467de2d5424df12466c4e7873..c3ac1a46c3e06bfe06ad9ff9f4ec49c055a790b0 100644
 --- a/src/main/java/org/spigotmc/AsyncCatcher.java
