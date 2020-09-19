@@ -6,15 +6,14 @@ Subject: [PATCH] Util patch
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69003dc235
+index 0000000000000000000000000000000000000000..e8cf605389aa625d4fd0eb8f3efc32690d95173a
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
-@@ -0,0 +1,346 @@
+@@ -0,0 +1,403 @@
 +package com.tuinity.tuinity.chunk;
 +
 +import co.aikar.timings.MinecraftTimings;
 +import co.aikar.timings.Timing;
-+import com.google.common.collect.Iterators;
 +import com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
@@ -55,7 +54,7 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +        this.world = world;
 +        this.dataClass = enumClass;
 +        this.name = name;
-+        this.minSectionRecalcCount = Math.max(1, minSectionRecalcCount);
++        this.minSectionRecalcCount = Math.max(2, minSectionRecalcCount);
 +        this.maxDeadRegionPercent = maxDeadRegionPercent;
 +
 +        String prefix = world.getWorld().getName() + " - Region Manager - " + name + " - ";
@@ -86,7 +85,7 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +        return new RegionSection<>(keyInMap, SingleThreadChunkRegionManager.this);
 +    };
 +
-+    protected RegionSection<T> getOrCreateAndMergeSection(final int sectionX, final int sectionZ, final RegionSection<T> ifAbsent) {
++    protected RegionSection<T> getOrCreateAndMergeSection(final int sectionX, final int sectionZ, final RegionSection<T> force) {
 +        // find optimal candidate to merge into
 +        final int minX = sectionX - REGION_SECTION_MERGE_RADIUS;
 +        final int maxX = sectionX + REGION_SECTION_MERGE_RADIUS;
@@ -103,6 +102,9 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +                    continue;
 +                }
 +                final Region<T> region = section.region;
++                if (region.dead) {
++                    throw new IllegalStateException("Dead region should not be in live region manager state: " + region);
++                }
 +                final int sections = region.sections.size();
 +
 +                if (sections > mergeCandidateSectionSize) {
@@ -128,11 +130,16 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +
 +        final long sectionKey = MCUtil.getCoordinateKey(sectionX, sectionZ);
 +        final RegionSection<T> section;
-+        if (ifAbsent == null) {
++        if (force == null) {
 +            section = this.regionsBySection.computeIfAbsent(sectionKey, this.createRegionIfAbsent);
 +        } else {
-+            final RegionSection<T> existing = this.regionsBySection.putIfAbsent(sectionKey, ifAbsent);
-+            section = existing == null ? ifAbsent : existing;
++            final RegionSection<T> existing = this.regionsBySection.putIfAbsent(sectionKey, force);
++            if (existing != null) {
++                throw new IllegalStateException("Attempting to override section '" + existing.toStringWithRegion() +
++                        ", with " + force.toStringWithRegion());
++            }
++
++            section = force;
 +        }
 +
 +        section.region = mergeIntoCandidate;
@@ -177,9 +184,15 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +            region.markedForRecalc = false;
 +            // clear unused regions
 +            for (final Iterator<RegionSection<T>> iterator = region.deadSections.iterator(); iterator.hasNext(); ) {
-+                final RegionSection<T> deadRegion = iterator.next();
-+                this.regionsBySection.remove(deadRegion.regionCoordinate);
-+                region.sections.remove(deadRegion);
++                final RegionSection<T> deadSection = iterator.next();
++                if (!this.regionsBySection.remove(deadSection.regionCoordinate, deadSection)) {
++                    throw new IllegalStateException("Cannot remove dead section '" +
++                            deadSection.toStringWithRegion() + "' from section state! State at section coordinate: " +
++                            this.regionsBySection.get(deadSection.regionCoordinate));
++                }
++                if (!region.sections.remove(deadSection)) {
++                    throw new IllegalStateException("Region " + region + " has inconsistent state, it should contain section " + deadSection);
++                }
 +
 +                iterator.remove();
 +            }
@@ -193,17 +206,22 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +            // TODO
 +
 +            // destroy and rebuild the region
++            region.dead = true;
 +
 +            // destroy region state
-+            for (final Iterator<RegionSection<T>> iterator = region.sections.unsafeIterator(); iterator.hasNext(); ) {
-+                final RegionSection<T> aliveRegion = iterator.next();
-+                this.regionsBySection.remove(aliveRegion.regionCoordinate);
++            for (final Iterator<RegionSection<T>> iterator = region.sections.unsafeIterator(IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
++                final RegionSection<T> aliveSection = iterator.next();
++                if (!this.regionsBySection.remove(aliveSection.regionCoordinate, aliveSection)) {
++                    throw new IllegalStateException("Cannot remove alive section '" +
++                            aliveSection.toStringWithRegion() + "' from section state! State at section coordinate: " +
++                            this.regionsBySection.get(aliveSection.regionCoordinate));
++                }
 +            }
 +
 +            // rebuild regions
-+            for (final Iterator<RegionSection<T>> iterator = region.sections.unsafeIterator(); iterator.hasNext(); ) {
-+                final RegionSection<T> aliveRegion = iterator.next();
-+                this.getOrCreateAndMergeSection(aliveRegion.getSectionX(), aliveRegion.getSectionZ(), aliveRegion);
++            for (final Iterator<RegionSection<T>> iterator = region.sections.unsafeIterator(IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
++                final RegionSection<T> aliveSection = iterator.next();
++                this.getOrCreateAndMergeSection(aliveSection.getSectionX(), aliveSection.getSectionZ(), aliveSection);
 +            }
 +        } finally {
 +            this.regionRecalculateTimings.stopTiming();
@@ -223,7 +241,7 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +        }
 +
 +        public IteratorSafeOrderedReferenceSet.Iterator<RegionSection<T>> getSections() {
-+            return this.sections.iterator();
++            return this.sections.iterator(IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS);
 +        }
 +
 +        protected final double getDeadSectionPercent() {
@@ -232,26 +250,31 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +
 +        protected void mergeInto(final Region<T> mergeTarget) {
 +            if (this.dead) {
-+                throw new IllegalStateException("Cannot merge from dead region");
++                throw new IllegalStateException("Source region is dead! Source " + this + ", target " + mergeTarget);
 +            } else if (mergeTarget.dead) {
-+                throw new IllegalStateException("Attempting to merge into a dead region");
++                throw new IllegalStateException("Target region is dead! Source " + this + ", target " + mergeTarget);
 +            }
 +            this.dead = true;
 +
-+            for (final Iterator<RegionSection<T>> iterator = this.sections.unsafeIterator(); iterator.hasNext();) {
++            for (final Iterator<RegionSection<T>> iterator = this.sections.unsafeIterator(IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
 +                final RegionSection<T> section = iterator.next();
 +
 +                if (!mergeTarget.sections.add(section)) {
-+                    throw new IllegalStateException("Target region cannot contain source's sections");
++                    throw new IllegalStateException("Target cannot contain source's sections! Source " + this + ", target " + mergeTarget);
 +                }
 +
 +                section.region = mergeTarget;
 +            }
 +
-+            mergeTarget.deadSections.addAll(this.deadSections);
++            for (final RegionSection<T> deadSection : this.deadSections) {
++                if (!this.sections.contains(deadSection)) {
++                    throw new IllegalStateException("Source region does not even contain its own dead sections! Missing " + deadSection + " from region " + this);
++                }
++                mergeTarget.deadSections.add(deadSection);
++            }
 +        }
 +
-+        protected void markRegionAlive(final RegionSection<T> section) {
++        protected void markSectionAlive(final RegionSection<T> section) {
 +            this.deadSections.remove(section);
 +            if (this.markedForRecalc && (this.sections.size() < this.regionManager.minSectionRecalcCount || this.getDeadSectionPercent() < this.regionManager.maxDeadRegionPercent)) {
 +                this.regionManager.removeFromRecalcQueue(this);
@@ -259,12 +282,35 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +            }
 +        }
 +
-+        protected void markRegionDead(final RegionSection<T> section) {
++        protected void markSectionDead(final RegionSection<T> section) {
 +            this.deadSections.add(section);
 +            if (!this.markedForRecalc && (this.sections.size() >= this.regionManager.minSectionRecalcCount || this.sections.size() == this.deadSections.size()) && this.getDeadSectionPercent() >= this.regionManager.maxDeadRegionPercent) {
 +                this.regionManager.addToRecalcQueue(this);
 +                this.markedForRecalc = true;
 +            }
++        }
++
++        @Override
++        public String toString() {
++            final StringBuilder ret = new StringBuilder(128);
++
++            ret.append("Region{");
++            ret.append("dead=").append(this.dead).append(',');
++            ret.append("markedForRecalc=").append(this.markedForRecalc).append(',');
++
++            ret.append("sectionCount=").append(this.sections.size()).append(',');
++            ret.append("sections=[");
++            for (final Iterator<RegionSection<T>> iterator = this.sections.unsafeIterator(IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
++                final RegionSection<T> section = iterator.next();
++                ret.append(section);
++                if (iterator.hasNext()) {
++                    ret.append(',');
++                }
++            }
++            ret.append(']');
++
++            ret.append('}');
++            return ret.toString();
 +        }
 +    }
 +
@@ -314,39 +360,50 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 +            this.data.put(key, data);
 +        }
 +
-+        private static long getChunkIndex(final int chunkX, final int chunkZ) {
-+            return 1L << ((chunkX & (REGION_CHUNK_SIZE - 1)) | ((chunkZ & (REGION_CHUNK_SIZE - 1)) << REGION_CHUNK_SIZE_SHIFT));
++        private static int getChunkIndex(final int chunkX, final int chunkZ) {
++            return (chunkX & (REGION_CHUNK_SIZE - 1)) | ((chunkZ & (REGION_CHUNK_SIZE - 1)) << REGION_CHUNK_SIZE_SHIFT);
 +        }
 +
 +        protected void addChunk(final int chunkX, final int chunkZ) {
 +            final long bitset = this.chunksBitset;
-+            final long after = this.chunksBitset = bitset | getChunkIndex(chunkX, chunkZ);
++            final long after = this.chunksBitset = bitset | (1L << getChunkIndex(chunkX, chunkZ));
 +            if (after == bitset) {
-+                throw new IllegalStateException("Cannot add a chunk to a region which already has the chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
++                throw new IllegalStateException("Cannot add a chunk to a section which already has the chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
 +            }
 +            if (bitset != 0L) {
 +                return;
 +            }
-+            this.region.markRegionAlive(this);
++            this.region.markSectionAlive(this);
 +        }
 +
 +        protected void removeChunk(final int chunkX, final int chunkZ) {
 +            final long before = this.chunksBitset;
-+            final long bitset = this.chunksBitset = before & ~getChunkIndex(chunkX, chunkZ);
++            final long bitset = this.chunksBitset = before & ~(1L << getChunkIndex(chunkX, chunkZ));
 +            if (before == bitset) {
-+                throw new IllegalStateException("Cannot remove a chunk from a region which does not have that chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
++                throw new IllegalStateException("Cannot remove a chunk from a section which does not have that chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
 +            }
 +            if (bitset != 0L) {
 +                return;
 +            }
-+            this.region.markRegionDead(this);
++            this.region.markSectionDead(this);
 +        }
 +
 +        @Override
 +        public String toString() {
 +            return "RegionSection{" +
-+                    "regionCoordinate=" + new ChunkCoordIntPair(this.regionCoordinate).toString() +
-+                    '}';
++                    "regionCoordinate=" + new ChunkCoordIntPair(this.regionCoordinate).toString() + "," +
++                    "chunksBitset=" + Long.toHexString(this.chunksBitset) + "," +
++                    "hash=" + this.hashCode() + "," +
++                    "}";
++        }
++
++        public String toStringWithRegion() {
++            return "RegionSection{" +
++                    "regionCoordinate=" + new ChunkCoordIntPair(this.regionCoordinate).toString() + "," +
++                    "chunksBitset=" + Long.toHexString(this.chunksBitset) + "," +
++                    "hash=" + this.hashCode() + "," +
++                    "region=" + this.region + "," +
++                    "}";
 +        }
 +    }
 +
@@ -359,24 +416,23 @@ index 0000000000000000000000000000000000000000..a8a786d33577f0277ae28e141f2bbb69
 \ No newline at end of file
 diff --git a/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..67fb1b53302adb0c1736bdb692c8ca8b5934da40
+index 0000000000000000000000000000000000000000..57fede8cdbe6ecbb0b3344e2c6ccd4db1e9e648c
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
-@@ -0,0 +1,274 @@
+@@ -0,0 +1,262 @@
 +package com.tuinity.tuinity.util.maplist;
 +
 +import it.unimi.dsi.fastutil.objects.Reference2IntLinkedOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.Reference2IntMap;
-+import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 +import java.util.Arrays;
 +import java.util.NoSuchElementException;
 +
 +public final class IteratorSafeOrderedReferenceSet<E> {
 +
++    public static final int ITERATOR_FLAG_SEE_ADDITIONS = 1 << 0;
++
 +    protected final Reference2IntLinkedOpenHashMap<E> indexMap;
 +    protected int firstInvalidIndex = -1;
-+
-+    protected final ReferenceLinkedOpenHashSet<E> pendingAdditions;
 +
 +    /* list impl */
 +    protected E[] listElements;
@@ -393,7 +449,6 @@ index 0000000000000000000000000000000000000000..67fb1b53302adb0c1736bdb692c8ca8b
 +    public IteratorSafeOrderedReferenceSet(final int setCapacity, final float setLoadFactor, final int arrayCapacity, final double maxFragFactor) {
 +        this.indexMap = new Reference2IntLinkedOpenHashMap<>(setCapacity, setLoadFactor);
 +        this.indexMap.defaultReturnValue(-1);
-+        this.pendingAdditions = new ReferenceLinkedOpenHashSet<>();
 +        this.maxFragFactor = maxFragFactor;
 +        this.listElements = (E[])new Object[arrayCapacity];
 +    }
@@ -428,29 +483,6 @@ index 0000000000000000000000000000000000000000..67fb1b53302adb0c1736bdb692c8ca8b
 +            if (this.getFragFactor() >= this.maxFragFactor) {
 +                this.defrag();
 +            }
-+            if (!this.pendingAdditions.isEmpty()) {
-+                int index = this.listSize;
-+                int neededLen = index + this.pendingAdditions.size();
-+
-+                if (neededLen < 0) {
-+                    throw new IllegalStateException("Too large");
-+                }
-+
-+                if (neededLen > this.listElements.length) {
-+                    this.listElements = Arrays.copyOf(this.listElements, neededLen * 2);
-+                }
-+
-+                final E[] elements = this.listElements;
-+                java.util.Iterator<E> iterator = this.pendingAdditions.iterator();
-+                for (int i = index; i < neededLen; ++i) {
-+                    final E element = iterator.next();
-+                    elements[i] = element;
-+                    this.indexMap.put(element, i);
-+                }
-+
-+                this.pendingAdditions.clear();
-+                this.listSize = neededLen;
-+            }
 +        }
 +    }
 +
@@ -465,33 +497,29 @@ index 0000000000000000000000000000000000000000..67fb1b53302adb0c1736bdb692c8ca8b
 +                this.defrag();
 +            }
 +            return true;
-+        } else {
-+            return this.pendingAdditions.remove(element);
 +        }
++        return false;
++    }
++
++    public boolean contains(final E element) {
++        return this.indexMap.containsKey(element);
 +    }
 +
 +    public boolean add(final E element) {
-+        if (this.iteratorCount > 0) {
-+            if (this.indexMap.containsKey(element)) {
-+                return true;
-+            }
-+            return this.pendingAdditions.add(element);
-+        } else {
-+            final int listSize = this.listSize;
++        final int listSize = this.listSize;
 +
-+            final int previous = this.indexMap.putIfAbsent(element, listSize);
-+            if (previous != -1) {
-+                return false;
-+            }
-+
-+            if (listSize >= this.listElements.length) {
-+                this.listElements = Arrays.copyOf(this.listElements, listSize * 2);
-+            }
-+            this.listElements[listSize] = element;
-+            this.listSize = listSize + 1;
-+
-+            return true;
++        final int previous = this.indexMap.putIfAbsent(element, listSize);
++        if (previous != -1) {
++            return false;
 +        }
++
++        if (listSize >= this.listElements.length) {
++            this.listElements = Arrays.copyOf(this.listElements, listSize * 2);
++        }
++        this.listElements[listSize] = element;
++        this.listSize = listSize + 1;
++
++        return true;
 +    }
 +
 +    protected void defrag() {
@@ -559,12 +587,19 @@ index 0000000000000000000000000000000000000000..67fb1b53302adb0c1736bdb692c8ca8b
 +    }
 +
 +    public IteratorSafeOrderedReferenceSet.Iterator<E> iterator() {
++        return this.iterator(0);
++    }
++
++    public IteratorSafeOrderedReferenceSet.Iterator<E> iterator(final int flags) {
 +        ++this.iteratorCount;
-+        return new BaseIterator<>(this, true);
++        return new BaseIterator<>(this, true, (flags & ITERATOR_FLAG_SEE_ADDITIONS) != 0 ? Integer.MAX_VALUE : this.listSize);
 +    }
 +
 +    public java.util.Iterator<E> unsafeIterator() {
-+        return new BaseIterator<>(this, false);
++        return this.unsafeIterator(0);
++    }
++    public java.util.Iterator<E> unsafeIterator(final int flags) {
++        return new BaseIterator<>(this, false, (flags & ITERATOR_FLAG_SEE_ADDITIONS) != 0 ? Integer.MAX_VALUE : this.listSize);
 +    }
 +
 +    public static interface Iterator<E> extends java.util.Iterator<E> {
@@ -577,13 +612,16 @@ index 0000000000000000000000000000000000000000..67fb1b53302adb0c1736bdb692c8ca8b
 +
 +        protected final IteratorSafeOrderedReferenceSet<E> set;
 +        protected final boolean canFinish;
++        protected final int maxIndex;
 +        protected int nextIndex;
-+        protected E currentValue;
++        protected E pendingValue;
 +        protected boolean finished;
++        protected E lastReturned;
 +
-+        protected BaseIterator(final IteratorSafeOrderedReferenceSet<E> set, final boolean canFinish) {
++        protected BaseIterator(final IteratorSafeOrderedReferenceSet<E> set, final boolean canFinish, final int maxIndex) {
 +            this.set = set;
 +            this.canFinish = canFinish;
++            this.maxIndex = maxIndex;
 +        }
 +
 +        @Override
@@ -591,16 +629,16 @@ index 0000000000000000000000000000000000000000..67fb1b53302adb0c1736bdb692c8ca8b
 +            if (this.finished) {
 +                return false;
 +            }
-+            if (this.currentValue != null) {
++            if (this.pendingValue != null) {
 +                return true;
 +            }
 +
 +            final E[] elements = this.set.listElements;
 +            int index, len;
-+            for (index = this.nextIndex, len = this.set.listSize; index < len; ++index) {
++            for (index = this.nextIndex, len = Math.min(this.maxIndex, this.set.listSize); index < len; ++index) {
 +                final E element = elements[index];
 +                if (element != null) {
-+                    this.currentValue = element;
++                    this.pendingValue = element;
 +                    this.nextIndex = index + 1;
 +                    return true;
 +                }
@@ -615,16 +653,22 @@ index 0000000000000000000000000000000000000000..67fb1b53302adb0c1736bdb692c8ca8b
 +            if (!this.hasNext()) {
 +                throw new NoSuchElementException();
 +            }
-+            final E ret = this.currentValue;
++            final E ret = this.pendingValue;
 +
-+            this.currentValue = null;
++            this.pendingValue = null;
++            this.lastReturned = ret;
 +
 +            return ret;
 +        }
 +
 +        @Override
 +        public void remove() {
-+            throw new UnsupportedOperationException();
++            final E lastReturned = this.lastReturned;
++            if (lastReturned == null) {
++                throw new IllegalStateException();
++            }
++            this.lastReturned = null;
++            this.set.remove(lastReturned);
 +        }
 +
 +        @Override
@@ -632,6 +676,7 @@ index 0000000000000000000000000000000000000000..67fb1b53302adb0c1736bdb692c8ca8b
 +            if (this.finished || !this.canFinish) {
 +                throw new IllegalStateException();
 +            }
++            this.lastReturned = null;
 +            this.finished = true;
 +            this.set.finishRawIterator();
 +        }
@@ -956,7 +1001,7 @@ index fc6197dd5bc7527ed66839c7e8316fb23ab5d14e..0c2cfdbc0dafbc1a17c031f3efb67f71
          int i = chunkstatus.c();
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index fcd3388d88aad6e897b73e2c823267ada327cbda..56b5acaa5ee37e6b175a657667e7e01a2e44673c 100644
+index fcd3388d88aad6e897b73e2c823267ada327cbda..dc1a559d430fc176c0600e8525c80d9708ac4be8 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -277,6 +277,21 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -986,7 +1031,7 @@ index fcd3388d88aad6e897b73e2c823267ada327cbda..56b5acaa5ee37e6b175a657667e7e01a
              });
          // Paper end - no-tick view distance
 +        // Tuinity start
-+        this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 10, (1.0 / 3.0), "Data");
++        this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
 +        // Tuinity end
      }
      // Paper start - Chunk Prioritization
