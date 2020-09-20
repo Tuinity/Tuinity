@@ -5,10 +5,10 @@ Subject: [PATCH] Prevent unload() calls removing tickets for sync loads
 
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index aa8e051d1119acbdd8b0ddd986d4bab8327301bd..11ce31795468a010261fdfe51061a2d62ed02857 100644
+index 977e792b36ec91cd25948b6b885df88158eae127..3a964b10bfbd51d2a9afa7a2501967dc07717140 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -709,6 +709,8 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -710,6 +710,8 @@ public class ChunkProviderServer extends IChunkProvider {
          Arrays.fill(this.cacheChunk, (Object) null);
      }
  
@@ -17,7 +17,7 @@ index aa8e051d1119acbdd8b0ddd986d4bab8327301bd..11ce31795468a010261fdfe51061a2d6
      private CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getChunkFutureMainThread(int i, int j, ChunkStatus chunkstatus, boolean flag) {
          // Paper start - add isUrgent - old sig left in place for dirty nms plugins
          return getChunkFutureMainThread(i, j, chunkstatus, flag, false);
-@@ -727,9 +729,12 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -728,9 +730,12 @@ public class ChunkProviderServer extends IChunkProvider {
              PlayerChunk.State currentChunkState = PlayerChunk.getChunkState(playerchunk.getTicketLevel());
              currentlyUnloading = (oldChunkState.isAtLeast(PlayerChunk.State.BORDER) && !currentChunkState.isAtLeast(PlayerChunk.State.BORDER));
          }
@@ -30,7 +30,7 @@ index aa8e051d1119acbdd8b0ddd986d4bab8327301bd..11ce31795468a010261fdfe51061a2d6
              if (isUrgent) this.chunkMapDistance.markUrgent(chunkcoordintpair); // Paper
              if (this.a(playerchunk, l)) {
                  GameProfilerFiller gameprofilerfiller = this.world.getMethodProfiler();
-@@ -740,12 +745,20 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -741,12 +746,20 @@ public class ChunkProviderServer extends IChunkProvider {
                  playerchunk = this.getChunk(k);
                  gameprofilerfiller.exit();
                  if (this.a(playerchunk, l)) {
