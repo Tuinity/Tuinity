@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Sun, 20 Sep 2020 16:10:49 -0700
+Subject: [PATCH] Make sure inlined getChunkAt has inlined logic for loaded
+ chunks
+
+Tux did some profiling some time ago and showed that the
+previous getChunkAt method which had inlined logic for loaded
+chunks did get inlined, but the standard CPS.getChunkAt
+method was not inlined.
+
+Paper recently reverted this optimisation, so it's been reintroduced
+here.
+
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 49640c784942c6527a7f9f749378c46e31f1b97b..51cb07b3d5c2d271e3a17e99ea08428c26d59de1 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -289,6 +289,15 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+ 
+     @Override
+     public final Chunk getChunkAt(int i, int j) { // Paper - final to help inline
++        // Tuinity start - make sure loaded chunks get the inlined variant of this function
++        ChunkProviderServer cps = ((WorldServer)this).chunkProvider;
++        if (cps.serverThread == Thread.currentThread()) {
++            Chunk ifLoaded = cps.getChunkAtIfLoadedMainThread(i, j);
++            if (ifLoaded != null) {
++                return ifLoaded;
++            }
++        }
++        // Tuinity end - make sure loaded chunks get the inlined variant of this function
+         return (Chunk) this.getChunkAt(i, j, ChunkStatus.FULL, true); // Paper - avoid a method jump
+     }
+ 
