@@ -1,0 +1,179 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Tue, 22 Sep 2020 01:49:19 -0700
+Subject: [PATCH] Optimise non-flush packet sending
+
+Places like entity tracking make heavy use of packet sending,
+and internally netty will use some very expensive thread wakeup
+calls when scheduling.
+
+Thanks to various hacks in ProtocolLib as well as other
+plugins, we cannot simply use a queue of packets to group
+send on execute. We have to call execute for each packet.
+
+Tux's suggestion here is exactly what was needed - tag
+the Runnable indicating it should not make a wakeup call.
+
+Big thanks to Tux for making this possible as I had given
+up on this optimisation before he came along.
+
+Locally this patch drops the entity tracker tick by a full 1.5x.
+
+diff --git a/pom.xml b/pom.xml
+index 5e25ae55e44e31d232b088b7c3c39df69b0cc875..c88933f185381302dd9461d8babe25357b417fea 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -37,6 +37,13 @@
+             <version>${project.version}</version>
+             <scope>compile</scope>
+         </dependency>
++        <!-- Tuinity start - fix compile issue (cannot see new api) by moving netty include BEFORE server jar -->
++        <dependency>
++            <groupId>io.netty</groupId>
++            <artifactId>netty-all</artifactId>
++            <version>4.1.50.Final</version>
++        </dependency>
++        <!-- Tuinity end - fix compile issue (cannot see new api) by moving netty include BEFORE server jar -->
+         <dependency>
+             <groupId>io.papermc</groupId>
+             <artifactId>minecraft-server</artifactId>
+@@ -97,11 +104,7 @@
+             <artifactId>cleaner</artifactId>
+             <version>1.0-SNAPSHOT</version>
+         </dependency>
+-        <dependency>
+-            <groupId>io.netty</groupId>
+-            <artifactId>netty-all</artifactId>
+-            <version>4.1.50.Final</version>
+-        </dependency>
++        <!-- Tuinity - fix compile issue (cannot see new api) by moving netty include BEFORE server jar -->
+         <!-- deprecated API depend -->
+         <dependency>
+             <groupId>com.googlecode.json-simple</groupId>
+diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
+index aa1597c77251ce18da47532209476cd42239e874..657389a30cff325a81a4349cb0ad9a3d3f614c99 100644
+--- a/src/main/java/net/minecraft/server/NetworkManager.java
++++ b/src/main/java/net/minecraft/server/NetworkManager.java
+@@ -27,6 +27,8 @@ import org.apache.logging.log4j.Logger;
+ import org.apache.logging.log4j.Marker;
+ import org.apache.logging.log4j.MarkerManager;
+ 
++import io.netty.util.concurrent.AbstractEventExecutor; // Tuinity
++
+ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+ 
+     private static final Logger LOGGER = LogManager.getLogger();
+@@ -326,39 +328,83 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+             }
+             // Paper end
+         } else {
+-            this.channel.eventLoop().execute(() -> {
+-                if (enumprotocol != enumprotocol1) {
+-                    this.setProtocol(enumprotocol);
+-                }
++            // Tuinity start - optimise packets that are not flushed
++            Runnable choice1 = null;
++            AbstractEventExecutor.LazyRunnable choice2 = null;
++            // note: since the type is not dynamic here, we need to actually copy the old executor code
++            // into two branches. On conflict, just re-copy - no changes were made inside the executor code.
++            if (flush) {
++                choice1 = () -> {
++                    if (enumprotocol != enumprotocol1) {
++                        this.setProtocol(enumprotocol);
++                    }
+ 
+-                // Paper start
+-                if (!isConnected()) {
+-                    packet.onPacketDispatchFinish(player, null);
+-                    return;
+-                }
+-                try {
++                    // Paper start
++                    if (!isConnected()) {
++                        packet.onPacketDispatchFinish(player, null);
++                        return;
++                    }
++                    try {
++                        // Paper end
++                        ChannelFuture channelfuture1 = (flush) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - add flush parameter
++
++
++                        if (genericfuturelistener != null) {
++                            channelfuture1.addListener(genericfuturelistener);
++                        }
++                        // Paper start
++                        if (packet.hasFinishListener()) {
++                            channelfuture1.addListener((ChannelFutureListener) channelFuture -> packet.onPacketDispatchFinish(player, channelFuture));
++                        }
++                        // Paper end
++
++                        channelfuture1.addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
++                        // Paper start
++                    } catch (Exception e) {
++                        LOGGER.error("NetworkException: " + player, e);
++                        close(new ChatMessage("disconnect.genericReason", "Internal Exception: " + e.getMessage()));;
++                        packet.onPacketDispatchFinish(player, null);
++                    }
+                     // Paper end
+-                ChannelFuture channelfuture1 = (flush) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - add flush parameter
+-
+-
+-                if (genericfuturelistener != null) {
+-                    channelfuture1.addListener(genericfuturelistener);
+-                }
+-                // Paper start
+-                if (packet.hasFinishListener()) {
+-                    channelfuture1.addListener((ChannelFutureListener) channelFuture -> packet.onPacketDispatchFinish(player, channelFuture));
+-                }
+-                // Paper end
++                };
++            } else {
++                // explicitly declare a variable to make the lambda use the type
++                choice2 = () -> {
++                    if (enumprotocol != enumprotocol1) {
++                        this.setProtocol(enumprotocol);
++                    }
+ 
+-                channelfuture1.addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
+-                // Paper start
+-                } catch (Exception e) {
+-                    LOGGER.error("NetworkException: " + player, e);
+-                    close(new ChatMessage("disconnect.genericReason", "Internal Exception: " + e.getMessage()));;
+-                    packet.onPacketDispatchFinish(player, null);
+-                }
+-                // Paper end
+-            });
++                    // Paper start
++                    if (!isConnected()) {
++                        packet.onPacketDispatchFinish(player, null);
++                        return;
++                    }
++                    try {
++                        // Paper end
++                        ChannelFuture channelfuture1 = (flush) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - add flush parameter
++
++
++                        if (genericfuturelistener != null) {
++                            channelfuture1.addListener(genericfuturelistener);
++                        }
++                        // Paper start
++                        if (packet.hasFinishListener()) {
++                            channelfuture1.addListener((ChannelFutureListener) channelFuture -> packet.onPacketDispatchFinish(player, channelFuture));
++                        }
++                        // Paper end
++
++                        channelfuture1.addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
++                        // Paper start
++                    } catch (Exception e) {
++                        LOGGER.error("NetworkException: " + player, e);
++                        close(new ChatMessage("disconnect.genericReason", "Internal Exception: " + e.getMessage()));;
++                        packet.onPacketDispatchFinish(player, null);
++                    }
++                    // Paper end
++                };
++            }
++            this.channel.eventLoop().execute(choice1 != null ? choice1 : choice2);
++            // Tuinity end - optimise packets that are not flushed
+         }
+ 
+     }
