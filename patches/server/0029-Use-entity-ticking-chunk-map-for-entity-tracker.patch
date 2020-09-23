@@ -7,17 +7,20 @@ Should bring us back in-line with tracker performance
 before the loaded entity list reversion.
 
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 6424126b663f40bab956c9651c28087a2c912e69..f44c08d0e986b4ae3cbccebd508ce0b661a25aad 100644
+index 6424126b663f40bab956c9651c28087a2c912e69..fb19e8b2945ad9708b765dd915465b12ad7985de 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -2083,23 +2083,20 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -2083,22 +2083,25 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      private final void processTrackQueue() {
          this.world.timings.tracker1.startTiming();
          try {
 -            for (EntityTracker tracker : this.trackedEntities.values()) {
 -                // update tracker entry
 -                tracker.updatePlayers(tracker.tracker.getPlayersInTrackRange());
-+            for (Chunk chunk : this.world.getChunkProvider().entityTickingChunks) {
++            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.Iterator<Chunk> iterator = this.world.getChunkProvider().entityTickingChunks.iterator();
++            try {
++            while (iterator.hasNext()) {
++                Chunk chunk = iterator.next();
 +                Entity[] entities = chunk.entities.getRawData();
 +                for (int i = 0, len = chunk.entities.size(); i < len; ++i) {
 +                    Entity entity = entities[i];
@@ -28,19 +31,21 @@ index 6424126b663f40bab956c9651c28087a2c912e69..f44c08d0e986b4ae3cbccebd508ce0b6
 +                    }
 +                }
              }
-         } finally {
-             this.world.timings.tracker1.stopTiming();
-         }
+-        } finally {
+-            this.world.timings.tracker1.stopTiming();
+-        }
 -
 -
 -        this.world.timings.tracker2.startTiming();
 -        try {
 -            for (EntityTracker tracker : this.trackedEntities.values()) {
 -                tracker.trackerEntry.tick();
--            }
--        } finally {
++            } finally {
++                iterator.finishedIterating();
+             }
+         } finally {
 -            this.world.timings.tracker2.stopTiming();
--        }
++            this.world.timings.tracker1.stopTiming();
+         }
      }
      // Paper end - optimised tracker
- 
