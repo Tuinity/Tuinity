@@ -233,10 +233,10 @@ index a54f516ba72806c0470259436f889faa8f6e7586..40da31d07206e3239ab7eabad3d5cbde
          TEMP_COLLISION_LIST.completeReset();
          TEMP_GET_ENTITIES_LIST.completeReset();
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index f1a382c3d3f918419a2d72bdb41914b95b7aeaa8..b1e5b73519bdd18489a274ca8a49cf2f4f3aa686 100644
+index f1a382c3d3f918419a2d72bdb41914b95b7aeaa8..ded47067600b508801e9df67389ab128982f0547 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -141,6 +141,19 @@ public class Chunk implements IChunkAccess {
+@@ -141,6 +141,22 @@ public class Chunk implements IChunkAccess {
      }
      // Tuinity end - optimise hard collision handling
  
@@ -248,7 +248,10 @@ index f1a382c3d3f918419a2d72bdb41914b95b7aeaa8..b1e5b73519bdd18489a274ca8a49cf2f
 +    }
 +
 +    public final void getEntitiesClass(Class<?> clazz, Entity entity, AxisAlignedBB boundingBox, Predicate<Entity> predicate, List<Entity> into) {
-+        org.spigotmc.AsyncCatcher.catchOp("getEntitiesByClass");
++        if (!org.bukkit.Bukkit.isPrimaryThread()) {
++            this.getEntities((Class)clazz, boundingBox, (List)into, (Predicate)predicate);
++            return;
++        }
 +        this.entitiesByClass.lookupClass(clazz, entity, boundingBox, predicate, into);
 +    }
 +    // Tuinity end - entity slices by class
@@ -256,7 +259,7 @@ index f1a382c3d3f918419a2d72bdb41914b95b7aeaa8..b1e5b73519bdd18489a274ca8a49cf2f
      public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeStorage biomestorage, ChunkConverter chunkconverter, TickList<Block> ticklist, TickList<FluidType> ticklist1, long i, @Nullable ChunkSection[] achunksection, @Nullable Consumer<Chunk> consumer) {
          this.sections = new ChunkSection[16];
          this.e = Maps.newHashMap();
-@@ -640,7 +653,7 @@ public class Chunk implements IChunkAccess {
+@@ -640,7 +656,7 @@ public class Chunk implements IChunkAccess {
          entity.chunkX = this.loc.x;
          entity.chunkY = k;
          entity.chunkZ = this.loc.z;
@@ -265,7 +268,7 @@ index f1a382c3d3f918419a2d72bdb41914b95b7aeaa8..b1e5b73519bdd18489a274ca8a49cf2f
          this.entitySlices[k].add(entity); if (entity.hardCollides()) this.hardCollidingEntities[k].add(entity); // Tuinity - optimise hard colliding entities
          // Paper start
          if (entity instanceof EntityItem) {
-@@ -679,7 +692,7 @@ public class Chunk implements IChunkAccess {
+@@ -679,7 +695,7 @@ public class Chunk implements IChunkAccess {
              entity.entitySlice = null;
              entity.inChunk = false;
          }
@@ -274,6 +277,14 @@ index f1a382c3d3f918419a2d72bdb41914b95b7aeaa8..b1e5b73519bdd18489a274ca8a49cf2f
              return;
          }
          if (entity instanceof EntityItem) {
+@@ -1000,6 +1016,7 @@ public class Chunk implements IChunkAccess {
+ 
+     }
+ 
++    public final <T extends Entity> void getEntities(Class<? extends T> oclass, AxisAlignedBB axisalignedbb, List<T> list, @Nullable Predicate<? super T> predicate) { this.a(oclass, axisalignedbb, list, predicate); } // Tuinity - OBFHELPER
+     public <T extends Entity> void a(Class<? extends T> oclass, AxisAlignedBB axisalignedbb, List<T> list, @Nullable Predicate<? super T> predicate) {
+         com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
+         int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
 diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
 index 882b82d8952d34f6e3c639404d1a1521dedf1bb0..269efe42b0a491371c0d0f0a7d9cdbb4a4349574 100644
 --- a/src/main/java/net/minecraft/server/IEntityAccess.java

@@ -28,7 +28,7 @@ index 40da31d07206e3239ab7eabad3d5cbde2f1c181a..104a5c7bdce38abe85f6d1c4fd44c513
              return new UnsafeList<>(16);
          }
 diff --git a/src/main/java/net/minecraft/server/ChunkCache.java b/src/main/java/net/minecraft/server/ChunkCache.java
-index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..28e47b3d7d03c4db2116f0f48b93df4fe520d7b3 100644
+index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..020a73e4cbdfa1fb46f285b6b90d40f59fabaa49 100644
 --- a/src/main/java/net/minecraft/server/ChunkCache.java
 +++ b/src/main/java/net/minecraft/server/ChunkCache.java
 @@ -12,6 +12,138 @@ public class ChunkCache implements IBlockAccess, ICollisionAccess {
@@ -94,7 +94,7 @@ index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..28e47b3d7d03c4db2116f0f48b93df4f
 +
 +                int chunkXGlobalPos = currChunkX << 4;
 +                int chunkZGlobalPos = currChunkZ << 4;
-+                Chunk chunk = (Chunk)this.getChunkIfLoaded(chunkXGlobalPos, chunkZGlobalPos);
++                Chunk chunk = (Chunk)this.getChunkIfLoaded(currChunkX, currChunkZ);
 +
 +                if (chunk == null) {
 +                    return true;
@@ -171,10 +171,10 @@ index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..28e47b3d7d03c4db2116f0f48b93df4f
          this.e = world;
          this.a = blockposition.getX() >> 4;
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 0881a17d208e9ba51d65d87576259d0c87719000..f8f449cce847e77da9eca8a308add21360199ff0 100644
+index 0881a17d208e9ba51d65d87576259d0c87719000..60310a0eb6d6118b9e42cf0058264c0715e19004 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -796,11 +796,33 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -796,11 +796,39 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
              float f2 = this.getBlockSpeedFactor();
  
              this.setMot(this.getMot().d((double) f2, 1.0D, (double) f2));
@@ -192,27 +192,33 @@ index 0881a17d208e9ba51d65d87576259d0c87719000..f8f449cce847e77da9eca8a308add213
 +                int maxX = MathHelper.floor(boundingBox.maxX);
 +                int maxY = MathHelper.floor(boundingBox.maxY);
 +                int maxZ = MathHelper.floor(boundingBox.maxZ);
-+                if (this.world.isAreaLoaded(minX, minY, minZ, maxX, maxY, maxZ)) {
-+                    fire_search:
-+                    for (int currY = minY; currY <= maxY; ++currY) {
-+                        for (int currZ = minZ; currZ <= maxZ; ++currZ) {
-+                            for (int currX = minX; currX <= maxX; ++currX) {
-+                                mutablePos.setValues(currX, currY, currZ);
-+                                IBlockData type = this.getWorld().getType(mutablePos);
-+                                if (type.a(TagsBlock.FIRE) || type.a(Blocks.LAVA)) {
-+                                    this.setFireTicks(-this.getMaxFireTicks());
-+                                    break fire_search;
-+                                }
++                boolean inFireLoaded = true;
++                boolean inFire = false;
++                fire_search:
++                for (int currY = minY; currY <= maxY; ++currY) {
++                    for (int currZ = minZ; currZ <= maxZ; ++currZ) {
++                        for (int currX = minX; currX <= maxX; ++currX) {
++                            mutablePos.setValues(currX, currY, currZ);
++                            IBlockData type = this.getWorld().getTypeIfLoaded(mutablePos);
++                            if (type == null) {
++                                inFireLoaded = false;
++                                break fire_search;
++                            }
++                            if (!inFire && (type.a(TagsBlock.FIRE) || type.a(Blocks.LAVA))) {
++                                inFire = true;
 +                            }
 +                        }
 +                    }
++                }
++                if (inFire & inFireLoaded) {
++                    this.setFireTicks(-this.getMaxFireTicks());
 +                }
              }
 +            // Tuinity end - remove streams here
  
              if (this.aF() && this.isBurning()) {
                  this.playSound(SoundEffects.ENTITY_GENERIC_EXTINGUISH_FIRE, 0.7F, 1.6F + (this.random.nextFloat() - this.random.nextFloat()) * 0.4F);
-@@ -2146,9 +2168,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -2146,9 +2174,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
              float f1 = this.size.width * 0.8F;
              AxisAlignedBB axisalignedbb = AxisAlignedBB.g((double) f1, 0.10000000149011612D, (double) f1).d(this.locX(), this.getHeadY(), this.locZ());
  
