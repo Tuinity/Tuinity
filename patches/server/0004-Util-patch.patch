@@ -6,7 +6,7 @@ Subject: [PATCH] Util patch
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..e8cf605389aa625d4fd0eb8f3efc32690d95173a
+index 0000000000000000000000000000000000000000..ef8b1e6c4cca04ef94fbd7eb691c9281e79aab80
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 @@ -0,0 +1,403 @@
@@ -229,7 +229,7 @@ index 0000000000000000000000000000000000000000..e8cf605389aa625d4fd0eb8f3efc3269
 +    }
 +
 +    public static final class Region<T extends Enum<T> & SingleThreadChunkRegionManager.RegionDataCreator<T>> {
-+        protected final IteratorSafeOrderedReferenceSet<RegionSection<T>> sections = new IteratorSafeOrderedReferenceSet<>();
++        protected final IteratorSafeOrderedReferenceSet<RegionSection<T>> sections = new IteratorSafeOrderedReferenceSet<>(true);
 +        protected final ReferenceOpenHashSet<RegionSection<T>> deadSections = new ReferenceOpenHashSet<>(16, 0.7f);
 +        protected boolean dead;
 +        protected boolean markedForRecalc;
@@ -416,14 +416,15 @@ index 0000000000000000000000000000000000000000..e8cf605389aa625d4fd0eb8f3efc3269
 \ No newline at end of file
 diff --git a/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..57fede8cdbe6ecbb0b3344e2c6ccd4db1e9e648c
+index 0000000000000000000000000000000000000000..b0dc0ab4736b945901e91b92d16f0732d984051e
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,285 @@
 +package com.tuinity.tuinity.util.maplist;
 +
 +import it.unimi.dsi.fastutil.objects.Reference2IntLinkedOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.Reference2IntMap;
++import org.bukkit.Bukkit;
 +import java.util.Arrays;
 +import java.util.NoSuchElementException;
 +
@@ -442,15 +443,31 @@ index 0000000000000000000000000000000000000000..57fede8cdbe6ecbb0b3344e2c6ccd4db
 +
 +    protected int iteratorCount;
 +
++    private final boolean threadRestricted;
++
 +    public IteratorSafeOrderedReferenceSet() {
 +        this(16, 0.75f, 16, 0.2);
 +    }
 +
-+    public IteratorSafeOrderedReferenceSet(final int setCapacity, final float setLoadFactor, final int arrayCapacity, final double maxFragFactor) {
++    public IteratorSafeOrderedReferenceSet(final boolean threadRestricted) {
++        this(16, 0.75f, 16, 0.2, threadRestricted);
++    }
++
++    public IteratorSafeOrderedReferenceSet(final int setCapacity, final float setLoadFactor, final int arrayCapacity,
++                                           final double maxFragFactor) {
++        this(setCapacity, setLoadFactor, arrayCapacity, maxFragFactor, false);
++    }
++    public IteratorSafeOrderedReferenceSet(final int setCapacity, final float setLoadFactor, final int arrayCapacity,
++                                           final double maxFragFactor, final boolean threadRestricted) {
 +        this.indexMap = new Reference2IntLinkedOpenHashMap<>(setCapacity, setLoadFactor);
 +        this.indexMap.defaultReturnValue(-1);
 +        this.maxFragFactor = maxFragFactor;
 +        this.listElements = (E[])new Object[arrayCapacity];
++        this.threadRestricted = threadRestricted;
++    }
++
++    protected final boolean allowSafeIteration() {
++        return !this.threadRestricted || Bukkit.isPrimaryThread();
 +    }
 +
 +    protected final double getFragFactor() {
@@ -458,7 +475,9 @@ index 0000000000000000000000000000000000000000..57fede8cdbe6ecbb0b3344e2c6ccd4db
 +    }
 +
 +    public int createRawIterator() {
-+        ++this.iteratorCount;
++        if (this.allowSafeIteration()) {
++            ++this.iteratorCount;
++        }
 +        if (this.indexMap.isEmpty()) {
 +            return -1;
 +        } else {
@@ -479,7 +498,7 @@ index 0000000000000000000000000000000000000000..57fede8cdbe6ecbb0b3344e2c6ccd4db
 +    }
 +
 +    public void finishRawIterator() {
-+        if (--this.iteratorCount == 0) {
++        if (this.allowSafeIteration() && --this.iteratorCount == 0) {
 +            if (this.getFragFactor() >= this.maxFragFactor) {
 +                this.defrag();
 +            }
@@ -493,7 +512,7 @@ index 0000000000000000000000000000000000000000..57fede8cdbe6ecbb0b3344e2c6ccd4db
 +                this.firstInvalidIndex = index;
 +            }
 +            this.listElements[index] = null;
-+            if (this.iteratorCount == 0 && this.getFragFactor() >= this.maxFragFactor) {
++            if (this.allowSafeIteration() && this.iteratorCount == 0 && this.getFragFactor() >= this.maxFragFactor) {
 +                this.defrag();
 +            }
 +            return true;
@@ -591,7 +610,9 @@ index 0000000000000000000000000000000000000000..57fede8cdbe6ecbb0b3344e2c6ccd4db
 +    }
 +
 +    public IteratorSafeOrderedReferenceSet.Iterator<E> iterator(final int flags) {
-+        ++this.iteratorCount;
++        if (this.allowSafeIteration()) {
++            ++this.iteratorCount;
++        }
 +        return new BaseIterator<>(this, true, (flags & ITERATOR_FLAG_SEE_ADDITIONS) != 0 ? Integer.MAX_VALUE : this.listSize);
 +    }
 +
@@ -678,7 +699,9 @@ index 0000000000000000000000000000000000000000..57fede8cdbe6ecbb0b3344e2c6ccd4db
 +            }
 +            this.lastReturned = null;
 +            this.finished = true;
-+            this.set.finishRawIterator();
++            if (this.set.allowSafeIteration()) {
++                this.set.finishRawIterator();
++            }
 +        }
 +    }
 +}
@@ -757,7 +780,7 @@ index 505d40278d4472e0015a53af8e93bd81e5f09ac3..12b728217ba0870f1092ea1f3149e012
  
          public boolean e() {
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index de5c45ec773474ad6a7b572e9a248c8f8ee0f94f..9fa5fd32f02a4d84479eea98d92294b62d45ee22 100644
+index de5c45ec773474ad6a7b572e9a248c8f8ee0f94f..0cd052595f43d496b7be69fca3416d361b59438d 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -122,7 +122,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -769,7 +792,7 @@ index de5c45ec773474ad6a7b572e9a248c8f8ee0f94f..9fa5fd32f02a4d84479eea98d92294b6
  
      public void getEntityTickingChunkAsync(int x, int z, java.util.function.Consumer<Chunk> onLoad) {
          if (Thread.currentThread() != this.serverThread) {
-@@ -211,6 +211,164 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -211,6 +211,167 @@ public class ChunkProviderServer extends IChunkProvider {
      }
      // Paper end - rewrite ticklistserver
  
@@ -929,12 +952,15 @@ index de5c45ec773474ad6a7b572e9a248c8f8ee0f94f..9fa5fd32f02a4d84479eea98d92294b6
 +            }
 +        });
 +    }
++
++    final com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<Chunk> tickingChunks = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
++    final com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<Chunk> entityTickingChunks = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
 +    // Tuinity end
 +
      public ChunkProviderServer(WorldServer worldserver, Convertable.ConversionSession convertable_conversionsession, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator chunkgenerator, int i, boolean flag, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
          this.world = worldserver;
          this.serverThreadQueue = new ChunkProviderServer.a(worldserver);
-@@ -601,8 +759,8 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -601,8 +762,8 @@ public class ChunkProviderServer extends IChunkProvider {
          return !this.a(playerchunk, k);
      }
  
@@ -989,7 +1015,7 @@ index f07ba2f9d9e63e5ac1b3220d14c0cf64c3c30c6c..0fe6b590678ac566abd4233f4f5dcd8f
                  midTickLoadChunks(); // Paper
              } catch (Throwable throwable) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index 31684667a6a76fc83feb657def40bd34599ae159..3d460045135a2343c94b20cbb0bc177bbdf71cba 100644
+index 31684667a6a76fc83feb657def40bd34599ae159..ae8fe48e584a4b47636fb1b4448224baf7b49801 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunk.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunk.java
 @@ -503,6 +503,7 @@ public class PlayerChunk {
@@ -1000,6 +1026,53 @@ index 31684667a6a76fc83feb657def40bd34599ae159..3d460045135a2343c94b20cbb0bc177b
      public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> a(ChunkStatus chunkstatus, PlayerChunkMap playerchunkmap) {
          int i = chunkstatus.c();
          CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
+@@ -673,6 +674,9 @@ public class PlayerChunk {
+                     // Paper start - rewrite ticklistserver
+                     PlayerChunk.this.chunkMap.world.onChunkSetTicking(PlayerChunk.this.location.x, PlayerChunk.this.location.z);
+                     // Paper end - rewrite ticklistserver
++                    // Tuinity start - ticking chunk set
++                    PlayerChunk.this.chunkMap.world.getChunkProvider().tickingChunks.add(tickingChunk);
++                    // Tuinity end - ticking chunk set
+ 
+                 }
+             });
+@@ -683,6 +687,12 @@ public class PlayerChunk {
+         if (flag4 && !flag5) {
+             this.tickingFuture.complete(PlayerChunk.UNLOADED_CHUNK); this.isTickingReady = false; // Paper - cache chunk ticking stage
+             this.tickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
++            // Tuinity start - ticking chunk set
++            Chunk chunkIfCached = this.getFullChunkIfCached();
++            if (chunkIfCached != null) {
++                this.chunkMap.world.getChunkProvider().tickingChunks.remove(chunkIfCached);
++            }
++            // Tuinity end - ticking chunk set
+         }
+ 
+         boolean flag6 = playerchunk_state.isAtLeast(PlayerChunk.State.ENTITY_TICKING);
+@@ -700,7 +710,9 @@ public class PlayerChunk {
+                     Chunk entityTickingChunk = either.left().get();
+                     PlayerChunk.this.isEntityTickingReady = true;
+ 
+-
++                    // Tuinity start - entity ticking chunk set
++                    PlayerChunk.this.chunkMap.world.getChunkProvider().entityTickingChunks.add(entityTickingChunk);
++                    // Tuinity end - entity ticking chunk set
+ 
+ 
+                 }
+@@ -712,6 +724,12 @@ public class PlayerChunk {
+         if (flag6 && !flag7) {
+             this.entityTickingFuture.complete(PlayerChunk.UNLOADED_CHUNK); this.isEntityTickingReady = false; // Paper - cache chunk ticking stage
+             this.entityTickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
++            // Tuinity start - entity ticking chunk set
++            Chunk chunkIfCached = this.getFullChunkIfCached();
++            if (chunkIfCached != null) {
++                this.chunkMap.world.getChunkProvider().entityTickingChunks.remove(chunkIfCached);
++            }
++            // Tuinity end - entity ticking chunk set
+         }
+ 
+         // Paper start - raise IO/load priority if priority changes, use our preferred priority
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 index 5d3322f9f068fa74a000d58990dec6001f8ad1ab..0a92fb8401dd16030117630906bb09cf8b9a690b 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
