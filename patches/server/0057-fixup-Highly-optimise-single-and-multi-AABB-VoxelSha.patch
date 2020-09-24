@@ -28,26 +28,30 @@ index 40da31d07206e3239ab7eabad3d5cbde2f1c181a..104a5c7bdce38abe85f6d1c4fd44c513
              return new UnsafeList<>(16);
          }
 diff --git a/src/main/java/net/minecraft/server/ChunkCache.java b/src/main/java/net/minecraft/server/ChunkCache.java
-index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..020a73e4cbdfa1fb46f285b6b90d40f59fabaa49 100644
+index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..53c977513d3c243e6d06f252ed417c5d6db4034e 100644
 --- a/src/main/java/net/minecraft/server/ChunkCache.java
 +++ b/src/main/java/net/minecraft/server/ChunkCache.java
-@@ -12,6 +12,138 @@ public class ChunkCache implements IBlockAccess, ICollisionAccess {
+@@ -12,6 +12,142 @@ public class ChunkCache implements IBlockAccess, ICollisionAccess {
      protected boolean d;
      protected final World e; protected final World getWorld() { return e; } // Paper - OBFHELPER
  
 +    // Tuinity start - optimise pathfinder collision detection
 +    @Override
 +    public boolean getCubes(Entity entity) {
-+        return this.getCubes(entity, entity.getBoundingBox(), null);
++        return !this.collidesWithAnyBlockOrWorldBorder(entity, entity.getBoundingBox());
 +    }
 +
 +    @Override
 +    public boolean getCubes(Entity entity, AxisAlignedBB axisalignedbb) {
-+        return this.getCubes(entity, axisalignedbb, null);
++        return !this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb);
 +    }
 +
 +    @Override
 +    public boolean getCubes(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Predicate<Entity> predicate) {
++        return !this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb);
++    }
++
++    public boolean collidesWithAnyBlockOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
 +        if (entity != null) {
 +            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
 +                return true;
