@@ -23,7 +23,7 @@ index 5e25ae55e44e31d232b088b7c3c39df69b0cc875..862c3043d7da1785bd354b848714daac
  
      <repositories>
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index aa1597c77251ce18da47532209476cd42239e874..a58b5d93753d9229693312df310154ec80e26b00 100644
+index aa1597c77251ce18da47532209476cd42239e874..c6b77aef52572999633ac7d8536f2958f6510cfb 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -484,8 +484,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -43,28 +43,8 @@ index aa1597c77251ce18da47532209476cd42239e874..a58b5d93753d9229693312df310154ec
      }
  
      public boolean isConnected() {
-@@ -511,16 +517,17 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
- 
-     public void setCompressionLevel(int i) {
-         if (i >= 0) {
-+            com.velocitypowered.natives.compression.VelocityCompressor compressor = com.velocitypowered.natives.util.Natives.compress.get().create(-1); // Tuinity
-             if (this.channel.pipeline().get("decompress") instanceof PacketDecompressor) {
-                 ((PacketDecompressor) this.channel.pipeline().get("decompress")).a(i);
-             } else {
--                this.channel.pipeline().addBefore("decoder", "decompress", new PacketDecompressor(i));
-+                this.channel.pipeline().addBefore("decoder", "decompress", new PacketDecompressor(i, compressor)); // Tuinity
-             }
- 
-             if (this.channel.pipeline().get("compress") instanceof PacketCompressor) {
-                 ((PacketCompressor) this.channel.pipeline().get("compress")).a(i);
-             } else {
--                this.channel.pipeline().addBefore("encoder", "compress", new PacketCompressor(i));
-+                this.channel.pipeline().addBefore("encoder", "compress", new PacketCompressor(i, compressor)); // Tuinity
-             }
-         } else {
-             if (this.channel.pipeline().get("decompress") instanceof PacketDecompressor) {
 diff --git a/src/main/java/net/minecraft/server/PacketCompressor.java b/src/main/java/net/minecraft/server/PacketCompressor.java
-index 3cdd07cad85ef2d2c4b6c27a55a878695b4a7b12..01d6226e923d559731dbf623090e8df086fa5b46 100644
+index 3cdd07cad85ef2d2c4b6c27a55a878695b4a7b12..50b2a8dfbdd0fe60e295d7c7214d7c99bcbeb19a 100644
 --- a/src/main/java/net/minecraft/server/PacketCompressor.java
 +++ b/src/main/java/net/minecraft/server/PacketCompressor.java
 @@ -7,14 +7,18 @@ import java.util.zip.Deflater;
@@ -79,12 +59,11 @@ index 3cdd07cad85ef2d2c4b6c27a55a878695b4a7b12..01d6226e923d559731dbf623090e8df0
      private int c;
 +    private final com.velocitypowered.natives.compression.VelocityCompressor compressor;
  
--    public PacketCompressor(int i) {
-+    public PacketCompressor(int i, com.velocitypowered.natives.compression.VelocityCompressor compressor) {
+     public PacketCompressor(int i) {
          this.c = i;
 -        this.b = new Deflater();
 +//        this.b = new Deflater();
-+        this.compressor = compressor;
++        this.compressor = com.velocitypowered.natives.util.Natives.compress.get().create(-1);
      }
 +    // Tuinity end
  
@@ -151,7 +130,7 @@ index 3cdd07cad85ef2d2c4b6c27a55a878695b4a7b12..01d6226e923d559731dbf623090e8df0
          this.c = i;
      }
 diff --git a/src/main/java/net/minecraft/server/PacketDecompressor.java b/src/main/java/net/minecraft/server/PacketDecompressor.java
-index 23c850be0155c1ece807d244117a196488f0a13b..8bec5e03181a3d756ff3777b3bc4cbe0947e818d 100644
+index 23c850be0155c1ece807d244117a196488f0a13b..cc1741398bfe166aaabc2dda7e6e44b3e45681c0 100644
 --- a/src/main/java/net/minecraft/server/PacketDecompressor.java
 +++ b/src/main/java/net/minecraft/server/PacketDecompressor.java
 @@ -10,13 +10,17 @@ import java.util.zip.Inflater;
@@ -164,18 +143,17 @@ index 23c850be0155c1ece807d244117a196488f0a13b..8bec5e03181a3d756ff3777b3bc4cbe0
 +    private final com.velocitypowered.natives.compression.VelocityCompressor compressor;
      private int b;
  
--    public PacketDecompressor(int i) {
-+    public PacketDecompressor(int i, com.velocitypowered.natives.compression.VelocityCompressor compressor) {
+     public PacketDecompressor(int i) {
          this.b = i;
 -        this.a = new Inflater();
 +        //this.a = new Inflater();
-+        this.compressor = compressor;
++        this.compressor = com.velocitypowered.natives.util.Natives.compress.get().create(-1);
      }
 +    // Tuinity end
  
      protected void decode(ChannelHandlerContext channelhandlercontext, ByteBuf bytebuf, List<Object> list) throws Exception {
          if (bytebuf.readableBytes() != 0) {
-@@ -34,15 +38,28 @@ public class PacketDecompressor extends ByteToMessageDecoder {
+@@ -34,20 +38,40 @@ public class PacketDecompressor extends ByteToMessageDecoder {
                      throw new DecoderException("Badly compressed packet - size of " + i + " is larger than protocol maximum of " + 2097152);
                  }
  
@@ -213,6 +191,18 @@ index 23c850be0155c1ece807d244117a196488f0a13b..8bec5e03181a3d756ff3777b3bc4cbe0
              }
  
          }
+     }
+ 
++    // Tuinity start
++    @Override
++    public void handlerRemoved0(ChannelHandlerContext ctx) throws Exception {
++        this.compressor.close();
++    }
++    // Tuinity end
++
+     public void a(int i) {
+         this.b = i;
+     }
 diff --git a/src/main/java/net/minecraft/server/PacketDecrypter.java b/src/main/java/net/minecraft/server/PacketDecrypter.java
 index c85f291c5b22a8e85c7556b220cba698701748f2..771cc0f4fa98be294abba65c83442205b6b0ef0b 100644
 --- a/src/main/java/net/minecraft/server/PacketDecrypter.java
