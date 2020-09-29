@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Tue, 29 Sep 2020 05:09:10 -0700
+Subject: [PATCH] Temporarily Revert usage of Region Manager
+
+Has some stability issues.
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 64f7e448cae673971e4b3ce7103fc80e5a03947b..93c4f29e1ee15558af8981f108d04bf99b4d387d 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -1414,7 +1414,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+                 // Tuinity - replace logic
+                 worldserver.timings.doTick.startTiming(); // Spigot
+                 worldserver.doTick(booleansupplier);
+-                worldserver.getChunkProvider().playerChunkMap.dataRegionManager.recalculateRegions(); // Tuinity
++                //worldserver.getChunkProvider().playerChunkMap.dataRegionManager.recalculateRegions(); // Tuinity
+                 worldserver.timings.doTick.stopTiming(); // Spigot
+                 // Tuinity - replace logic
+             } catch (Throwable throwable) {
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index bd00ac3ae60f6273a75748bf85614c1b8874ebcf..4628258f4a568aca8bd24be4649b929d12f9fbe9 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -460,7 +460,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             });
+         // Paper end - no-tick view distance
+         // Tuinity start
+-        this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
++        this.dataRegionManager = null;//new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
+         // Tuinity end
+     }
+     // Paper start - Chunk Prioritization
+@@ -798,7 +798,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     playerchunk.a(j);
+                 } else {
+                     playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.p, this);
+-                    this.dataRegionManager.addChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
++                    //this.dataRegionManager.addChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
+                 }
+ 
+                 this.updatingChunks.put(i, playerchunk);
+@@ -1079,7 +1079,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     this.lightEngine.queueUpdate();
+                     this.worldLoadListener.a(ichunkaccess.getPos(), (ChunkStatus) null);
+                 }
+-                if (removed) this.dataRegionManager.removeChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
++                //if (removed) this.dataRegionManager.removeChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
+                 } finally { this.unloadingPlayerChunk = unloadingBefore; } // Tuinity - do not allow ticket level changes while unloading chunks
+ 
+             }
