@@ -6,10 +6,10 @@ Subject: [PATCH] Util patch
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..ef8b1e6c4cca04ef94fbd7eb691c9281e79aab80
+index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa17d4046fc
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
-@@ -0,0 +1,403 @@
+@@ -0,0 +1,405 @@
 +package com.tuinity.tuinity.chunk;
 +
 +import co.aikar.timings.MinecraftTimings;
@@ -164,6 +164,8 @@ index 0000000000000000000000000000000000000000..ef8b1e6c4cca04ef94fbd7eb691c9281
 +                    MCUtil.getCoordinateKey(chunkX >> REGION_CHUNK_SIZE_SHIFT, chunkZ >> REGION_CHUNK_SIZE_SHIFT));
 +            if (section != null) {
 +                section.removeChunk(chunkX, chunkZ);
++            } else {
++                throw new IllegalStateException("Cannot remove chunk at (" + chunkX + "," + chunkZ + ") from region state, section does not exist");
 +            }
 +        } finally {
 +            this.removeChunkTimings.stopTiming();
@@ -416,10 +418,10 @@ index 0000000000000000000000000000000000000000..ef8b1e6c4cca04ef94fbd7eb691c9281
 \ No newline at end of file
 diff --git a/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..b0dc0ab4736b945901e91b92d16f0732d984051e
+index 0000000000000000000000000000000000000000..6d2851ffa32e299dc7588e29ad5076253786080e
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,288 @@
 +package com.tuinity.tuinity.util.maplist;
 +
 +import it.unimi.dsi.fastutil.objects.Reference2IntLinkedOpenHashMap;
@@ -510,6 +512,9 @@ index 0000000000000000000000000000000000000000..b0dc0ab4736b945901e91b92d16f0732
 +        if (index >= 0) {
 +            if (this.firstInvalidIndex < 0 || index < this.firstInvalidIndex) {
 +                this.firstInvalidIndex = index;
++            }
++            if (this.listElements[index] != element) {
++                throw new IllegalStateException();
 +            }
 +            this.listElements[index] = null;
 +            if (this.allowSafeIteration() && this.iteratorCount == 0 && this.getFragFactor() >= this.maxFragFactor) {
