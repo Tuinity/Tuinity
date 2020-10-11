@@ -135,7 +135,7 @@ index 7cc6dfd3d773430a637c5a0f3d85cb57f94af053..80cc96a4de5a5af964dfc6e77911426e
      // Paper end - optimise isOutsideOfRange
      // Paper start - optimize chunk status progression without jumping through thread pool
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index c514381ffc4498168f083a5c0e911e77b971d593..89d4d016e9e804732c12757cb7d64d113683c304 100644
+index c72ca2a6ad76f2956350b488b4909495b9d2302e..c739c91ae71e95938ebb601b1dc3b57484016d57 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -195,6 +195,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -178,9 +178,9 @@ index c514381ffc4498168f083a5c0e911e77b971d593..89d4d016e9e804732c12757cb7d64d11
      }
      // Paper end
  
-@@ -470,6 +482,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -462,6 +474,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          // Tuinity start
-         this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
+         this.dataRegionManager = null;//new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
          // Tuinity end
 +        // Tuinity start - optimise checkDespawn
 +        this.playerGeneralAreaMap = new com.destroystokyo.paper.util.misc.PlayerAreaMap(this.pooledLinkedPlayerHashSets,
@@ -242,7 +242,7 @@ index 485b41c6aaca5115ee2f488ccae77bdec2e1f5ee..cdadf7717be8c8c9eab4526d726fdb6d
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig(((WorldDataServer) worlddatamutable).getName()); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig((((WorldDataServer)worlddatamutable).getName()), this.spigotConfig); // Paper
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 3310bab637ae8e5662bd4aa303d0bed212386137..11d677a1092987f9931d5eb06adb9f3df1b6e1e3 100644
+index 001c343280c206dc00c8e05cf0cff6d6f01ee500..18a1b9f9e890c18314c6ad7a00c6c5649c862382 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -296,6 +296,10 @@ public class WorldServer extends World implements GeneratorAccessSeed {
