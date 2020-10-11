@@ -6,10 +6,10 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 74c9517b7d3cf576d80b9b608132bdc159c9ce2e..1b3d1503fd12289912655fb636441c6bd6f6e02a 100644
+index 2427cc387e1f8cd69c3150ae2ddb9c8450af1f11..f0c63f89a9d79382ba3579bc0c4fb0f23b0eca08 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -23,6 +23,12 @@ import it.unimi.dsi.fastutil.longs.LongIterator; // Paper
+@@ -22,6 +22,12 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap; // Paper
  import org.apache.logging.log4j.LogManager;
  import org.apache.logging.log4j.Logger;
  
@@ -22,14 +22,11 @@ index 74c9517b7d3cf576d80b9b608132bdc159c9ce2e..1b3d1503fd12289912655fb636441c6b
  public class ChunkProviderServer extends IChunkProvider {
  
      private static final List<ChunkStatus> b = ChunkStatus.a(); static final List<ChunkStatus> getPossibleChunkStatuses() { return ChunkProviderServer.b; } // Paper - OBFHELPER
-@@ -984,22 +990,23 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -983,19 +989,23 @@ public class ChunkProviderServer extends IChunkProvider {
              //List<PlayerChunk> list = Lists.newArrayList(this.playerChunkMap.f()); // Paper
              //Collections.shuffle(list); // Paper
              // Paper - moved up
--            final int[] chunksTicked = {0};
--            this.playerChunkMap.forEachVisibleChunk((playerchunk) -> {
--            //for (LongIterator iterator = this.playerChunkMap.loadedChunks.iterator() ; iterator.hasNext() ; ) { // Paper - iterate only loaded chunks
--                //PlayerChunk playerchunk = this.playerChunkMap.getVisibleChunk(iterator.nextLong());// Paper - iterate only loaded chunks
+-            final int[] chunksTicked = {0}; this.playerChunkMap.forEachVisibleChunk((playerchunk) -> { // Paper - safe iterator incase chunk loads, also no wrapping
 -                Optional<Chunk> optional = ((Either) playerchunk.a().getNow(PlayerChunk.UNLOADED_CHUNK)).left();
 -
 -                if (optional.isPresent()) {
@@ -57,11 +54,11 @@ index 74c9517b7d3cf576d80b9b608132bdc159c9ce2e..1b3d1503fd12289912655fb636441c6b
                          ChunkCoordIntPair chunkcoordintpair = playerchunk.i();
  
                          if (!this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false)) { // Paper - optimise isOutsideOfRange
-@@ -1015,7 +1022,11 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1011,7 +1021,11 @@ public class ChunkProviderServer extends IChunkProvider {
                          }
                      }
                  }
--            });// Paper - use for instead of forEachVisibleChunk
+-            });
 +            } // Tuinity start - optimise chunk tick iteration
 +            } finally {
 +                iterator.finishedIterating();
