@@ -175,7 +175,7 @@ index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..53c977513d3c243e6d06f252ed417c5d
          this.e = world;
          this.a = blockposition.getX() >> 4;
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 86903aaa02054411ef713d7aa500a654e6f22c88..03954b307f2906462c15935838e8abbe4c974992 100644
+index 86903aaa02054411ef713d7aa500a654e6f22c88..74e16088683679362836f428e5399c40841e5236 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -796,11 +796,39 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -227,7 +227,7 @@ index 86903aaa02054411ef713d7aa500a654e6f22c88..03954b307f2906462c15935838e8abbe
              AxisAlignedBB axisalignedbb = AxisAlignedBB.g((double) f1, 0.10000000149011612D, (double) f1).d(this.locX(), this.getHeadY(), this.locZ());
  
 -            return this.world.b(this, axisalignedbb, (iblockdata, blockposition) -> {
-+            return ((WorldServer)this.world).collidesWithAnyBlockOrWorldBorder(this, axisalignedbb, false, (iblockdata, blockposition) -> { // Tuinity - use optimised method
++            return ((WorldServer)this.world).collidesWithAnyBlockOrWorldBorder(this, axisalignedbb, false, false, (iblockdata, blockposition) -> { // Tuinity - use optimised method
                  return iblockdata.o(this.world, blockposition);
 -            }).findAny().isPresent();
 +            }); // Tuinity - use optimised method
@@ -263,7 +263,7 @@ index d318ec207cdc5f0ef6a0480567225ab476d6e074..c14b7bd63e3917bc5f495655c40d8825
          return this.boundingBoxesRepresentation;
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 215789b7621d9b26c4aed128a13d8864e5502bab..001c343280c206dc00c8e05cf0cff6d6f01ee500 100644
+index 215789b7621d9b26c4aed128a13d8864e5502bab..d0ea96c2921e02520c4783cf087f652250647047 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -395,13 +395,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -332,11 +332,11 @@ index 215789b7621d9b26c4aed128a13d8864e5502bab..001c343280c206dc00c8e05cf0cff6d6
                              IBlockData blockData = blocks.rawGet(blockKeyFull);
  
                              if (!blockData.isAir() && (edgeCountFull != 1 || blockData.shapeExceedsCube()) && (edgeCountFull != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
-@@ -477,6 +477,126 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -477,6 +477,130 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          return false;
      }
  
-+    public boolean collidesWithAnyBlockOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb, boolean loadChunks, java.util.function.BiPredicate<IBlockData, BlockPosition> predicate) {
++    public boolean collidesWithAnyBlockOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb, boolean loadChunks, boolean collideWithUnloaded, java.util.function.BiPredicate<IBlockData, BlockPosition> predicate) {
 +        if (entity != null) {
 +            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
 +                return true;
@@ -387,7 +387,11 @@ index 215789b7621d9b26c4aed128a13d8864e5502bab..001c343280c206dc00c8e05cf0cff6d6
 +                Chunk chunk = loadChunks ? chunkProvider.getChunkAt(currChunkX, currChunkZ, true) : chunkProvider.getChunkAtIfLoadedImmediately(currChunkX, currChunkZ);
 +
 +                if (chunk == null) {
-+                    return true;
++                    if (collideWithUnloaded) {
++                        return true;
++                    } else {
++                        continue;
++                    }
 +                }
 +
 +                ChunkSection[] sections = chunk.getSections();
@@ -459,7 +463,7 @@ index 215789b7621d9b26c4aed128a13d8864e5502bab..001c343280c206dc00c8e05cf0cff6d6
      public final boolean hardCollidesWithAnyEntities(@Nullable Entity entity, AxisAlignedBB axisalignedbb, @Nullable Predicate<Entity> predicate) {
          if (axisalignedbb.isEmpty()) {
              return false;
-@@ -512,7 +632,6 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -512,7 +636,6 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          return this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb, loadChunks) || this.hardCollidesWithAnyEntities(entity, axisalignedbb, null);
      }
  
@@ -467,7 +471,7 @@ index 215789b7621d9b26c4aed128a13d8864e5502bab..001c343280c206dc00c8e05cf0cff6d6
      public void getCollisionsForBlocksOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<AxisAlignedBB> list, boolean loadChunks) {
          if (entity != null) {
              if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
-@@ -551,13 +670,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -551,13 +674,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          ChunkProviderServer chunkProvider = (ChunkProviderServer)this.chunkProvider;
          // TODO special case single chunk?
  
@@ -487,7 +491,7 @@ index 215789b7621d9b26c4aed128a13d8864e5502bab..001c343280c206dc00c8e05cf0cff6d6
  
                  int chunkXGlobalPos = currChunkX << 4;
                  int chunkZGlobalPos = currChunkZ << 4;
-@@ -586,32 +705,32 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -586,32 +709,32 @@ public class WorldServer extends World implements GeneratorAccessSeed {
  
                      int edgeCountY = (currY == minBlockY || currY == maxBlockY) ? 1 : 0;
  
