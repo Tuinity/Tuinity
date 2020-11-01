@@ -817,7 +817,7 @@ index 0000000000000000000000000000000000000000..6d2851ffa32e299dc7588e29ad507625
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/BlockBase.java b/src/main/java/net/minecraft/server/BlockBase.java
-index 505d40278d4472e0015a53af8e93bd81e5f09ac3..12b728217ba0870f1092ea1f3149e0124cad106c 100644
+index 5131d2172d3cbd8a7254a6dd52e061888a17fb38..478950e5bf46ccf048da1fe5bd76f4d9969d80f1 100644
 --- a/src/main/java/net/minecraft/server/BlockBase.java
 +++ b/src/main/java/net/minecraft/server/BlockBase.java
 @@ -182,8 +182,8 @@ public abstract class BlockBase {
@@ -849,8 +849,8 @@ index 505d40278d4472e0015a53af8e93bd81e5f09ac3..12b728217ba0870f1092ea1f3149e012
          private final BlockBase.e l;
          private final BlockBase.e m;
          private final BlockBase.e n;
-@@ -338,10 +338,18 @@ public abstract class BlockBase {
-         }
+@@ -343,12 +343,20 @@ public abstract class BlockBase {
+         protected Fluid fluid;
          // Paper end
  
 +        // Tuinity start - micro the hell out of this call
@@ -861,6 +861,8 @@ index 505d40278d4472e0015a53af8e93bd81e5f09ac3..12b728217ba0870f1092ea1f3149e012
 +        // Tuinity end
 +
          public void a() {
+             this.fluid = this.getBlock().d(this.p()); // Paper - moved from getFluid()
+             this.isTicking = this.getBlock().isTicking(this.p()); // Paper - moved from isTicking()
              if (!this.getBlock().o()) {
                  this.a = new BlockBase.BlockData.Cache(this.p());
              }
@@ -868,7 +870,7 @@ index 505d40278d4472e0015a53af8e93bd81e5f09ac3..12b728217ba0870f1092ea1f3149e012
  
          }
  
-@@ -365,10 +373,12 @@ public abstract class BlockBase {
+@@ -372,10 +380,12 @@ public abstract class BlockBase {
              return this.a != null ? this.a.g : this.getBlock().b(this.p(), iblockaccess, blockposition);
          }
  
@@ -881,15 +883,15 @@ index 505d40278d4472e0015a53af8e93bd81e5f09ac3..12b728217ba0870f1092ea1f3149e012
          public VoxelShape a(IBlockAccess iblockaccess, BlockPosition blockposition, EnumDirection enumdirection) {
              return this.a != null && this.a.i != null ? this.a.i[enumdirection.ordinal()] : VoxelShapes.a(this.c(iblockaccess, blockposition), enumdirection);
          }
-@@ -378,7 +388,7 @@ public abstract class BlockBase {
+@@ -385,7 +395,7 @@ public abstract class BlockBase {
          }
  
-         public boolean d() {
+         public final boolean d() { // Paper
 -            return this.a == null || this.a.c;
 +            return this.shapeExceedsCube; // Tuinity - moved into shape cache init
          }
  
-         public boolean e() {
+         public final boolean e() { // Paper
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 index 45c142c227bc258bbd5c8c03c6012663dccf8f3f..d6f57ba9c40bb07bae9a575b8887b70564bc9b60 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
@@ -1185,7 +1187,7 @@ index 11a67ca18f566bfc214659e7fb454ea2b4d8a7ad..ffa16930ade0fee788706955f340e03b
  
          // Paper start - raise IO/load priority if priority changes, use our preferred priority
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index fcd3388d88aad6e897b73e2c823267ada327cbda..dc1a559d430fc176c0600e8525c80d9708ac4be8 100644
+index 6c399bcea03e839bf2f21e92b5d76d46b7088667..edf3ec5d8304902028eb25aefbf3c8b4dae54917 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -277,6 +277,21 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
