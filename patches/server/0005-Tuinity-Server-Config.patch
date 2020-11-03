@@ -20,10 +20,10 @@ index e33e889c291d37a821a4fbd40d9aac7bb079de0d..5dfa0658838c4801cdf260eae8b98163
          new TimingsExport(listeners, parent, history).start();
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..775e7dbc5af5ba6245d1486ca686b29013ee72da
+index 0000000000000000000000000000000000000000..c621c486a361c388c5ab5fee5821f3d88d365dca
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-@@ -0,0 +1,218 @@
+@@ -0,0 +1,228 @@
 +package com.tuinity.tuinity.config;
 +
 +import com.destroystokyo.paper.util.SneakyThrow;
@@ -128,6 +128,11 @@ index 0000000000000000000000000000000000000000..775e7dbc5af5ba6245d1486ca686b290
 +    static double getDouble(final String path, final double dfl) {
 +        TuinityConfig.config.addDefault(path, Double.valueOf(dfl));
 +        return TuinityConfig.config.getDouble(path, dfl);
++    }
++
++    static String getString(final String path, final String dfl) {
++        TuinityConfig.config.addDefault(path, dfl);
++        return TuinityConfig.config.getString(path, dfl);
 +    }
 +
 +    public static final class WorldConfig {
@@ -239,15 +244,20 @@ index 0000000000000000000000000000000000000000..775e7dbc5af5ba6245d1486ca686b290
 +            }
 +            return this.config.getDouble(path, this.worldDefaults.getDouble(path));
 +        }
++
++        String getString(final String path, final String dfl) {
++            this.worldDefaults.addDefault(path, dfl);
++            return this.config.getString(path, this.worldDefaults.getString(path));
++        }
 +    }
 +
 +}
 \ No newline at end of file
 diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
-index f55dc28f3e220966199ec718a437e50ef4b76027..8542f2f4d2a43e9224fb525723c953f0d179eb40 100644
+index 5504facd2e453238caa71d98743be5416d4dd4fe..fcba187bbdc1b468cfea2bc922187d9b8959a9d5 100644
 --- a/src/main/java/net/minecraft/server/DedicatedServer.java
 +++ b/src/main/java/net/minecraft/server/DedicatedServer.java
-@@ -166,6 +166,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
+@@ -169,6 +169,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
          com.destroystokyo.paper.PaperConfig.registerCommands();
          com.destroystokyo.paper.VersionHistoryManager.INSTANCE.getClass(); // load version history now
          // Paper end
@@ -256,7 +266,7 @@ index f55dc28f3e220966199ec718a437e50ef4b76027..8542f2f4d2a43e9224fb525723c953f0
          this.setPVP(dedicatedserverproperties.pvp);
          this.setAllowFlight(dedicatedserverproperties.allowFlight);
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index eec338649edbdaebbe694a23ccb7a8b5cd5f9a15..4ce4f3be8bae02c9b56aaf5bd031035846a2416c 100644
+index d64d94b8c329ddce27151afc012ecfe26b5ee707..2cbf79facdbebcc37154bf7ca5576eb54eda1230 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -94,6 +94,8 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
@@ -277,7 +287,7 @@ index eec338649edbdaebbe694a23ccb7a8b5cd5f9a15..4ce4f3be8bae02c9b56aaf5bd0310358
          this.world = new CraftWorld((WorldServer) this, gen, env);
          this.ticksPerAnimalSpawns = this.getServer().getTicksPerAnimalSpawns(); // CraftBukkit
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
-index 36d05c50db133bca8894ff95b8306fa157cab736..182bded1e0201586053463ba0327bb97d70b6915 100644
+index 9e82461f24869428786b359e94edddc98ff3d3e4..f66ad536fa93c28fe37beaad5c4def81af2a7cbe 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
 @@ -856,6 +856,7 @@ public final class CraftServer implements Server {
@@ -296,7 +306,7 @@ index 36d05c50db133bca8894ff95b8306fa157cab736..182bded1e0201586053463ba0327bb97
          }
  
          Plugin[] pluginClone = pluginManager.getPlugins().clone(); // Paper
-@@ -2250,6 +2252,14 @@ public final class CraftServer implements Server {
+@@ -2272,6 +2274,14 @@ public final class CraftServer implements Server {
              return com.destroystokyo.paper.PaperConfig.config;
          }
  
@@ -312,7 +322,7 @@ index 36d05c50db133bca8894ff95b8306fa157cab736..182bded1e0201586053463ba0327bb97
          public void restart() {
              org.spigotmc.RestartCommand.restart();
 diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
-index 5ec9dd031b1d30e14980b0fa1accb57d35270095..0f4503940abbcf353d07276f3f25e56047dce344 100644
+index 982ff9be9f00624b277abc30ecca80df00057721..a9c96d45c69996df33bb6fa09558304735262bdd 100644
 --- a/src/main/java/org/bukkit/craftbukkit/Main.java
 +++ b/src/main/java/org/bukkit/craftbukkit/Main.java
 @@ -138,6 +138,13 @@ public class Main {

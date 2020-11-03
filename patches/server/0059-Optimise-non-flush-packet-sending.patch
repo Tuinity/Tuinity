@@ -20,7 +20,7 @@ up on this optimisation before he came along.
 Locally this patch drops the entity tracker tick by a full 1.5x.
 
 diff --git a/pom.xml b/pom.xml
-index 862c3043d7da1785bd354b848714daacaf726e62..808ed2eefc1fa2f7de59ab13e03c227931a848ee 100644
+index a661bcf7320b20b9ecf03e508544c07126bdb410..78c2a8bbcc0132f891c8aa545529d20aa0d9eb57 100644
 --- a/pom.xml
 +++ b/pom.xml
 @@ -37,6 +37,13 @@
@@ -51,7 +51,7 @@ index 862c3043d7da1785bd354b848714daacaf726e62..808ed2eefc1fa2f7de59ab13e03c2279
          <dependency>
              <groupId>com.googlecode.json-simple</groupId>
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index c6b77aef52572999633ac7d8536f2958f6510cfb..b19586f29ddbc3a334bc1910b658b2b5a30ea061 100644
+index eb2f3fdeecd1eda828d90b006263e751cfe243f9..eb6b81d88ff22648adbaba87f7789da444d18af8 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -27,6 +27,8 @@ import org.apache.logging.log4j.Logger;
@@ -63,7 +63,7 @@ index c6b77aef52572999633ac7d8536f2958f6510cfb..b19586f29ddbc3a334bc1910b658b2b5
  public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
  
      private static final Logger LOGGER = LogManager.getLogger();
-@@ -326,39 +328,83 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -381,39 +383,83 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
              }
              // Paper end
          } else {
@@ -116,8 +116,23 @@ index c6b77aef52572999633ac7d8536f2958f6510cfb..b19586f29ddbc3a334bc1910b658b2b5
 +                    }
                      // Paper end
 -                ChannelFuture channelfuture1 = (flush) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - add flush parameter
--
--
++                };
++            } else {
++                // explicitly declare a variable to make the lambda use the type
++                choice2 = () -> {
++                    if (enumprotocol != enumprotocol1) {
++                        this.setProtocol(enumprotocol);
++                    }
+ 
++                    // Paper start
++                    if (!isConnected()) {
++                        packet.onPacketDispatchFinish(player, null);
++                        return;
++                    }
++                    try {
++                        // Paper end
++                        ChannelFuture channelfuture1 = (flush) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - add flush parameter
+ 
 -                if (genericfuturelistener != null) {
 -                    channelfuture1.addListener(genericfuturelistener);
 -                }
@@ -126,13 +141,6 @@ index c6b77aef52572999633ac7d8536f2958f6510cfb..b19586f29ddbc3a334bc1910b658b2b5
 -                    channelfuture1.addListener((ChannelFutureListener) channelFuture -> packet.onPacketDispatchFinish(player, channelFuture));
 -                }
 -                // Paper end
-+                };
-+            } else {
-+                // explicitly declare a variable to make the lambda use the type
-+                choice2 = () -> {
-+                    if (enumprotocol != enumprotocol1) {
-+                        this.setProtocol(enumprotocol);
-+                    }
  
 -                channelfuture1.addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
 -                // Paper start
@@ -143,16 +151,6 @@ index c6b77aef52572999633ac7d8536f2958f6510cfb..b19586f29ddbc3a334bc1910b658b2b5
 -                }
 -                // Paper end
 -            });
-+                    // Paper start
-+                    if (!isConnected()) {
-+                        packet.onPacketDispatchFinish(player, null);
-+                        return;
-+                    }
-+                    try {
-+                        // Paper end
-+                        ChannelFuture channelfuture1 = (flush) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - add flush parameter
-+
-+
 +                        if (genericfuturelistener != null) {
 +                            channelfuture1.addListener(genericfuturelistener);
 +                        }

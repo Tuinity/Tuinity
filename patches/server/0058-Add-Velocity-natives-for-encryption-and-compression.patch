@@ -5,7 +5,7 @@ Subject: [PATCH] Add Velocity natives for encryption and compression
 
 
 diff --git a/pom.xml b/pom.xml
-index 5e25ae55e44e31d232b088b7c3c39df69b0cc875..862c3043d7da1785bd354b848714daacaf726e62 100644
+index 1f265fb038fada597b3d4026d6cf4079fb9d32a9..a661bcf7320b20b9ecf03e508544c07126bdb410 100644
 --- a/pom.xml
 +++ b/pom.xml
 @@ -141,6 +141,13 @@
@@ -22,16 +22,32 @@ index 5e25ae55e44e31d232b088b7c3c39df69b0cc875..862c3043d7da1785bd354b848714daac
      </dependencies>
  
      <repositories>
+diff --git a/src/main/java/net/minecraft/server/LoginListener.java b/src/main/java/net/minecraft/server/LoginListener.java
+index c61cd50df0c81f7ab12bd0c955fd6f07f2b02e64..d987483255195c0bde713a92676baced1eaff2b3 100644
+--- a/src/main/java/net/minecraft/server/LoginListener.java
++++ b/src/main/java/net/minecraft/server/LoginListener.java
+@@ -234,7 +234,7 @@ public class LoginListener implements PacketLoginInListener {
+ 
+             s = (new BigInteger(MinecraftEncryption.a("", this.server.getKeyPair().getPublic(), this.loginKey))).toString(16);
+             this.g = LoginListener.EnumProtocolState.AUTHENTICATING;
+-            this.networkManager.a(cipher, cipher1);
++            this.networkManager.a(this.loginKey); // Tuinity
+         } catch (CryptographyException cryptographyexception) {
+             throw new IllegalStateException("Protocol error", cryptographyexception);
+         }
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index aa1597c77251ce18da47532209476cd42239e874..c6b77aef52572999633ac7d8536f2958f6510cfb 100644
+index 450e63270dc3f68f62eace811f055dc61cdb4bd6..eb2f3fdeecd1eda828d90b006263e751cfe243f9 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
-@@ -484,8 +484,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -537,10 +537,16 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+         return this.channel instanceof LocalChannel || this.channel instanceof LocalServerChannel;
+     }
  
-     public void a(SecretKey secretkey) {
+-    public void a(Cipher cipher, Cipher cipher1) {
++    public void a(javax.crypto.SecretKey secretkey) { // Tuinity
          this.n = true;
--        this.channel.pipeline().addBefore("splitter", "decrypt", new PacketDecrypter(MinecraftEncryption.a(2, secretkey)));
--        this.channel.pipeline().addBefore("prepender", "encrypt", new PacketEncrypter(MinecraftEncryption.a(1, secretkey)));
+-        this.channel.pipeline().addBefore("splitter", "decrypt", new PacketDecrypter(cipher));
+-        this.channel.pipeline().addBefore("prepender", "encrypt", new PacketEncrypter(cipher1));
 +        // Tuinity start
 +        try {
 +        this.channel.pipeline().addBefore("splitter", "decrypt", new PacketDecrypter(/*MinecraftEncryption.a(2, secretkey)*/ secretkey));

@@ -9,7 +9,7 @@ since the penalty of a map lookup could outweigh the benefits of
 searching less players (as it basically did in the outside range patch).
 
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 04985588293c19b4d29dd65b55092aea1bd6d976..a417c607f47c6796e7d3ad8ec5dd10bc23eb3e57 100644
+index c6595767ba27e2233d5a1fb50dcb0b39bbee5a79..d58bd82eed4be47dc620ec8924621fa264d63264 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -157,6 +157,85 @@ public class Chunk implements IChunkAccess {
@@ -99,7 +99,7 @@ index 04985588293c19b4d29dd65b55092aea1bd6d976..a417c607f47c6796e7d3ad8ec5dd10bc
          this.sections = new ChunkSection[16];
          this.e = Maps.newHashMap();
 diff --git a/src/main/java/net/minecraft/server/EntityInsentient.java b/src/main/java/net/minecraft/server/EntityInsentient.java
-index 04eff01825bcf4cc38a749902065a5f54e73f1d7..8354921b80db6740175c69e7f824821d7e75884b 100644
+index 7ddf276732a58c998c733aaaeee3e1bfc614ea0a..23007c9ccb4cfb9b8ba817ab5aaf7afbc3bb4aae 100644
 --- a/src/main/java/net/minecraft/server/EntityInsentient.java
 +++ b/src/main/java/net/minecraft/server/EntityInsentient.java
 @@ -707,7 +707,13 @@ public abstract class EntityInsentient extends EntityLiving {
@@ -135,7 +135,7 @@ index 7cc6dfd3d773430a637c5a0f3d85cb57f94af053..80cc96a4de5a5af964dfc6e77911426e
      // Paper end - optimise isOutsideOfRange
      // Paper start - optimize chunk status progression without jumping through thread pool
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index c72ca2a6ad76f2956350b488b4909495b9d2302e..c739c91ae71e95938ebb601b1dc3b57484016d57 100644
+index 087bbad02511598252b75c8b02815e4105483eb1..0e1b89106e7c27ace92975b8c1a22ea6bcf17a14 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -195,6 +195,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -203,7 +203,7 @@ index c72ca2a6ad76f2956350b488b4909495b9d2302e..c739c91ae71e95938ebb601b1dc3b574
      // Paper start - Chunk Prioritization
      public void queueHolderUpdate(PlayerChunk playerchunk) {
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 485b41c6aaca5115ee2f488ccae77bdec2e1f5ee..cdadf7717be8c8c9eab4526d726fdb6def8e9ef7 100644
+index bf001271950b28f0261b935bf4e7363cac933040..f7103ec2a90a08b8a816f47a02c0f29ac34b2431 100644
 --- a/src/main/java/net/minecraft/server/World.java
 +++ b/src/main/java/net/minecraft/server/World.java
 @@ -123,6 +123,34 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
@@ -242,10 +242,10 @@ index 485b41c6aaca5115ee2f488ccae77bdec2e1f5ee..cdadf7717be8c8c9eab4526d726fdb6d
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig(((WorldDataServer) worlddatamutable).getName()); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig((((WorldDataServer)worlddatamutable).getName()), this.spigotConfig); // Paper
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index d0ea96c2921e02520c4783cf087f652250647047..f115097a67a677e26c67b233f0f48c94158246a4 100644
+index 3e4830317249d04b77eb6dc2ec865ede18735e09..274a383be124c1abd42af07b359306c912ac5c50 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -296,6 +296,10 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -300,6 +300,10 @@ public class WorldServer extends World implements GeneratorAccessSeed {
      long lastMidTickExecuteFailure;
      // Tuinity end - execute chunk tasks mid tick
  
@@ -256,7 +256,7 @@ index d0ea96c2921e02520c4783cf087f652250647047..f115097a67a677e26c67b233f0f48c94
      // Add env and gen to constructor, WorldData -> WorldDataServer
      public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(iworlddataserver, resourcekey, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
-@@ -854,6 +858,14 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -858,6 +862,14 @@ public class WorldServer extends World implements GeneratorAccessSeed {
  
      public void doTick(BooleanSupplier booleansupplier) {
          GameProfilerFiller gameprofilerfiller = this.getMethodProfiler();
