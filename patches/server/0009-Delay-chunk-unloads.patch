@@ -19,7 +19,7 @@ affects player loaded chunks, when we want to target all
 loads.
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index 9b417615581e525a342470bd3bd593f596608340..01b8de8fedeb3d75a06114f3dfaf5cf3ce0df160 100644
+index f10fa659680f8a574f77d260bbc52be349c244e8..233683640827e33107232e10ae2ab35a5141adfe 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -1,6 +1,7 @@
@@ -30,7 +30,7 @@ index 9b417615581e525a342470bd3bd593f596608340..01b8de8fedeb3d75a06114f3dfaf5cf3
  import org.bukkit.Bukkit;
  import org.bukkit.configuration.ConfigurationSection;
  import org.bukkit.configuration.file.YamlConfiguration;
-@@ -121,6 +122,15 @@ public final class TuinityConfig {
+@@ -122,6 +123,15 @@ public final class TuinityConfig {
          tickWorldsInParallel = TuinityConfig.getBoolean("tick-worlds-in-parallel", false);
          tickThreads = TuinityConfig.getInt("server-tick-threads", 1); // will be 4 in the future
      }*/
@@ -38,7 +38,7 @@ index 9b417615581e525a342470bd3bd593f596608340..01b8de8fedeb3d75a06114f3dfaf5cf3
 +    public static int delayChunkUnloadsBy;
 +
 +    private static void delayChunkUnloadsBy() {
-+        delayChunkUnloadsBy = TuinityConfig.getInt("delay-chunkunloads-by", 1) * 20;
++        delayChunkUnloadsBy = TuinityConfig.getInt("delay-chunkunloads-by", 3) * 20;
 +        if (delayChunkUnloadsBy >= 0) {
 +            TicketType.DELAYED_UNLOAD.loadPeriod = delayChunkUnloadsBy;
 +        }
@@ -47,7 +47,7 @@ index 9b417615581e525a342470bd3bd593f596608340..01b8de8fedeb3d75a06114f3dfaf5cf3
      public static final class WorldConfig {
  
 diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index d3588e238506ea859407b72da0d0cf291945b2ec..43cbb77cafe4e8281b436c6d00e4980676acc6d2 100644
+index d3588e238506ea859407b72da0d0cf291945b2ec..da26f56b3922af0076f69e256d7e8f407fdeba5c 100644
 --- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
 @@ -31,7 +31,7 @@ public abstract class ChunkMapDistance {
@@ -107,30 +107,36 @@ index d3588e238506ea859407b72da0d0cf291945b2ec..43cbb77cafe4e8281b436c6d00e49806
      protected ChunkMapDistance(Executor executor, Executor executor1) {
          executor1.getClass();
          Mailbox<Runnable> mailbox = Mailbox.a("player ticket throttler", executor1::execute);
-@@ -69,18 +110,38 @@ public abstract class ChunkMapDistance {
+@@ -69,18 +110,41 @@ public abstract class ChunkMapDistance {
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
-+        int[] tempLevel = new int[] { PlayerChunkMap.GOLDEN_TICKET + 1 }; // Tuinity - delay chunk unloads
-         while (objectiterator.hasNext()) {
-             Entry<ArraySetSorted<Ticket<?>>> entry = (Entry) objectiterator.next();
- 
-             if ((entry.getValue()).removeIf((ticket) -> { // CraftBukkit - decompile error
--                return ticket.b(this.currentTick);
-+                // Tuinity start - delay chunk unloads
-+                boolean ret = ticket.isExpired(this.currentTick);
-+                if (com.tuinity.tuinity.config.TuinityConfig.delayChunkUnloadsBy <= 0) {
-+                    return ret;
-+                }
-+                if (ret && ticket.getTicketType().delayUnloadViable && ticket.getTicketLevel() < tempLevel[0]) {
-+                    tempLevel[0] = ticket.getTicketLevel();
-+                }
-+                if (ticket.getTicketType() == TicketType.DELAYED_UNLOAD && ticket.isCached) {
-+                    this.delayedChunks.remove(entry.getLongKey(), ticket); // clean up ticket...
-+                }
++        // Tuinity start - delay chunk unloads
++        int[] tempLevel = new int[] { PlayerChunkMap.GOLDEN_TICKET + 1 };
++        Entry<ArraySetSorted<Ticket<?>>>[] entryPass = new Entry[1];
++        java.util.function.Predicate<Ticket<?>> isExpired = (ticket) -> { // CraftBukkit - decompile error
++            // Tuinity start - delay chunk unloads
++            boolean ret = ticket.isExpired(this.currentTick);
++            if (com.tuinity.tuinity.config.TuinityConfig.delayChunkUnloadsBy <= 0) {
 +                return ret;
-+                // Tuinity end - delay chunk unloads
-             })) {
++            }
++            if (ret && ticket.getTicketType().delayUnloadViable && ticket.getTicketLevel() < tempLevel[0]) {
++                tempLevel[0] = ticket.getTicketLevel();
++            }
++            if (ticket.getTicketType() == TicketType.DELAYED_UNLOAD && ticket.isCached) {
++                this.delayedChunks.remove(entryPass[0].getLongKey(), ticket); // clean up ticket...
++            }
++            return ret;
++        };
++        // Tuinity end - delay chunk unloads
+         while (objectiterator.hasNext()) {
+-            Entry<ArraySetSorted<Ticket<?>>> entry = (Entry) objectiterator.next();
++            Entry<ArraySetSorted<Ticket<?>>> entry = (Entry) objectiterator.next(); entryPass[0] = entry; // Tuinity - only allocate lambda once
+ 
+-            if ((entry.getValue()).removeIf((ticket) -> { // CraftBukkit - decompile error
+-                return ticket.b(this.currentTick);
+-            })) {
++            if ((entry.getValue()).removeIf(isExpired)) { // Tuinity - move above - only allocate once
 +                // Tuinity start - delay chunk unloads
 +                if (tempLevel[0] < (PlayerChunkMap.GOLDEN_TICKET + 1)) {
 +                    this.computeDelayedTicketFor(entry.getLongKey(), tempLevel[0], entry.getValue());
@@ -147,7 +153,7 @@ index d3588e238506ea859407b72da0d0cf291945b2ec..43cbb77cafe4e8281b436c6d00e49806
          }
  
      }
-@@ -178,27 +239,11 @@ public abstract class ChunkMapDistance {
+@@ -178,27 +242,11 @@ public abstract class ChunkMapDistance {
          boolean removed = false; // CraftBukkit
          if (arraysetsorted.remove(ticket)) {
              removed = true; // CraftBukkit

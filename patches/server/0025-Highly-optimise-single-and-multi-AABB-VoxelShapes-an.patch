@@ -856,10 +856,10 @@ index ff74be14512a947e81b62d53e616131ca7d7f609..653ba0f1d84af1997d768426d3542c9d
          0, 2, 60L, TimeUnit.SECONDS,
          new LinkedBlockingQueue<Runnable>(),
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 50a42487e860e3b080dc342378f10b5c98f7c155..a944a6f454e33deb30715925fd39e0fe0cdff4a5 100644
+index 900c66a9219272efbf7711eef64bd87a4bfc9ea4..25d42e7d41a95769bf7ecbd0e0c1b8ed716bb563 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -1323,6 +1323,8 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1324,6 +1324,8 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
          }
          // Paper end
  
@@ -1080,7 +1080,7 @@ index e841611bb7c36dffec44bb9e74a0a9657a113263..259605daabb18aedb15d56c78e6553ae
                      }
  
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
-index 9f4f9df09968dc45878ad59f5ee45672a3f08fbd..4bdadffee07c54f6f538ba09db72d562d05cb337 100644
+index 9f4f9df09968dc45878ad59f5ee45672a3f08fbd..db735e29d427cc8f4bd4ba54c7a44daf9fed9e61 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java
 +++ b/src/main/java/net/minecraft/server/VoxelShapes.java
 @@ -17,18 +17,80 @@ public final class VoxelShapes {
@@ -1091,7 +1091,7 @@ index 9f4f9df09968dc45878ad59f5ee45672a3f08fbd..4bdadffee07c54f6f538ba09db72d562
 +    }); public static final VoxelShape getFullUnoptimisedCube() { return VoxelShapes.b; } // Tuinity - OBFHELPER
      public static final VoxelShape a = create(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
 -    private static final VoxelShape c = new VoxelShapeArray(new VoxelShapeBitSet(0, 0, 0), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}));
-+    private static final VoxelShape c = new VoxelShapeArray(new VoxelShapeBitSet(0, 0, 0), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D})); static final VoxelShape getEmptyShape() { return VoxelShapes.c; } // Tuinity - OBFHELPER
++    private static final VoxelShape c = new VoxelShapeArray(new VoxelShapeBitSet(0, 0, 0), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D}), new DoubleArrayList(new double[]{0.0D})); public static final VoxelShape getEmptyShape() { return VoxelShapes.c; } // Tuinity - OBFHELPER
 +
 +    // Tuinity start - optimise voxelshapes
 +    public static boolean isEmpty(VoxelShape voxelshape) {
@@ -1197,6 +1197,15 @@ index 9f4f9df09968dc45878ad59f5ee45672a3f08fbd..4bdadffee07c54f6f538ba09db72d562
          if (operatorboolean.apply(false, false)) {
              throw (IllegalArgumentException) SystemUtils.c((Throwable) (new IllegalArgumentException()));
          } else if (voxelshape == voxelshape1) {
+@@ -316,7 +392,7 @@ public final class VoxelShapes {
+ 
+     public static boolean combinationOccludes(VoxelShape voxelshape, VoxelShape voxelshape1) { return b(voxelshape, voxelshape1); } // Tuinity - OBFHELPER
+     public static boolean b(VoxelShape voxelshape, VoxelShape voxelshape1) {
+-        return voxelshape != b() && voxelshape1 != b() ? (voxelshape.isEmpty() && voxelshape1.isEmpty() ? false : !c(b(), b(voxelshape, voxelshape1, OperatorBoolean.OR), OperatorBoolean.ONLY_FIRST)) : true;
++        return (voxelshape != b() || voxelshape != getFullUnoptimisedCube()) && (voxelshape1 != b() || voxelshape1 != getFullUnoptimisedCube()) ? ((voxelshape == VoxelShapes.getEmptyShape() || voxelshape.isEmpty()) && (voxelshape1 == VoxelShapes.getEmptyShape() || voxelshape1.isEmpty()) ? false : !c(b(), b(voxelshape, voxelshape1, OperatorBoolean.OR), OperatorBoolean.ONLY_FIRST)) : true; // Tuinity - optimise call by checking against more constant shapes
+     }
+ 
+     @VisibleForTesting
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
 index 540b2ee665852dfc7d787a00eb07896072971a57..2593d04c924bac2c96392fe0b3c418004d0c6f11 100644
 --- a/src/main/java/net/minecraft/server/World.java

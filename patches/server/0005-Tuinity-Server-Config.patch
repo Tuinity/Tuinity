@@ -20,10 +20,10 @@ index e33e889c291d37a821a4fbd40d9aac7bb079de0d..5dfa0658838c4801cdf260eae8b98163
          new TimingsExport(listeners, parent, history).start();
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..c621c486a361c388c5ab5fee5821f3d88d365dca
+index 0000000000000000000000000000000000000000..0f66484a80d3cc7caaf8a111bd50229e673bd8e0
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,236 @@
 +package com.tuinity.tuinity.config;
 +
 +import com.destroystokyo.paper.util.SneakyThrow;
@@ -46,6 +46,7 @@ index 0000000000000000000000000000000000000000..c621c486a361c388c5ab5fee5821f3d8
 +    private static File configFile;
 +    public static YamlConfiguration config;
 +    private static int configVersion;
++    public static boolean createWorldSections = true;
 +
 +    public static void init(final File file) {
 +        // TODO remove this in the future...
@@ -138,7 +139,7 @@ index 0000000000000000000000000000000000000000..c621c486a361c388c5ab5fee5821f3d8
 +    public static final class WorldConfig {
 +
 +        public final String worldName;
-+        public ConfigurationSection config;
++        public String configPath;
 +        ConfigurationSection worldDefaults;
 +
 +        public WorldConfig(final String worldName) {
@@ -154,17 +155,18 @@ index 0000000000000000000000000000000000000000..c621c486a361c388c5ab5fee5821f3d8
 +
 +            String worldSectionPath = TuinityConfig.configVersion < 1 ? this.worldName : "world-settings.".concat(this.worldName);
 +            ConfigurationSection section = TuinityConfig.config.getConfigurationSection(worldSectionPath);
-+            if (section == null) {
-+                section = TuinityConfig.config.createSection(worldSectionPath);
++            this.configPath = worldSectionPath;
++            if (TuinityConfig.createWorldSections) {
++                if (section == null) {
++                    section = TuinityConfig.config.createSection(worldSectionPath);
++                }
++                TuinityConfig.config.set(worldSectionPath, section);
 +            }
-+            TuinityConfig.config.set(worldSectionPath, section);
 +
-+            this.load(section);
++            this.load();
 +        }
 +
-+        public void load(final ConfigurationSection config) {
-+            this.config = config;
-+
++        public void load() {
 +            for (final Method method : TuinityConfig.WorldConfig.class.getDeclaredMethods()) {
 +                if (method.getReturnType() != void.class || method.getParameterCount() != 0 ||
 +                        !Modifier.isPrivate(method.getModifiers()) || Modifier.isStatic(method.getModifiers())) {
@@ -199,55 +201,61 @@ index 0000000000000000000000000000000000000000..c621c486a361c388c5ab5fee5821f3d8
 +         * if it exists
 +         */
 +        void set(final String path, final Object val) {
++            final ConfigurationSection config = TuinityConfig.config.getConfigurationSection(this.configPath);
 +            this.worldDefaults.set(path, val);
-+            if (this.config.get(path) != null) {
-+                this.config.set(path, val);
++            if (config != null && config.get(path) != null) {
++                config.set(path, val);
 +            }
 +        }
 +
 +        boolean getBoolean(final String path, final boolean dfl) {
++            final ConfigurationSection config = TuinityConfig.config.getConfigurationSection(this.configPath);
 +            this.worldDefaults.addDefault(path, Boolean.valueOf(dfl));
 +            if (TuinityConfig.configVersion < 1) {
-+                if (this.config.getBoolean(path) == dfl) {
-+                    this.config.set(path, null);
++                if (config != null && config.getBoolean(path) == dfl) {
++                    config.set(path, null);
 +                }
 +            }
-+            return this.config.getBoolean(path, this.worldDefaults.getBoolean(path));
++            return config == null ? this.worldDefaults.getBoolean(path) : config.getBoolean(path, this.worldDefaults.getBoolean(path));
 +        }
 +
 +        int getInt(final String path, final int dfl) {
++            final ConfigurationSection config = TuinityConfig.config.getConfigurationSection(this.configPath);
 +            this.worldDefaults.addDefault(path, Integer.valueOf(dfl));
 +            if (TuinityConfig.configVersion < 1) {
-+                if (this.config.getInt(path) == dfl) {
-+                    this.config.set(path, null);
++                if (config != null && config.getInt(path) == dfl) {
++                    config.set(path, null);
 +                }
 +            }
-+            return this.config.getInt(path, this.worldDefaults.getInt(path));
++            return config == null ? this.worldDefaults.getInt(path) : config.getInt(path, this.worldDefaults.getInt(path));
 +        }
 +
 +        long getLong(final String path, final long dfl) {
++            final ConfigurationSection config = TuinityConfig.config.getConfigurationSection(this.configPath);
 +            this.worldDefaults.addDefault(path, Long.valueOf(dfl));
 +            if (TuinityConfig.configVersion < 1) {
-+                if (this.config.getLong(path) == dfl) {
-+                    this.config.set(path, null);
++                if (config != null && config.getLong(path) == dfl) {
++                    config.set(path, null);
 +                }
 +            }
-+            return this.config.getLong(path, this.worldDefaults.getLong(path));
++            return config == null ? this.worldDefaults.getLong(path) : config.getLong(path, this.worldDefaults.getLong(path));
 +        }
 +
 +        double getDouble(final String path, final double dfl) {
++            final ConfigurationSection config = TuinityConfig.config.getConfigurationSection(this.configPath);
 +            this.worldDefaults.addDefault(path, Double.valueOf(dfl));
 +            if (TuinityConfig.configVersion < 1) {
-+                if (this.config.getDouble(path) == dfl) {
-+                    this.config.set(path, null);
++                if (config != null && config.getDouble(path) == dfl) {
++                    config.set(path, null);
 +                }
 +            }
-+            return this.config.getDouble(path, this.worldDefaults.getDouble(path));
++            return config == null ? this.worldDefaults.getDouble(path) : config.getDouble(path, this.worldDefaults.getDouble(path));
 +        }
 +
 +        String getString(final String path, final String dfl) {
++            final ConfigurationSection config = TuinityConfig.config.getConfigurationSection(this.configPath);
 +            this.worldDefaults.addDefault(path, dfl);
-+            return this.config.getString(path, this.worldDefaults.getString(path));
++            return config == null ? this.worldDefaults.getString(path) : config.getString(path, this.worldDefaults.getString(path));
 +        }
 +    }
 +
@@ -265,6 +273,18 @@ index 5504facd2e453238caa71d98743be5416d4dd4fe..fcba187bbdc1b468cfea2bc922187d9b
  
          this.setPVP(dedicatedserverproperties.pvp);
          this.setAllowFlight(dedicatedserverproperties.allowFlight);
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 33353c803fdc7d62cf6f9d230efac5352161dc36..bedc631c9fc13f4b9e7b296bcf7051fada38fd26 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -955,6 +955,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+                 LOGGER.info("Done ({})! For help, type \"help\"", doneTime);
+                 // Paper end
+ 
++                com.tuinity.tuinity.config.TuinityConfig.createWorldSections = false; // Tuinity - don't let plugin created worlds fill our config
+                 org.spigotmc.WatchdogThread.tick(); // Paper
+                 org.spigotmc.WatchdogThread.hasStarted = true; // Paper
+                 Arrays.fill( recentTps, 20 );
 diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
 index d64d94b8c329ddce27151afc012ecfe26b5ee707..2cbf79facdbebcc37154bf7ca5576eb54eda1230 100644
 --- a/src/main/java/net/minecraft/server/World.java
