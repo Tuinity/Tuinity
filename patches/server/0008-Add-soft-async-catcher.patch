@@ -148,14 +148,14 @@ index 033548a58d27f64d3954206d267783c0437d4019..08ed243259f052165c6f75aed1d1d65a
  
      public TickThread(final Runnable run, final String name, final int id) {
 diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index dcbae1c4512cf267719934785ea60de8ae66052d..2c76017ee3e75508f1400fcd66d14fde15c49ec2 100644
+index dcbae1c4512cf267719934785ea60de8ae66052d..1ef1065f52f5f72438f26e60a09292514e60b633 100644
 --- a/src/main/java/net/minecraft/server/Chunk.java
 +++ b/src/main/java/net/minecraft/server/Chunk.java
 @@ -547,6 +547,7 @@ public class Chunk implements IChunkAccess {
  
      @Override
      public void a(Entity entity) {
-+        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async addEntity call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk add entity"); // Tuinity
          this.q = true;
          int i = MathHelper.floor(entity.locX() / 16.0D);
          int j = MathHelper.floor(entity.locZ() / 16.0D);
@@ -163,7 +163,7 @@ index dcbae1c4512cf267719934785ea60de8ae66052d..2c76017ee3e75508f1400fcd66d14fde
      }
  
      public void a(Entity entity, int i) {
-+        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async removeEntity call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk remove entity"); // Tuinity // Tuinity
          if (i < 0) {
              i = 0;
          }
@@ -171,7 +171,7 @@ index dcbae1c4512cf267719934785ea60de8ae66052d..2c76017ee3e75508f1400fcd66d14fde
      }
  
      public void a(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<Entity> list, @Nullable Predicate<? super Entity> predicate) {
-+        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk get entities call"); // Tuinity
          int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
@@ -179,7 +179,7 @@ index dcbae1c4512cf267719934785ea60de8ae66052d..2c76017ee3e75508f1400fcd66d14fde
      }
  
      public <T extends Entity> void a(@Nullable EntityTypes<?> entitytypes, AxisAlignedBB axisalignedbb, List<? super T> list, Predicate<? super T> predicate) {
-+        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk get entities (by type) call"); // Tuinity
          int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
@@ -187,7 +187,7 @@ index dcbae1c4512cf267719934785ea60de8ae66052d..2c76017ee3e75508f1400fcd66d14fde
      }
  
      public <T extends Entity> void a(Class<? extends T> oclass, AxisAlignedBB axisalignedbb, List<T> list, @Nullable Predicate<? super T> predicate) {
-+        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async getEntities call"); // Tuinity
++        org.spigotmc.AsyncCatcher.catchOp("Chunk get entities (by class) call"); // Tuinity
          int i = MathHelper.floor((axisalignedbb.minY - 2.0D) / 16.0D);
          int j = MathHelper.floor((axisalignedbb.maxY + 2.0D) / 16.0D);
  
@@ -268,7 +268,7 @@ index 4efc40c01ec12b80bd7cf9d35cf0ea0df973baf7..f322dccd834ff56b99f8796309709b5b
  
          if (!list.equals(this.p)) {
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index edf3ec5d8304902028eb25aefbf3c8b4dae54917..7f71e309efe6aa2a820f4a7ee27b7700384fd39e 100644
+index 126ea76096375708e1b79dc497c89172371cdf51..49833d290e8533a93e03d805cf012bbfabc3fa57 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -200,6 +200,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -360,15 +360,17 @@ index a0179dd023cd835ab20656f33108a92e2d9824b5..6849cc655cf73ed600a4802c8c534e73
          VoxelShape voxelshape = iblockdata.getCollisionShape(this, blockposition);
          VoxelShape voxelshape1 = iblockdata1.getCollisionShape(this, blockposition);
 diff --git a/src/main/java/org/spigotmc/AsyncCatcher.java b/src/main/java/org/spigotmc/AsyncCatcher.java
-index 10606ed03e88e4e467de2d5424df12466c4e7873..c3ac1a46c3e06bfe06ad9ff9f4ec49c055a790b0 100644
+index 10606ed03e88e4e467de2d5424df12466c4e7873..51e9c54cddf4b28ba3d3d892322c487774bdab70 100644
 --- a/src/main/java/org/spigotmc/AsyncCatcher.java
 +++ b/src/main/java/org/spigotmc/AsyncCatcher.java
-@@ -10,7 +10,7 @@ public class AsyncCatcher
+@@ -10,8 +10,9 @@ public class AsyncCatcher
  
      public static void catchOp(String reason)
      {
 -        if ( enabled && !org.bukkit.Bukkit.isPrimaryThread() ) // Tuinity
 +        if ( ( enabled || com.tuinity.tuinity.util.TickThread.STRICT_THREAD_CHECKS ) && !org.bukkit.Bukkit.isPrimaryThread() ) // Tuinity
          {
++            MinecraftServer.LOGGER.fatal("Thread " + Thread.currentThread().getName() + " failed thread check for reason: Asynchronous " + reason, new Throwable()); // Tuinity - not all exceptions are printed
              throw new IllegalStateException( "Asynchronous " + reason + "!" );
          }
+     }

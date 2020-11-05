@@ -1103,10 +1103,26 @@ index 14ddb2a8949ce18a0c42e17a82d0d7a13ac325fe..476da43b9f0ef35b4985f88e4784b1f8
          return this.a(c(i, j));
      }
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 2f98f412143349b3c84dd87fec09ffb841749a55..0d154ca8076a6d2c3ab025f91b648ebcd5402b59 100644
+index 2f98f412143349b3c84dd87fec09ffb841749a55..33353c803fdc7d62cf6f9d230efac5352161dc36 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -1356,6 +1356,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -155,6 +155,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+     public org.bukkit.command.RemoteConsoleCommandSender remoteConsole;
+     //public ConsoleReader reader; // Paper
+     public static int currentTick = 0; // Paper - Further improve tick loop
++    public static long currentTickLong = 0L; // Tuinity
+     public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
+     public int autosavePeriod;
+     public boolean serverAutoSave = false; // Paper
+@@ -971,6 +972,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+                         this.lastOverloadTime = this.nextTick;
+                     }
+ 
++                    ++MinecraftServer.currentTickLong; // Tuinity
+                     if ( ++MinecraftServer.currentTick % SAMPLE_INTERVAL == 0 )
+                     {
+                         final long diff = curTime - tickSection;
+@@ -1356,6 +1358,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
                  midTickLoadChunks(); // Paper
                  worldserver.timings.doTick.startTiming(); // Spigot
                  worldserver.doTick(booleansupplier);
@@ -1174,7 +1190,7 @@ index 11a67ca18f566bfc214659e7fb454ea2b4d8a7ad..ffa16930ade0fee788706955f340e03b
  
          // Paper start - raise IO/load priority if priority changes, use our preferred priority
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 6c399bcea03e839bf2f21e92b5d76d46b7088667..edf3ec5d8304902028eb25aefbf3c8b4dae54917 100644
+index 6c399bcea03e839bf2f21e92b5d76d46b7088667..126ea76096375708e1b79dc497c89172371cdf51 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -277,6 +277,21 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -1236,6 +1252,18 @@ index 6c399bcea03e839bf2f21e92b5d76d46b7088667..edf3ec5d8304902028eb25aefbf3c8b4
  
              }
          };
+@@ -1710,6 +1732,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         return chunkHolder == null ? null : chunkHolder.getAvailableChunkNow();
+     }
+     // Paper end
++    // Tuinity start
++    public PlayerChunk getUnloadingPlayerChunk(int chunkX, int chunkZ) {
++        return this.pendingUnload.get(ChunkCoordIntPair.pair(chunkX, chunkZ));
++    }
++    // Tuinity end
+ 
+ 
+     // Paper start - async io
 diff --git a/src/main/java/net/minecraft/server/VoxelShapes.java b/src/main/java/net/minecraft/server/VoxelShapes.java
 index e21c747b6c39155c44bf30860681d67b0b29fb12..9f4f9df09968dc45878ad59f5ee45672a3f08fbd 100644
 --- a/src/main/java/net/minecraft/server/VoxelShapes.java

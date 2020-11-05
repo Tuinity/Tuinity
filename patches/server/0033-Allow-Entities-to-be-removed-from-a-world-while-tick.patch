@@ -9,7 +9,7 @@ issues where teleporting players across worlds while ticking.
 Also allows us to run mid tick while ticking entities.
 
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850f1ea3f8d 100644
+index 39204b2e6b400fe5f4f707e1c67bf3cdb51f6cea..3e4830317249d04b77eb6dc2ec865ede18735e09 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -61,7 +61,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -30,7 +30,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
      protected final PersistentRaid persistentRaid;
      private final ObjectLinkedOpenHashSet<BlockActionData> L;
      private boolean ticking;
-@@ -909,13 +909,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1032,13 +1032,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              }
  
              this.tickingEntities = true;
@@ -46,7 +46,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
                  Entity entity1 = entity.getVehicle();
  
                  /* CraftBukkit start - We prevent spawning in general, so this butchering is not needed
-@@ -951,7 +950,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1074,7 +1073,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                  gameprofilerfiller.enter("remove");
                  if (entity.dead) {
                      this.removeEntityFromChunk(entity);
@@ -55,7 +55,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
                      this.unregisterEntity(entity);
                  }
  
-@@ -959,6 +958,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1082,6 +1081,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              }
              timings.entityTick.stopTiming(); // Spigot
  
@@ -63,7 +63,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
              this.tickingEntities = false;
              // Paper start
              for (java.lang.Runnable run : this.afterEntityTickingTasks) {
-@@ -1740,7 +1740,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1863,7 +1863,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                  Entity entity = (Entity) iterator.next();
  
                  if (!(entity instanceof EntityPlayer)) {
@@ -72,7 +72,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
                          throw (IllegalStateException) SystemUtils.c((Throwable) (new IllegalStateException("Removing entity while ticking!")));
                      }
  
-@@ -1768,6 +1768,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1891,6 +1891,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
  
      public void unregisterEntity(Entity entity) {
          org.spigotmc.AsyncCatcher.catchOp("entity unregister"); // Spigot
@@ -80,7 +80,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
          // Paper start - fix entity registration issues
          if (entity instanceof EntityComplexPart) {
              // Usually this is a no-op for complex parts, and ID's should be removed, but go ahead and remove it anyways
-@@ -1834,12 +1835,16 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1957,12 +1958,16 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          this.getScoreboard().a(entity);
          // CraftBukkit start - SPIGOT-5278
          if (entity instanceof EntityDrowned) {
@@ -100,7 +100,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
          }
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
          entity.valid = false; // CraftBukkit
-@@ -1855,7 +1860,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1978,7 +1983,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              return;
          }
          // Paper end
@@ -109,7 +109,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
              if (!entity.isQueuedForRegister) { // Paper
                  this.entitiesToAdd.add(entity);
                  entity.isQueuedForRegister = true; // Paper
-@@ -1863,6 +1868,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1986,6 +1991,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          } else {
              entity.isQueuedForRegister = false; // Paper
              this.entitiesById.put(entity.getId(), entity);
@@ -117,7 +117,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
              if (entity instanceof EntityEnderDragon) {
                  EntityComplexPart[] aentitycomplexpart = ((EntityEnderDragon) entity).eJ();
                  int i = aentitycomplexpart.length;
-@@ -1871,6 +1877,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1994,6 +2000,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                      EntityComplexPart entitycomplexpart = aentitycomplexpart[j];
  
                      this.entitiesById.put(entitycomplexpart.getId(), entitycomplexpart);
@@ -125,7 +125,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
                  }
              }
  
-@@ -1895,12 +1902,16 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -2018,12 +2025,16 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              // this.getChunkProvider().addEntity(entity); // Paper - moved down below valid=true
              // CraftBukkit start - SPIGOT-5278
              if (entity instanceof EntityDrowned) {
@@ -145,7 +145,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
              }
              entity.valid = true; // CraftBukkit
              this.getChunkProvider().addEntity(entity); // Paper - from above to be below valid=true
-@@ -1916,7 +1927,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -2039,7 +2050,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
      }
  
      public void removeEntity(Entity entity) {
@@ -154,7 +154,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
              throw (IllegalStateException) SystemUtils.c((Throwable) (new IllegalStateException("Removing entity while ticking!")));
          } else {
              this.removeEntityFromChunk(entity);
-@@ -2019,7 +2030,9 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -2142,7 +2153,9 @@ public class WorldServer extends World implements GeneratorAccessSeed {
  
          if (VoxelShapes.c(voxelshape, voxelshape1, OperatorBoolean.NOT_SAME)) {
              boolean wasTicking = this.tickingEntities; this.tickingEntities = true; // Paper
@@ -165,7 +165,7 @@ index 4682649dfeba8a5c3edfff765a1ac6f12754ae69..dcf28739fc2189cd76ed096e99215850
  
              while (iterator.hasNext()) {
                  NavigationAbstract navigationabstract = (NavigationAbstract) iterator.next();
-@@ -2028,6 +2041,9 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -2151,6 +2164,9 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                      navigationabstract.b(blockposition);
                  }
              }
