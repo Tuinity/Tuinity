@@ -1,0 +1,760 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 27 Aug 2020 20:51:40 -0700
+Subject: [PATCH] Remove streams for villager AI
+
+POI searching:
+Turns out chaining a lot of streams together has inane amounts of
+overheard. Use the good ol iterator method to remove that overhead.
+
+The rest is just standard stream removal.
+
+Also remove streams for poi searching in some zombie pathfinding.
+
+diff --git a/src/main/java/net/minecraft/server/Behavior.java b/src/main/java/net/minecraft/server/Behavior.java
+index 65af976527133ee5c2f52e411e19c4f7f06df3ef..0b9d469a92decfb0632805791868ef7faa88c535 100644
+--- a/src/main/java/net/minecraft/server/Behavior.java
++++ b/src/main/java/net/minecraft/server/Behavior.java
+@@ -7,7 +7,7 @@ import java.util.Map.Entry;
+ public abstract class Behavior<E extends EntityLiving> {
+ 
+     protected final Map<MemoryModuleType<?>, MemoryStatus> a;
+-    private Behavior.Status b;
++    private Behavior.Status b; public final Behavior.Status getStatus() { return this.b; } // Tuinity - OBFHELPER
+     private long c;
+     private final int d;
+     private final int e;
+diff --git a/src/main/java/net/minecraft/server/BehaviorFindPosition.java b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
+index 63a761ebef80d4af09cdc2682e496d78492c4a3a..8d445e9c0875db6cf45e4d8bcfce7cd3d5094d94 100644
+--- a/src/main/java/net/minecraft/server/BehaviorFindPosition.java
++++ b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
+@@ -55,6 +55,227 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
+         }
+     }
+ 
++    // Tuinity - remove streams entirely for poi search
++    // the only intentional vanilla diff is that this function will NOT load in poi data, anything else is a bug!
++    protected static Set<BlockPosition> findNearestPoi(VillagePlace poiStorage,
++                                                                          Predicate<VillagePlaceType> villagePlaceType,
++                                                                          Predicate<BlockPosition> positionPredicate,
++                                                                          BlockPosition sourcePosition,
++                                                                          int range, // distance on x y z axis
++                                                                          VillagePlace.Occupancy occupancy,
++                                                                          int max) {
++        java.util.TreeSet<BlockPosition> ret = new java.util.TreeSet<>((blockpos1, blockpos2) -> {
++            // important to keep distanceSquared order: the param is the source
++            return Double.compare(blockpos1.distanceSquared(sourcePosition), blockpos2.distanceSquared(sourcePosition));
++        });
++        findNearestPoi(poiStorage, villagePlaceType, positionPredicate, sourcePosition, range, occupancy, max, ret);
++        return new java.util.HashSet<>(ret);
++    }
++    protected static void findNearestPoi(VillagePlace poiStorage,
++                                            Predicate<VillagePlaceType> villagePlaceType,
++                                            Predicate<BlockPosition> positionPredicate,
++                                            BlockPosition sourcePosition,
++                                            int range, // distance on x y z axis
++                                            VillagePlace.Occupancy occupancy,
++                                            int max,
++                                            java.util.SortedSet<BlockPosition> ret) {
++        // the biggest issue with the original mojang implementation is that they chain so many streams together
++        // the amount of streams chained just rolls performance, even if nothing is iterated over
++        Predicate<? super VillagePlaceRecord> occupancyFilter = occupancy.getPredicate();
++        double rangeSquared = range * range;
++
++        // First up, we need to iterate the chunks
++        // all the values here are in chunk sections
++        int lowerX = MathHelper.floor(sourcePosition.getX() - range) >> 4;
++        int lowerY = Math.max(0, MathHelper.floor(sourcePosition.getY() - range) >> 4);
++        int lowerZ = MathHelper.floor(sourcePosition.getZ() - range) >> 4;
++        int upperX = MathHelper.floor(sourcePosition.getX() + range) >> 4;
++        int upperY = Math.min(15, MathHelper.floor(sourcePosition.getY() + range) >> 4);
++        int upperZ = MathHelper.floor(sourcePosition.getZ() + range) >> 4;
++
++        // Vanilla iterates by x until max is reached then increases z
++        // vanilla also searches by increasing Y section value
++        for (int currZ = lowerZ; currZ <= upperZ; ++currZ) {
++            for (int currX = lowerX; currX <= upperX; ++currX) {
++                for (int currY = lowerY; currY <= upperY; ++currY) { // vanilla searches the entire chunk because they're actually stupid. just search the sections we need
++                    Optional<VillagePlaceSection> poiSectionOptional = poiStorage.getIfLoaded(SectionPosition.asLong(currX, currY, currZ));
++                    VillagePlaceSection poiSection = poiSectionOptional == null ? null : poiSectionOptional.orElse(null);
++                    if (poiSection == null) {
++                        continue;
++                    }
++
++                    java.util.Map<VillagePlaceType, Set<VillagePlaceRecord>> sectionData = poiSection.getData();
++                    if (sectionData.isEmpty()) {
++                        continue;
++                    }
++
++                    // now we search the section data
++                    for (java.util.Iterator<java.util.Map.Entry<VillagePlaceType, Set<VillagePlaceRecord>>> iterator = sectionData.entrySet().iterator();
++                         iterator.hasNext();) {
++                        java.util.Map.Entry<VillagePlaceType, Set<VillagePlaceRecord>> entry = iterator.next();
++                        if (!villagePlaceType.test(entry.getKey())) {
++                            // filter out by poi type
++                            continue;
++                        }
++
++                        // now we can look at the poi data
++                        for (VillagePlaceRecord poiData : entry.getValue()) {
++                            if (!occupancyFilter.test(poiData)) {
++                                // filter by occupancy
++                                continue;
++                            }
++
++                            // vanilla code is pretty dumb about filtering by distance: first they filter out
++                            // so that only values in the square radius of range are returned but then they
++                            // filter out so that the distance is in range
++                            // but there's a catch! distanceSquared, by default, will ADD 0.5 to ONLY ONE OF the
++                            // block position parameters (itself, in this case the poi position)! So if we want to
++                            // maintain exact vanilla behaviour, well shit we need to play dumb as well.
++
++                            BlockPosition poiPosition = poiData.getPosition();
++
++                            if (Math.abs(poiPosition.getX() - sourcePosition.getX()) > range
++                                    || Math.abs(poiPosition.getZ() - sourcePosition.getZ()) > range) {
++                                // out of range for square radius
++                                continue;
++                            }
++
++                            if (poiPosition.distanceSquared(sourcePosition) > rangeSquared) {
++                                // out of range for distance check
++                                continue;
++                            }
++
++                            if (!positionPredicate.test(poiPosition)) {
++                                // filter by position
++                                continue;
++                            }
++
++                            // found one!
++                            ret.add(poiPosition);
++                            if (ret.size() > max) {
++                                ret.remove(ret.last());
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    protected static BlockPosition findAnyFirstPoi(VillagePlace poiStorage,
++                                                   Predicate<VillagePlaceType> villagePlaceType,
++                                                   Predicate<BlockPosition> positionPredicate,
++                                                   BlockPosition sourcePosition,
++                                                   int range, // distance on x y z axis
++                                                   VillagePlace.Occupancy occupancy) {
++        Set<BlockPosition> ret = new java.util.HashSet<>();
++        findPoi(poiStorage, villagePlaceType, positionPredicate, sourcePosition, range, occupancy, 1, ret);
++        return ret.isEmpty() ? null : ret.iterator().next();
++    }
++
++    protected static Set<BlockPosition> findPoi(VillagePlace poiStorage,
++                                                Predicate<VillagePlaceType> villagePlaceType,
++                                                Predicate<BlockPosition> positionPredicate,
++                                                BlockPosition sourcePosition,
++                                                int range, // distance on x y z axis
++                                                VillagePlace.Occupancy occupancy,
++                                                int max) {
++        Set<BlockPosition> ret = new java.util.HashSet<>();
++        findPoi(poiStorage, villagePlaceType, positionPredicate, sourcePosition, range, occupancy, max, ret);
++        return ret;
++    }
++    protected static void findPoi(VillagePlace poiStorage,
++                                                Predicate<VillagePlaceType> villagePlaceType,
++                                                Predicate<BlockPosition> positionPredicate,
++                                                BlockPosition sourcePosition,
++                                                int range, // distance on x y z axis
++                                                VillagePlace.Occupancy occupancy,
++                                                int max,
++                                                Set<BlockPosition> ret) {
++        // the biggest issue with the original mojang implementation is that they chain so many streams together
++        // the amount of streams chained just rolls performance, even if nothing is iterated over
++        Predicate<? super VillagePlaceRecord> occupancyFilter = occupancy.getPredicate();
++        double rangeSquared = range * range;
++
++        // First up, we need to iterate the chunks
++        // all the values here are in chunk sections
++        int lowerX = MathHelper.floor(sourcePosition.getX() - range) >> 4;
++        int lowerY = Math.max(0, MathHelper.floor(sourcePosition.getY() - range) >> 4);
++        int lowerZ = MathHelper.floor(sourcePosition.getZ() - range) >> 4;
++        int upperX = MathHelper.floor(sourcePosition.getX() + range) >> 4;
++        int upperY = Math.min(15, MathHelper.floor(sourcePosition.getY() + range) >> 4);
++        int upperZ = MathHelper.floor(sourcePosition.getZ() + range) >> 4;
++
++        // Vanilla iterates by x until max is reached then increases z
++        // vanilla also searches by increasing Y section value
++        for (int currZ = lowerZ; currZ <= upperZ; ++currZ) {
++            for (int currX = lowerX; currX <= upperX; ++currX) {
++                for (int currY = lowerY; currY <= upperY; ++currY) { // vanilla searches the entire chunk because they're actually stupid. just search the sections we need
++                    Optional<VillagePlaceSection> poiSectionOptional = poiStorage.getIfLoaded(SectionPosition.asLong(currX, currY, currZ));
++                    VillagePlaceSection poiSection = poiSectionOptional == null ? null : poiSectionOptional.orElse(null);
++                    if (poiSection == null) {
++                        continue;
++                    }
++
++                    java.util.Map<VillagePlaceType, Set<VillagePlaceRecord>> sectionData = poiSection.getData();
++                    if (sectionData.isEmpty()) {
++                        continue;
++                    }
++
++                    // now we search the section data
++                    for (java.util.Iterator<java.util.Map.Entry<VillagePlaceType, Set<VillagePlaceRecord>>> iterator = sectionData.entrySet().iterator();
++                            iterator.hasNext();) {
++                        java.util.Map.Entry<VillagePlaceType, Set<VillagePlaceRecord>> entry = iterator.next();
++                        if (!villagePlaceType.test(entry.getKey())) {
++                            // filter out by poi type
++                            continue;
++                        }
++
++                        // now we can look at the poi data
++                        for (VillagePlaceRecord poiData : entry.getValue()) {
++                            if (!occupancyFilter.test(poiData)) {
++                                // filter by occupancy
++                                continue;
++                            }
++
++                            // vanilla code is pretty dumb about filtering by distance: first they filter out
++                            // so that only values in the square radius of range are returned but then they
++                            // filter out so that the distance is in range
++                            // but there's a catch! distanceSquared, by default, will ADD 0.5 to ONLY ONE OF the
++                            // block position parameters (itself, in this case the poi position)! So if we want to
++                            // maintain exact vanilla behaviour, well shit we need to play dumb as well.
++
++                            BlockPosition poiPosition = poiData.getPosition();
++
++                            if (Math.abs(poiPosition.getX() - sourcePosition.getX()) > range
++                                    || Math.abs(poiPosition.getZ() - sourcePosition.getZ()) > range) {
++                                // out of range for square radius
++                                continue;
++                            }
++
++                            if (poiPosition.distanceSquared(sourcePosition) > rangeSquared) {
++                                // out of range for distance check
++                                continue;
++                            }
++
++                            if (!positionPredicate.test(poiPosition)) {
++                                // filter by position
++                                continue;
++                            }
++
++                            // found one!
++                            ret.add(poiPosition);
++                            if (ret.size() >= max) {
++                                return;
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++    // Tuinity - remove streams entirely for poi search
++
+     protected void a(WorldServer worldserver, EntityCreature entitycreature, long i) {
+         this.f = i + 20L + (long) worldserver.getRandom().nextInt(20);
+         VillagePlace villageplace = worldserver.y();
+@@ -74,7 +295,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
+                 return true;
+             }
+         };
+-        Set<BlockPosition> set = (Set) villageplace.b(this.b.c(), predicate, entitycreature.getChunkCoordinates(), 48, VillagePlace.Occupancy.HAS_SPACE).limit(5L).collect(Collectors.toSet());
++        Set<BlockPosition> set = findNearestPoi(villageplace, this.b.c(), predicate, entitycreature.getChunkCoordinates(), 48, VillagePlace.Occupancy.HAS_SPACE, 5); // Tuinity - remove streams entirely for poi search
+         PathEntity pathentity = entitycreature.getNavigation().a(set, this.b.d());
+ 
+         if (pathentity != null && pathentity.j()) {
+@@ -84,7 +305,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
+                 villageplace.a(this.b.c(), (blockposition1) -> {
+                     return blockposition1.equals(blockposition);
+                 }, blockposition, 1);
+-                entitycreature.getBehaviorController().setMemory(this.c, (Object) GlobalPos.create(worldserver.getDimensionKey(), blockposition));
++                entitycreature.getBehaviorController().setMemory(this.c, GlobalPos.create(worldserver.getDimensionKey(), blockposition)); // Tuinity - decompile fix
+                 this.e.ifPresent((obyte) -> {
+                     worldserver.broadcastEntityEffect(entitycreature, obyte);
+                 });
+diff --git a/src/main/java/net/minecraft/server/BehaviorGate.java b/src/main/java/net/minecraft/server/BehaviorGate.java
+index 46e910581210421c8699637431804dc2f43eb4a6..fb967bc03f58fab8cec2732b1890108f2fc66af8 100644
+--- a/src/main/java/net/minecraft/server/BehaviorGate.java
++++ b/src/main/java/net/minecraft/server/BehaviorGate.java
+@@ -12,7 +12,7 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
+     private final Set<MemoryModuleType<?>> b;
+     private final BehaviorGate.Order c;
+     private final BehaviorGate.Execution d;
+-    private final WeightedList<Behavior<? super E>> e = new WeightedList<>(false); // Paper - don't use a clone
++    private final WeightedList<Behavior<? super E>> e = new WeightedList<>(false); protected final WeightedList<Behavior<? super E>> getList() { return this.e; } // Paper - don't use a clone // Tuinity - OBFHELPER
+ 
+     public BehaviorGate(Map<MemoryModuleType<?>, MemoryStatus> map, Set<MemoryModuleType<?>> set, BehaviorGate.Order behaviorgate_order, BehaviorGate.Execution behaviorgate_execution, List<Pair<Behavior<? super E>, Integer>> list) {
+         super(map);
+@@ -26,11 +26,17 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
+ 
+     @Override
+     protected boolean b(WorldServer worldserver, E e0, long i) {
+-        return this.e.c().filter((behavior) -> {
+-            return behavior.a() == Behavior.Status.RUNNING;
+-        }).anyMatch((behavior) -> {
+-            return behavior.b(worldserver, e0, i);
+-        });
++        // Tuinity start - remove streams
++        List<WeightedList.a<Behavior<? super E>>> list = this.getList().getList();
++        for (int index = 0, len = list.size(); index < len; ++index) {
++            Behavior<? super E> behavior = list.get(index).getValue();
++            if (behavior.getStatus() == Status.RUNNING && behavior.b(worldserver, e0, i)) { // copied from removed code, make sure to update
++                return true;
++            }
++        }
++
++        return false;
++        // Tuinity end - remove streams
+     }
+ 
+     @Override
+@@ -46,20 +52,28 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
+ 
+     @Override
+     protected void d(WorldServer worldserver, E e0, long i) {
+-        this.e.c().filter((behavior) -> {
+-            return behavior.a() == Behavior.Status.RUNNING;
+-        }).forEach((behavior) -> {
+-            behavior.f(worldserver, e0, i);
+-        });
++        // Tuinity start - remove streams
++        List<WeightedList.a<Behavior<? super E>>> list = this.getList().getList();
++        for (int index = 0, len = list.size(); index < len; ++index) {
++            Behavior<? super E> behavior = list.get(index).getValue();
++            if (behavior.getStatus() == Behavior.Status.RUNNING) {
++                behavior.f(worldserver, e0, i); // copied from removed code, make sure to update
++            }
++        }
++        // Tuinity end - remove streams
+     }
+ 
+     @Override
+     protected void c(WorldServer worldserver, E e0, long i) {
+-        this.e.c().filter((behavior) -> {
+-            return behavior.a() == Behavior.Status.RUNNING;
+-        }).forEach((behavior) -> {
+-            behavior.g(worldserver, e0, i);
+-        });
++        // Tuinity start - remove streams
++        List<WeightedList.a<Behavior<? super E>>> list = this.getList().getList();
++        for (int index = 0, len = list.size(); index < len; ++index) {
++            Behavior<? super E> behavior = list.get(index).getValue();
++            if (behavior.getStatus() == Behavior.Status.RUNNING) {
++                behavior.g(worldserver, e0, i); // copied from removed code, make sure to update
++            }
++        }
++        // Tuinity end - remove streams
+         BehaviorController behaviorcontroller = e0.getBehaviorController();
+ 
+         this.b.forEach(behaviorcontroller::removeMemory); // Paper - decomp fix
+@@ -79,21 +93,29 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
+         RUN_ONE {
+             @Override
+             public <E extends EntityLiving> void a(WeightedList<Behavior<? super E>> weightedlist, WorldServer worldserver, E e0, long i) {
+-                weightedlist.c().filter((behavior) -> {
+-                    return behavior.a() == Behavior.Status.STOPPED;
+-                }).filter((behavior) -> {
+-                    return behavior.e(worldserver, e0, i);
+-                }).findFirst();
++                // Tuinity start - remove streams
++                List<WeightedList.a<Behavior<? super E>>> list = weightedlist.getList();
++                for (int index = 0, len = list.size(); index < len; ++index) {
++                    Behavior<? super E> behavior = list.get(index).getValue();
++                    if (behavior.getStatus() == Behavior.Status.STOPPED && behavior.e(worldserver, e0, i)) { // copied from removed code, make sure to update
++                        break;
++                    }
++                }
++                // Tuinity end - remove streams
+             }
+         },
+         TRY_ALL {
+             @Override
+             public <E extends EntityLiving> void a(WeightedList<Behavior<? super E>> weightedlist, WorldServer worldserver, E e0, long i) {
+-                weightedlist.c().filter((behavior) -> {
+-                    return behavior.a() == Behavior.Status.STOPPED;
+-                }).forEach((behavior) -> {
+-                    behavior.e(worldserver, e0, i);
+-                });
++                // Tuinity start - remove streams
++                List<WeightedList.a<Behavior<? super E>>> list = weightedlist.getList();
++                for (int index = 0, len = list.size(); index < len; ++index) {
++                    Behavior<? super E> behavior = list.get(index).getValue();
++                    if (behavior.getStatus() == Behavior.Status.STOPPED) {
++                        behavior.e(worldserver, e0, i); // copied from removed code, make sure to update
++                    }
++                }
++                // Tuinity end - remove streams
+             }
+         };
+ 
+diff --git a/src/main/java/net/minecraft/server/BehaviorLookInteract.java b/src/main/java/net/minecraft/server/BehaviorLookInteract.java
+index a33303c31881b6391723e16a06d7841d48679958..ce57e6a4acac97d6da82202094306e7e91f1c87e 100644
+--- a/src/main/java/net/minecraft/server/BehaviorLookInteract.java
++++ b/src/main/java/net/minecraft/server/BehaviorLookInteract.java
+@@ -7,7 +7,7 @@ import java.util.function.Predicate;
+ public class BehaviorLookInteract extends Behavior<EntityLiving> {
+ 
+     private final EntityTypes<?> b;
+-    private final int c;
++    private final int c; private final int getMaxRange() { return this.c; } // Tuinity - OBFHELPER
+     private final Predicate<EntityLiving> d;
+     private final Predicate<EntityLiving> e;
+ 
+@@ -29,7 +29,20 @@ public class BehaviorLookInteract extends Behavior<EntityLiving> {
+ 
+     @Override
+     public boolean a(WorldServer worldserver, EntityLiving entityliving) {
+-        return this.e.test(entityliving) && this.b(entityliving).stream().anyMatch(this::a);
++        // Tuinity start - remove streams
++        if (!this.e.test(entityliving)) {
++            return false;
++        }
++
++        List<EntityLiving> list = this.b(entityliving);
++        for (int index = 0, len = list.size(); index < len; ++index) {
++            if (this.a(list.get(index))) {
++                return true;
++            }
++        }
++
++        return false;
++        // Tuinity end - remove streams
+     }
+ 
+     @Override
+@@ -37,16 +50,28 @@ public class BehaviorLookInteract extends Behavior<EntityLiving> {
+         super.a(worldserver, entityliving, i);
+         BehaviorController<?> behaviorcontroller = entityliving.getBehaviorController();
+ 
+-        behaviorcontroller.getMemory(MemoryModuleType.VISIBLE_MOBS).ifPresent((list) -> {
+-            list.stream().filter((entityliving1) -> {
+-                return entityliving1.h((Entity) entityliving) <= (double) this.c;
+-            }).filter(this::a).findFirst().ifPresent((entityliving1) -> {
+-                behaviorcontroller.setMemory(MemoryModuleType.INTERACTION_TARGET, (Object) entityliving1);
+-                behaviorcontroller.setMemory(MemoryModuleType.LOOK_TARGET, (Object) (new BehaviorPositionEntity(entityliving1, true)));
+-            });
+-        });
++        // Tuinity start - remove streams
++        List<EntityLiving> inLOS = behaviorcontroller.getMemory(MemoryModuleType.VISIBLE_MOBS).orElse(null);
++        if (inLOS != null) {
++            double maxRangeSquared = this.getMaxRange();
++            for (int index = 0, len = inLOS.size(); index < len; ++index) {
++                EntityLiving entity = inLOS.get(index);
++                if (!this.canTarget(entity)) {
++                    continue;
++                }
++                double distance = entity.getDistanceSquared(entityliving.locX(), entityliving.locY(), entityliving.locZ());
++                if (distance > maxRangeSquared) {
++                    continue;
++                }
++                behaviorcontroller.setMemory(MemoryModuleType.INTERACTION_TARGET, entity); // Tuinity - decompile fix
++                behaviorcontroller.setMemory(MemoryModuleType.LOOK_TARGET, (new BehaviorPositionEntity(entity, true))); // Tuinity - decompile fix
++                break;
++            }
++        }
++        // Tuinity end - remove streams
+     }
+ 
++    private final boolean canTarget(EntityLiving entityliving) { return this.a(entityliving); } // Tuinity - OBFHELPER
+     private boolean a(EntityLiving entityliving) {
+         return this.b.equals(entityliving.getEntityType()) && this.d.test(entityliving);
+     }
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index 6db336d71811f2a6908d50e15ae5fffdfa8b0365..19b7d84675bc559b57a91acccb654146bd635452 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -1595,6 +1595,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+         return d3 * d3 + d4 * d4 + d5 * d5;
+     }
+ 
++    public final double getDistanceSquared(Entity other) { return this.h(other); } // Tuinity - OBFHELPER
+     public double h(Entity entity) {
+         return this.e(entity.getPositionVector());
+     }
+diff --git a/src/main/java/net/minecraft/server/NavigationAbstract.java b/src/main/java/net/minecraft/server/NavigationAbstract.java
+index 1558c5f8256f50be6850f1d7f70eee3e8ec76496..55fa3911703f96cf1f97c82b19d8e2d0d220016b 100644
+--- a/src/main/java/net/minecraft/server/NavigationAbstract.java
++++ b/src/main/java/net/minecraft/server/NavigationAbstract.java
+@@ -85,7 +85,7 @@ public abstract class NavigationAbstract {
+ 
+     @Nullable
+     public PathEntity a(Stream<BlockPosition> stream, int i) {
+-        return this.a((Set) stream.collect(Collectors.toSet()), 8, false, i);
++        return this.a((Set) stream.collect(Collectors.toSet()), 8, false, i); // Tuinity - diff on change, inlined into SensorNearestBed
+     }
+ 
+     @Nullable
+diff --git a/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java b/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java
+index 475c0764b97b056f17720f37b1ca3eb1a2375334..9f48d476c05dbeabbfe3c650ce4ad33ec691a56a 100644
+--- a/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java
++++ b/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java
+@@ -50,7 +50,7 @@ public class PathfinderGoalMoveThroughVillage extends PathfinderGoal {
+                         if (!worldserver.a_(blockposition1)) {
+                             return Double.NEGATIVE_INFINITY;
+                         } else {
+-                            Optional<BlockPosition> optional = worldserver.y().c(VillagePlaceType.b, this::a, blockposition1, 10, VillagePlace.Occupancy.IS_OCCUPIED);
++                            Optional<BlockPosition> optional = Optional.ofNullable(BehaviorFindPosition.findAnyFirstPoi(worldserver.y(), VillagePlaceType.b, this::a, blockposition1, 10, VillagePlace.Occupancy.IS_OCCUPIED)); // Tuinity - remove streams here
+ 
+                             return !optional.isPresent() ? Double.NEGATIVE_INFINITY : -((BlockPosition) optional.get()).j(blockposition);
+                         }
+@@ -59,7 +59,7 @@ public class PathfinderGoalMoveThroughVillage extends PathfinderGoal {
+                     if (vec3d == null) {
+                         return false;
+                     } else {
+-                        Optional<BlockPosition> optional = worldserver.y().c(VillagePlaceType.b, this::a, new BlockPosition(vec3d), 10, VillagePlace.Occupancy.IS_OCCUPIED);
++                        Optional<BlockPosition> optional = Optional.ofNullable(BehaviorFindPosition.findAnyFirstPoi(worldserver.y(), VillagePlaceType.b, this::a, new BlockPosition(vec3d), 10, VillagePlace.Occupancy.IS_OCCUPIED)); // Tuinity - remove streams here
+ 
+                         if (!optional.isPresent()) {
+                             return false;
+diff --git a/src/main/java/net/minecraft/server/RegionFileSection.java b/src/main/java/net/minecraft/server/RegionFileSection.java
+index 04256a95108b8182e8f808e856e0d2b62165e242..d9362b74fda2ea937281f897fbc2cb501775a275 100644
+--- a/src/main/java/net/minecraft/server/RegionFileSection.java
++++ b/src/main/java/net/minecraft/server/RegionFileSection.java
+@@ -50,8 +50,8 @@ public class RegionFileSection<R> extends RegionFileCache implements AutoCloseab
+ 
+     }
+ 
+-    @Nullable
+-    protected Optional<R> c(long i) {
++    @Nullable protected Optional<R> getIfLoaded(long value) { return this.c(value); } // Tuinity - OBFHELPER
++    @Nullable protected Optional<R> c(long i) { // Tuinity - OBFHELPER
+         return (Optional) this.c.get(i);
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/SensorNearestBed.java b/src/main/java/net/minecraft/server/SensorNearestBed.java
+index ad3609f2b884f64f1a1a449036cece49a46e933e..d3d28f97f9d2f969a182aec5e0947b6969d2939c 100644
+--- a/src/main/java/net/minecraft/server/SensorNearestBed.java
++++ b/src/main/java/net/minecraft/server/SensorNearestBed.java
+@@ -40,15 +40,15 @@ public class SensorNearestBed extends Sensor<EntityInsentient> {
+                     return true;
+                 }
+             };
+-            Stream<BlockPosition> stream = villageplace.a(VillagePlaceType.r.c(), predicate, entityinsentient.getChunkCoordinates(), 48, VillagePlace.Occupancy.ANY);
+-            PathEntity pathentity = entityinsentient.getNavigation().a(stream, VillagePlaceType.r.d());
++            Set<BlockPosition> set = BehaviorFindPosition.findPoi(villageplace, VillagePlaceType.r.c(), predicate, entityinsentient.getChunkCoordinates(), 48, VillagePlace.Occupancy.ANY, Integer.MAX_VALUE); // Tuinity - remove streams
++            PathEntity pathentity = entityinsentient.getNavigation().a(set, 8, false, VillagePlaceType.r.d()); // this.a((Set) stream.collect(Collectors.toSet()), 8, false, i) // Tuinity - remove streams
+ 
+             if (pathentity != null && pathentity.j()) {
+                 BlockPosition blockposition = pathentity.m();
+                 Optional<VillagePlaceType> optional = villageplace.c(blockposition);
+ 
+                 if (optional.isPresent()) {
+-                    entityinsentient.getBehaviorController().setMemory(MemoryModuleType.NEAREST_BED, (Object) blockposition);
++                    entityinsentient.getBehaviorController().setMemory(MemoryModuleType.NEAREST_BED, blockposition); // Tuinity - decompile fix
+                 }
+             } else if (this.b < 5) {
+                 this.a.long2LongEntrySet().removeIf((entry) -> {
+diff --git a/src/main/java/net/minecraft/server/SensorNearestItems.java b/src/main/java/net/minecraft/server/SensorNearestItems.java
+index 2e747158d48ab28ac1611990cc97aa4a9e30b30e..1de170b9fe6f2888da6dcf0151aaf1f865691c6a 100644
+--- a/src/main/java/net/minecraft/server/SensorNearestItems.java
++++ b/src/main/java/net/minecraft/server/SensorNearestItems.java
+@@ -18,20 +18,23 @@ public class SensorNearestItems extends Sensor<EntityInsentient> {
+ 
+     protected void a(WorldServer worldserver, EntityInsentient entityinsentient) {
+         BehaviorController<?> behaviorcontroller = entityinsentient.getBehaviorController();
+-        List<EntityItem> list = worldserver.a(EntityItem.class, entityinsentient.getBoundingBox().grow(8.0D, 4.0D, 8.0D), (entityitem) -> {
+-            return true;
++        // Tuinity start - remove streams
++        List<EntityItem> list = worldserver.a(EntityItem.class, entityinsentient.getBoundingBox().grow(8.0D, 4.0D, 8.0D), (EntityItem item) -> {
++            return entityinsentient.i(item.getItemStack()) && item.a((Entity)entityinsentient, 9.0D); // copied from removed code, make sure to update - move here so we sort less
+         });
+ 
+-        entityinsentient.getClass();
+-        list.sort(Comparator.comparingDouble(entityinsentient::h));
+-        Stream stream = list.stream().filter((entityitem) -> {
+-            return entityinsentient.i(entityitem.getItemStack());
+-        }).filter((entityitem) -> {
+-            return entityitem.a((Entity) entityinsentient, 9.0D);
+-        });
+-
+-        entityinsentient.getClass();
+-        Optional<EntityItem> optional = stream.filter(entityinsentient::hasLineOfSight).findFirst();
++        list.sort(Comparator.comparingDouble(entityinsentient::h)); // better to take the sort perf hit than using line of sight more than we need to.
++        EntityItem nearest = null;
++        for (int index = 0, len = list.size(); index < len; ++index) {
++            EntityItem item = list.get(index);
++            if (entityinsentient.hasLineOfSight(item)) {
++                nearest = item;
++                break;
++            }
++        }
++
++        Optional<EntityItem> optional = Optional.ofNullable(nearest);
++        // Tuinity end - remove streams
+ 
+         behaviorcontroller.setMemory(MemoryModuleType.NEAREST_VISIBLE_WANTED_ITEM, optional);
+     }
+diff --git a/src/main/java/net/minecraft/server/SensorNearestLivingEntities.java b/src/main/java/net/minecraft/server/SensorNearestLivingEntities.java
+index f6568a54ab85bc3a682f6fbb19dda7a783625bbe..4005df5ef3dec956a54feff539db2e63c226059a 100644
+--- a/src/main/java/net/minecraft/server/SensorNearestLivingEntities.java
++++ b/src/main/java/net/minecraft/server/SensorNearestLivingEntities.java
+@@ -21,10 +21,17 @@ public class SensorNearestLivingEntities extends Sensor<EntityLiving> {
+         list.sort(Comparator.comparingDouble(entityliving::h));
+         BehaviorController<?> behaviorcontroller = entityliving.getBehaviorController();
+ 
+-        behaviorcontroller.setMemory(MemoryModuleType.MOBS, (Object) list);
+-        behaviorcontroller.setMemory(MemoryModuleType.VISIBLE_MOBS, list.stream().filter((entityliving1) -> {
+-            return a(entityliving, entityliving1);
+-        }).collect(Collectors.toList()));
++        behaviorcontroller.setMemory(MemoryModuleType.MOBS, list); // Tuinity - decompile fix
++        // Tuinity start - remove streams
++        List<EntityLiving> visible = new java.util.ArrayList<>(list.size());
++        for (int index = 0, len = list.size(); index < len; ++index) {
++            EntityLiving nearby = list.get(index);
++            if (Sensor.a(entityliving, nearby)) { // copied from removed code, make sure to update
++                visible.add(nearby);
++            }
++        }
++        behaviorcontroller.setMemory(MemoryModuleType.VISIBLE_MOBS, visible);
++        // Tuinity end - remove streams
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/minecraft/server/SensorNearestPlayers.java b/src/main/java/net/minecraft/server/SensorNearestPlayers.java
+index 904a6d5ac61d2ac81f1057068383e9ab432852db..c8e43a9f2a23178fdef52375b7204b90b28ac20b 100644
+--- a/src/main/java/net/minecraft/server/SensorNearestPlayers.java
++++ b/src/main/java/net/minecraft/server/SensorNearestPlayers.java
+@@ -19,22 +19,30 @@ public class SensorNearestPlayers extends Sensor<EntityLiving> {
+ 
+     @Override
+     protected void a(WorldServer worldserver, EntityLiving entityliving) {
+-        Stream stream = worldserver.getPlayers().stream().filter(IEntitySelector.g).filter((entityplayer) -> {
+-            return entityliving.a((Entity) entityplayer, 16.0D);
+-        });
+-
+-        entityliving.getClass();
+-        List<EntityHuman> list = (List) stream.sorted(Comparator.comparingDouble(entityliving::h)).collect(Collectors.toList());
++        // Tuinity start - remove streams
++        List<EntityHuman> nearby = (List)worldserver.getNearbyPlayers(entityliving, 16.0, IEntitySelector.g);
++        nearby.sort((e1, e2) -> Double.compare(entityliving.getDistanceSquared(e1), entityliving.getDistanceSquared(e2)));
+         BehaviorController<?> behaviorcontroller = entityliving.getBehaviorController();
+ 
+-        behaviorcontroller.setMemory(MemoryModuleType.NEAREST_PLAYERS, (Object) list);
+-        List<EntityHuman> list1 = (List) list.stream().filter((entityhuman) -> {
+-            return a(entityliving, (EntityLiving) entityhuman);
+-        }).collect(Collectors.toList());
+-
+-        behaviorcontroller.setMemory(MemoryModuleType.NEAREST_VISIBLE_PLAYER, (Object) (list1.isEmpty() ? null : (EntityHuman) list1.get(0)));
+-        Optional<EntityHuman> optional = list1.stream().filter(IEntitySelector.f).findFirst();
+-
+-        behaviorcontroller.setMemory(MemoryModuleType.NEAREST_VISIBLE_TARGETABLE_PLAYER, optional);
++        behaviorcontroller.setMemory(MemoryModuleType.NEAREST_PLAYERS, nearby);
++        EntityHuman first = null;
++        EntityHuman firstNonSpectator = null;
++        for (int index = 0, len = nearby.size(); index < len; ++index) {
++            EntityHuman entity = nearby.get(index);
++            if (!Sensor.a(entityliving, (EntityLiving)entity)) { // copied from removed code, make sure to update
++                continue;
++            }
++            if (first == null) {
++                first = entity;
++            }
++            if (IEntitySelector.f.test(entity)) { // copied from removed code, make sure to update
++                firstNonSpectator = entity;
++                break;
++            }
++        }
++
++        behaviorcontroller.setMemory(MemoryModuleType.NEAREST_VISIBLE_PLAYER, first);
++        behaviorcontroller.setMemory(MemoryModuleType.NEAREST_VISIBLE_TARGETABLE_PLAYER, Optional.ofNullable(firstNonSpectator));
++        // Tuinity end - remove streams
+     }
+ }
+diff --git a/src/main/java/net/minecraft/server/SensorVillagerBabies.java b/src/main/java/net/minecraft/server/SensorVillagerBabies.java
+index a367bbfde4fbfeca6d01dec49c05f5e185aab43a..794b33a13b7f11b973caf085b0bded9b2135a4d7 100644
+--- a/src/main/java/net/minecraft/server/SensorVillagerBabies.java
++++ b/src/main/java/net/minecraft/server/SensorVillagerBabies.java
+@@ -17,11 +17,23 @@ public class SensorVillagerBabies extends Sensor<EntityLiving> {
+ 
+     @Override
+     protected void a(WorldServer worldserver, EntityLiving entityliving) {
+-        entityliving.getBehaviorController().setMemory(MemoryModuleType.VISIBLE_VILLAGER_BABIES, (Object) this.a(entityliving));
++        entityliving.getBehaviorController().setMemory(MemoryModuleType.VISIBLE_VILLAGER_BABIES, this.a(entityliving)); // Tuinity - decompile fix
+     }
+ 
+     private List<EntityLiving> a(EntityLiving entityliving) {
+-        return (List) this.c(entityliving).stream().filter(this::b).collect(Collectors.toList());
++        // Tuinity start - remove streams
++        List<EntityLiving> nearby = this.c(entityliving); // copied from removed code, make sure to update
++        List<EntityLiving> ret = new java.util.ArrayList<>();
++
++        for (int index = 0, len = nearby.size(); index < len; ++index) {
++            EntityLiving entity = nearby.get(index);
++            if (this.b(entity)) { // copied from removed code, make sure to update
++                ret.add(entity);
++            }
++        }
++
++        return ret;
++        // Tuinity end - remove streams
+     }
+ 
+     private boolean b(EntityLiving entityliving) {
+diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
+index adacfce6f3b6067e54fc1a95bab7d42796950cd6..bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a 100644
+--- a/src/main/java/net/minecraft/server/VillagePlace.java
++++ b/src/main/java/net/minecraft/server/VillagePlace.java
+@@ -309,6 +309,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+             this.d = predicate;
+         }
+ 
++        public final Predicate<? super VillagePlaceRecord> getPredicate() { return this.a(); } // Tuinity - OBFHELPER
+         public Predicate<? super VillagePlaceRecord> a() {
+             return this.d;
+         }
+diff --git a/src/main/java/net/minecraft/server/VillagePlaceRecord.java b/src/main/java/net/minecraft/server/VillagePlaceRecord.java
+index 0b40c2f4dada7d8432e3f91e9cf206c2bda3b24b..6eaf9fc9cc93f79a497b07a3549d459ba66be849 100644
+--- a/src/main/java/net/minecraft/server/VillagePlaceRecord.java
++++ b/src/main/java/net/minecraft/server/VillagePlaceRecord.java
+@@ -6,7 +6,7 @@ import java.util.Objects;
+ 
+ public class VillagePlaceRecord {
+ 
+-    private final BlockPosition a;
++    private final BlockPosition a; public final BlockPosition getPosition() { return this.a; } // Tuinity - OBFHELPER
+     private final VillagePlaceType b;
+     private int c;
+     private final Runnable d;
+diff --git a/src/main/java/net/minecraft/server/VillagePlaceSection.java b/src/main/java/net/minecraft/server/VillagePlaceSection.java
+index 77c66bc9952542d2444b402896a3d9f622ca2ff9..f43bc1f7d693d63c6bbdba976c048d2d0c8767b1 100644
+--- a/src/main/java/net/minecraft/server/VillagePlaceSection.java
++++ b/src/main/java/net/minecraft/server/VillagePlaceSection.java
+@@ -23,12 +23,12 @@ public class VillagePlaceSection {
+ 
+     private static final Logger LOGGER = LogManager.getLogger();
+     private final Short2ObjectMap<VillagePlaceRecord> b;
+-    private final Map<VillagePlaceType, Set<VillagePlaceRecord>> c;
++    private final Map<VillagePlaceType, Set<VillagePlaceRecord>> c; public final Map<VillagePlaceType, Set<VillagePlaceRecord>> getData() { return this.c; } // Tuinity - OBFHELPER
+     private final Runnable d;
+     private boolean e;
+ 
+     public static Codec<VillagePlaceSection> a(Runnable runnable) {
+-        Codec codec = RecordCodecBuilder.create((instance) -> {
++        Codec<VillagePlaceSection> codec = RecordCodecBuilder.create((instance) -> { // Tuinity - decompile fix
+             return instance.group(RecordCodecBuilder.point(runnable), Codec.BOOL.optionalFieldOf("Valid", false).forGetter((villageplacesection) -> {
+                 return villageplacesection.e;
+             }), VillagePlaceRecord.a(runnable).listOf().fieldOf("Records").forGetter((villageplacesection) -> {
+diff --git a/src/main/java/net/minecraft/server/WeightedList.java b/src/main/java/net/minecraft/server/WeightedList.java
+index 5d9d58411f2fad9d5da703f964d269b4a7c2b205..f0fdfd6891e59891e7370a2d682b65c647b28e9e 100644
+--- a/src/main/java/net/minecraft/server/WeightedList.java
++++ b/src/main/java/net/minecraft/server/WeightedList.java
+@@ -14,7 +14,7 @@ import java.util.stream.Stream;
+ 
+ public class WeightedList<U> {
+ 
+-    protected final List<WeightedList.a<U>> list; // Paper - decompile conflict
++    protected final List<WeightedList.a<U>> list; public final List<WeightedList.a<U>> getList() { return this.list; } // Paper - decompile conflict // Tuinity - OBFHELPER
+     private final Random b;
+     private final boolean isUnsafe; // Paper
+ 
+@@ -74,7 +74,7 @@ public class WeightedList<U> {
+ 
+     public static class a<T> {
+ 
+-        private final T a;
++        private final T a; public final T getValue() { return this.a; } // Tuinity - OBFHELPER
+         private final int b;
+         private double c;
+ 
