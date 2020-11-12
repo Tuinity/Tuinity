@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 12 Nov 2020 08:06:55 -0800
+Subject: [PATCH] Do not retain playerchunkmap instance in light thread factory
+
+The executor returned is finalizable and of course
+that causes issues.
+
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index 2a8455b813853693e20f368d3ece78d9424a413a..8286039c4e2db33b7782b9af13e6ac8f7a2ff484 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -337,9 +337,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+ 
+         this.worldLoadListener = worldloadlistener;
+         // Paper start - use light thread
++        String threadName = ((WorldDataServer)this.world.getWorldData()).getName() + " - Light"; // Tuinity - make sure playerchunkmap instance is not retained by the thread factory
+         ThreadedMailbox<Runnable> lightthreaded; ThreadedMailbox<Runnable> threadedmailbox1 = lightthreaded = ThreadedMailbox.a(lightThread = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+             Thread thread = new Thread(r);
+-            thread.setName(((WorldDataServer)world.getWorldData()).getName() + " - Light");
++            thread.setName(threadName); // Tuinity - make sure playerchunkmap instance is not retained by the thread factory
+             thread.setDaemon(true);
+             thread.setPriority(Thread.NORM_PRIORITY+1);
+             return thread;
