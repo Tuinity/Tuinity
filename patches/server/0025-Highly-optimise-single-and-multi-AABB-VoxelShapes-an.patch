@@ -233,10 +233,10 @@ index 0000000000000000000000000000000000000000..b321ad51635949d07b9b818f2940a31b
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/AxisAlignedBB.java b/src/main/java/net/minecraft/server/AxisAlignedBB.java
-index ed9b2f9adfecdc6d1b9925579ec510657adde11f..6aa9f07336c23150ca72bdf3d45677e8d40ee4e9 100644
+index ed9b2f9adfecdc6d1b9925579ec510657adde11f..20e9e06b36cda913809b46e71144d212322619aa 100644
 --- a/src/main/java/net/minecraft/server/AxisAlignedBB.java
 +++ b/src/main/java/net/minecraft/server/AxisAlignedBB.java
-@@ -13,6 +13,149 @@ public class AxisAlignedBB {
+@@ -13,6 +13,158 @@ public class AxisAlignedBB {
      public final double maxY;
      public final double maxZ;
  
@@ -262,13 +262,22 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..6aa9f07336c23150ca72bdf3d45677e8
 +     */
 +
 +    public final boolean voxelShapeIntersect(AxisAlignedBB other) {
-+        return this.voxelShapeIntersect(other.minX, other.minY, other.minZ, other.maxX, other.maxY, other.maxZ);
++        return (this.minX - other.maxX) < -MCUtil.COLLISION_EPSILON && (this.maxX - other.minX) > MCUtil.COLLISION_EPSILON &&
++               (this.minY - other.maxY) < -MCUtil.COLLISION_EPSILON && (this.maxY - other.minY) > MCUtil.COLLISION_EPSILON &&
++               (this.minZ - other.maxZ) < -MCUtil.COLLISION_EPSILON && (this.maxZ - other.minZ) > MCUtil.COLLISION_EPSILON;
 +    }
 +
 +    public final boolean voxelShapeIntersect(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
 +        return (this.minX - maxX) < -MCUtil.COLLISION_EPSILON && (this.maxX - minX) > MCUtil.COLLISION_EPSILON &&
 +               (this.minY - maxY) < -MCUtil.COLLISION_EPSILON && (this.maxY - minY) > MCUtil.COLLISION_EPSILON &&
 +               (this.minZ - maxZ) < -MCUtil.COLLISION_EPSILON && (this.maxZ - minZ) > MCUtil.COLLISION_EPSILON;
++    }
++
++    public static boolean voxelShapeIntersect(double minX1, double minY1, double minZ1, double maxX1, double maxY1, double maxZ1,
++                                              double minX2, double minY2, double minZ2, double maxX2, double maxY2, double maxZ2) {
++        return (minX1 - maxX2) < -MCUtil.COLLISION_EPSILON && (maxX1 - minX2) > MCUtil.COLLISION_EPSILON &&
++                (minY1 - maxY2) < -MCUtil.COLLISION_EPSILON && (maxY1 - minY2) > MCUtil.COLLISION_EPSILON &&
++                (minZ1 - maxZ2) < -MCUtil.COLLISION_EPSILON && (maxZ1 - minZ2) > MCUtil.COLLISION_EPSILON;
 +    }
 +
 +    public static double collideX(AxisAlignedBB target, AxisAlignedBB source, double source_move) {
@@ -386,7 +395,7 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..6aa9f07336c23150ca72bdf3d45677e8
      public AxisAlignedBB(double d0, double d1, double d2, double d3, double d4, double d5) {
          this.minX = Math.min(d0, d3);
          this.minY = Math.min(d1, d4);
-@@ -185,6 +328,7 @@ public class AxisAlignedBB {
+@@ -185,6 +337,7 @@ public class AxisAlignedBB {
          return new AxisAlignedBB(d0, d1, d2, d3, d4, d5);
      }
  
@@ -394,7 +403,7 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..6aa9f07336c23150ca72bdf3d45677e8
      public AxisAlignedBB d(double d0, double d1, double d2) {
          return new AxisAlignedBB(this.minX + d0, this.minY + d1, this.minZ + d2, this.maxX + d0, this.maxY + d1, this.maxZ + d2);
      }
-@@ -193,6 +337,7 @@ public class AxisAlignedBB {
+@@ -193,6 +346,7 @@ public class AxisAlignedBB {
          return new AxisAlignedBB(this.minX + (double) blockposition.getX(), this.minY + (double) blockposition.getY(), this.minZ + (double) blockposition.getZ(), this.maxX + (double) blockposition.getX(), this.maxY + (double) blockposition.getY(), this.maxZ + (double) blockposition.getZ());
      }
  
@@ -402,7 +411,7 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..6aa9f07336c23150ca72bdf3d45677e8
      public AxisAlignedBB c(Vec3D vec3d) {
          return this.d(vec3d.x, vec3d.y, vec3d.z);
      }
-@@ -212,6 +357,7 @@ public class AxisAlignedBB {
+@@ -212,6 +366,7 @@ public class AxisAlignedBB {
          return this.e(vec3d.x, vec3d.y, vec3d.z);
      }
  
@@ -411,7 +420,7 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..6aa9f07336c23150ca72bdf3d45677e8
          return d0 >= this.minX && d0 < this.maxX && d1 >= this.minY && d1 < this.maxY && d2 >= this.minZ && d2 < this.maxZ;
      }
 diff --git a/src/main/java/net/minecraft/server/ChunkCache.java b/src/main/java/net/minecraft/server/ChunkCache.java
-index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..53c977513d3c243e6d06f252ed417c5d6db4034e 100644
+index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..e95fc7d98b70c84f3bf94440da977deb2d541e46 100644
 --- a/src/main/java/net/minecraft/server/ChunkCache.java
 +++ b/src/main/java/net/minecraft/server/ChunkCache.java
 @@ -12,6 +12,142 @@ public class ChunkCache implements IBlockAccess, ICollisionAccess {
@@ -436,7 +445,7 @@ index 8eecdcde510661ec3a13a25a04ba394f6b6dc012..53c977513d3c243e6d06f252ed417c5d
 +
 +    public boolean collidesWithAnyBlockOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb) {
 +        if (entity != null) {
-+            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
++            if (this.getWorldBorder().isAlmostCollidingOnBorder(axisalignedbb)) {
 +                return true;
 +            }
 +        }
@@ -582,7 +591,7 @@ index 95ef96286855624590b72d69514b0fc0e08fddba..73163b417af7e522a4509bf9c1ab56d6
          T t0 = this.h.a(this.a.a(i));
  
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 049f86814dc8b8eddf71ae11050cc9f7a74b0b2a..5f17d369bb611302467bc298604f26d6f5fde129 100644
+index 049f86814dc8b8eddf71ae11050cc9f7a74b0b2a..650187d96bd8f8b6440bbf13d1bbb131adb9aa8c 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -136,7 +136,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -647,7 +656,7 @@ index 049f86814dc8b8eddf71ae11050cc9f7a74b0b2a..5f17d369bb611302467bc298604f26d6
  
              if (this.aG() && this.isBurning()) {
                  this.playSound(SoundEffects.ENTITY_GENERIC_EXTINGUISH_FIRE, 0.7F, 1.6F + (this.random.nextFloat() - this.random.nextFloat()) * 0.4F);
-@@ -897,6 +925,132 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -897,6 +925,135 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return d0;
      }
  
@@ -746,6 +755,9 @@ index 049f86814dc8b8eddf71ae11050cc9f7a74b0b2a..5f17d369bb611302467bc298604f26d6
 +                collisionBox = currBoundingBox.expand(moveVector.x, moveVector.y, moveVector.z);
 +            }
 +            world.getCollisions(this, collisionBox, potentialCollisions, this instanceof EntityPlayer && !this.world.paperConfig.preventMovingIntoUnloadedChunks);
++            if (world.getWorldBorder().isCollidingWithBorderEdge(collisionBox)) {
++                VoxelShapes.addBoxesToIfIntersects(world.getWorldBorder().getCollisionShape(), collisionBox, potentialCollisions);
++            }
 +
 +            Vec3D limitedMoveVector = Entity.performCollisions(moveVector, currBoundingBox, potentialCollisions);
 +
@@ -780,7 +792,7 @@ index 049f86814dc8b8eddf71ae11050cc9f7a74b0b2a..5f17d369bb611302467bc298604f26d6
      private Vec3D g(Vec3D vec3d) {
          AxisAlignedBB axisalignedbb = this.getBoundingBox();
          VoxelShapeCollision voxelshapecollision = VoxelShapeCollision.a(this);
-@@ -932,6 +1086,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -932,6 +1089,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return vec3d1;
      }
  
@@ -788,7 +800,7 @@ index 049f86814dc8b8eddf71ae11050cc9f7a74b0b2a..5f17d369bb611302467bc298604f26d6
      public static double c(Vec3D vec3d) {
          return vec3d.x * vec3d.x + vec3d.z * vec3d.z;
      }
-@@ -2020,9 +2175,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -2020,9 +2178,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
              float f1 = this.size.width * 0.8F;
              AxisAlignedBB axisalignedbb = AxisAlignedBB.g((double) f1, 0.10000000149011612D, (double) f1).d(this.locX(), this.getHeadY(), this.locZ());
  
@@ -800,7 +812,7 @@ index 049f86814dc8b8eddf71ae11050cc9f7a74b0b2a..5f17d369bb611302467bc298604f26d6
          }
      }
  
-@@ -2030,10 +2185,12 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -2030,10 +2188,12 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return EnumInteractionResult.PASS;
      }
  
@@ -1226,41 +1238,57 @@ index 540b2ee665852dfc7d787a00eb07896072971a57..2593d04c924bac2c96392fe0b3c41800
          int j = MathHelper.floor((axisalignedbb.maxX + 2.0D) / 16.0D);
          int k = MathHelper.floor((axisalignedbb.minZ - 2.0D) / 16.0D);
 diff --git a/src/main/java/net/minecraft/server/WorldBorder.java b/src/main/java/net/minecraft/server/WorldBorder.java
-index f011869880fedae4b69e505491e8bdbc5f51dfba..26a8c4ffe26c4663ddb3596dce8c47026aa2d0c3 100644
+index f011869880fedae4b69e505491e8bdbc5f51dfba..0d10d317cd0b60fc0866ae505c7fd71fa886c48b 100644
 --- a/src/main/java/net/minecraft/server/WorldBorder.java
 +++ b/src/main/java/net/minecraft/server/WorldBorder.java
-@@ -47,11 +47,43 @@ public class WorldBorder {
+@@ -47,11 +47,59 @@ public class WorldBorder {
          return axisalignedbb.maxX > this.e() && axisalignedbb.minX < this.g() && axisalignedbb.maxZ > this.f() && axisalignedbb.minZ < this.h();
      }
  
 +    // Tuinity start - optimise collisions
-+    // determines whether we are colliding with one of the wordborder faces.
-+    public final boolean isCollidingOnBorderEdge(AxisAlignedBB boundingBox) {
-+        return this.isCollidingOnBorderEdge(boundingBox.minX, boundingBox.maxX, boundingBox.minZ, boundingBox.maxZ);
++    // determines whether we are almost colliding with the world border
++    // for clear collisions, this rets false
++    public final boolean isAlmostCollidingOnBorder(AxisAlignedBB boundingBox) {
++        return this.isAlmostCollidingOnBorder(boundingBox.minX, boundingBox.maxX, boundingBox.minZ, boundingBox.maxZ);
 +    }
 +
-+    public final boolean isCollidingOnBorderEdge(double boxMinX, double boxMaxX, double boxMinZ, double boxMaxZ) {
-+        double minX = this.getMinX() - MCUtil.COLLISION_EPSILON;
-+        double maxX = this.getMaxX() + MCUtil.COLLISION_EPSILON;
++    public final boolean isAlmostCollidingOnBorder(double boxMinX, double boxMaxX, double boxMinZ, double boxMaxZ) {
++        double borderMinX = this.getMinX();
++        double borderMaxX = this.getMaxX();
 +
-+        double minZ = this.getMinZ() - MCUtil.COLLISION_EPSILON;
-+        double maxZ = this.getMaxZ() + MCUtil.COLLISION_EPSILON;
++        double borderMinZ = this.getMinZ();
++        double borderMaxZ = this.getMaxZ();
 +
 +        return
-+                // First, check if the worldborder is enclosing the specified box.
-+                // We check this first as it's most likely to fail.
-+                !(minX < boxMinX && maxX > boxMaxX && minZ < boxMinZ && maxZ > boxMaxZ)
++                // Not intersecting if we're smaller
++                !AxisAlignedBB.voxelShapeIntersect(
++                        boxMinX + MCUtil.COLLISION_EPSILON, Double.NEGATIVE_INFINITY, boxMinZ + MCUtil.COLLISION_EPSILON,
++                                boxMaxX - MCUtil.COLLISION_EPSILON, Double.POSITIVE_INFINITY, boxMaxZ - MCUtil.COLLISION_EPSILON,
++                        borderMinX, Double.NEGATIVE_INFINITY, borderMinZ, borderMaxX, Double.POSITIVE_INFINITY, borderMaxZ
++                )
 +                &&
 +
-+                // Now we verify if we're even intersecting.
-+                (minX < boxMaxX && maxX > boxMinX && minZ < boxMaxZ && maxZ > boxMinZ)
-+                &&
-+
-+                // Now verify that the worldborder isn't being enclosed.
-+                // This is never expected to happen, but is left here to ensure our logic
-+                // is right 100% of the time.
-+                !(boxMinX < minX && boxMaxX > maxX && boxMinZ < minZ && boxMaxZ > maxZ)
++                // Are intersecting if we're larger
++                AxisAlignedBB.voxelShapeIntersect(
++                        boxMinX - MCUtil.COLLISION_EPSILON, Double.NEGATIVE_INFINITY, boxMinZ - MCUtil.COLLISION_EPSILON,
++                                boxMaxX + MCUtil.COLLISION_EPSILON, Double.POSITIVE_INFINITY, boxMaxZ + MCUtil.COLLISION_EPSILON,
++                        borderMinX, Double.NEGATIVE_INFINITY, borderMinZ, borderMaxX, Double.POSITIVE_INFINITY, borderMaxZ
++                )
 +                ;
++    }
++
++    public final boolean isCollidingWithBorderEdge(AxisAlignedBB boundingBox) {
++        return this.isCollidingWithBorderEdge(boundingBox.minX, boundingBox.maxX, boundingBox.minZ, boundingBox.maxZ);
++    }
++
++    public final boolean isCollidingWithBorderEdge(double boxMinX, double boxMaxX, double boxMinZ, double boxMaxZ) {
++        double borderMinX = this.getMinX() + MCUtil.COLLISION_EPSILON;
++        double borderMaxX = this.getMaxX() - MCUtil.COLLISION_EPSILON;
++
++        double borderMinZ = this.getMinZ() + MCUtil.COLLISION_EPSILON;
++        double borderMaxZ = this.getMaxZ() - MCUtil.COLLISION_EPSILON;
++
++        return boxMinX < borderMinX || boxMaxX > borderMaxX || boxMinZ < borderMinZ || boxMaxZ > borderMaxZ;
 +    }
 +    // Tuinity end - optimise collisions
 +
@@ -1273,7 +1301,7 @@ index f011869880fedae4b69e505491e8bdbc5f51dfba..26a8c4ffe26c4663ddb3596dce8c4702
      public VoxelShape c() {
          return this.j.m();
      }
-@@ -67,18 +99,22 @@ public class WorldBorder {
+@@ -67,18 +115,22 @@ public class WorldBorder {
          return Math.min(d6, d3);
      }
  
@@ -1297,7 +1325,7 @@ index f011869880fedae4b69e505491e8bdbc5f51dfba..26a8c4ffe26c4663ddb3596dce8c4702
          return this.j.d();
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index b11dc55edbb5b4b1f03ea4ba63e61d08890c9880..39204b2e6b400fe5f4f707e1c67bf3cdb51f6cea 100644
+index b11dc55edbb5b4b1f03ea4ba63e61d08890c9880..41c3405ae97550ddf2341a2e1cd999266b746378 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -360,6 +360,451 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -1307,7 +1335,7 @@ index b11dc55edbb5b4b1f03ea4ba63e61d08890c9880..39204b2e6b400fe5f4f707e1c67bf3cd
 +    // Tuinity start - optimise collision
 +    public boolean collidesWithAnyBlockOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb, boolean loadChunks) {
 +        if (entity != null) {
-+            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
++            if (this.getWorldBorder().isAlmostCollidingOnBorder(axisalignedbb)) {
 +                return true;
 +            }
 +        }
@@ -1427,7 +1455,7 @@ index b11dc55edbb5b4b1f03ea4ba63e61d08890c9880..39204b2e6b400fe5f4f707e1c67bf3cd
 +
 +    public boolean collidesWithAnyBlockOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb, boolean loadChunks, boolean collideWithUnloaded, java.util.function.BiPredicate<IBlockData, BlockPosition> predicate) {
 +        if (entity != null) {
-+            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
++            if (this.getWorldBorder().isAlmostCollidingOnBorder(axisalignedbb)) {
 +                return true;
 +            }
 +        }
@@ -1586,7 +1614,7 @@ index b11dc55edbb5b4b1f03ea4ba63e61d08890c9880..39204b2e6b400fe5f4f707e1c67bf3cd
 +
 +    public void getCollisionsForBlocksOrWorldBorder(@Nullable Entity entity, AxisAlignedBB axisalignedbb, List<AxisAlignedBB> list, boolean loadChunks) {
 +        if (entity != null) {
-+            if (this.getWorldBorder().isCollidingOnBorderEdge(axisalignedbb)) {
++            if (this.getWorldBorder().isAlmostCollidingOnBorder(axisalignedbb)) {
 +                VoxelShapes.addBoxesTo(this.getWorldBorder().getCollisionShape(), list);
 +            }
 +        }
