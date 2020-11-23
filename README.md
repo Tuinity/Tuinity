@@ -24,7 +24,7 @@ Tuinity-API maven dependency:
     <artifactId>tuinity-api</artifactId>
     <version>1.16.4-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
- </dependency>
+</dependency>
  ```
 
 Tuinity-Server maven dependency:
