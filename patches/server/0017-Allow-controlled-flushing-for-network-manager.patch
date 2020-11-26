@@ -9,7 +9,7 @@ This patch will be used to optimise out flush calls in later
 patches.
 
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 7a84ea4116be070ab878e55b0cd919f3f3688f30..3a67de7a720e6b159abe727eb3315c1445db5fc1 100644
+index 3ec8ba17ddf376aa98e2b74979b2544922712560..2a84a414f1f04731098d40858fad2b3c2ffcea80 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -71,6 +71,39 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -52,7 +52,7 @@ index 7a84ea4116be070ab878e55b0cd919f3f3688f30..3a67de7a720e6b159abe727eb3315c14
      public NetworkManager(EnumProtocolDirection enumprotocoldirection) {
          this.h = enumprotocoldirection;
      }
-@@ -217,7 +250,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -220,7 +253,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
              MCUtil.isMainThread() && packet.isReady() && this.packetQueue.isEmpty() &&
              (packet.getExtraPackets() == null || packet.getExtraPackets().isEmpty())
          ))) {
@@ -61,7 +61,7 @@ index 7a84ea4116be070ab878e55b0cd919f3f3688f30..3a67de7a720e6b159abe727eb3315c14
              return;
          }
          // write the packets to the queue, then flush - antixray hooks there already
-@@ -243,6 +276,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -246,6 +279,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
  
      private void dispatchPacket(Packet<?> packet, @Nullable GenericFutureListener<? extends Future<? super Void>> genericFutureListener) { this.b(packet, genericFutureListener); } // Paper - OBFHELPER
      private void b(Packet<?> packet, @Nullable GenericFutureListener<? extends Future<? super Void>> genericfuturelistener) {
@@ -76,7 +76,7 @@ index 7a84ea4116be070ab878e55b0cd919f3f3688f30..3a67de7a720e6b159abe727eb3315c14
          EnumProtocol enumprotocol = EnumProtocol.a(packet);
          EnumProtocol enumprotocol1 = (EnumProtocol) this.channel.attr(NetworkManager.c).get();
  
-@@ -265,7 +306,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -268,7 +309,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
              try {
                  // Paper end
  
@@ -85,7 +85,7 @@ index 7a84ea4116be070ab878e55b0cd919f3f3688f30..3a67de7a720e6b159abe727eb3315c14
  
              if (genericfuturelistener != null) {
                  channelfuture.addListener(genericfuturelistener);
-@@ -297,7 +338,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -300,7 +341,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                  }
                  try {
                      // Paper end
@@ -94,7 +94,7 @@ index 7a84ea4116be070ab878e55b0cd919f3f3688f30..3a67de7a720e6b159abe727eb3315c14
  
  
                  if (genericfuturelistener != null) {
-@@ -340,6 +381,8 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -343,6 +384,8 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
      }
      private boolean processQueue() {
          if (this.packetQueue.isEmpty()) return true;
@@ -103,7 +103,7 @@ index 7a84ea4116be070ab878e55b0cd919f3f3688f30..3a67de7a720e6b159abe727eb3315c14
          // If we are on main, we are safe here in that nothing else should be processing queue off main anymore
          // But if we are not on main due to login/status, the parent is synchronized on packetQueue
          java.util.Iterator<QueuedPacket> iterator = this.packetQueue.iterator();
-@@ -347,16 +390,22 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -350,16 +393,22 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
              NetworkManager.QueuedPacket queued = iterator.next(); // poll -> peek
  
              // Fix NPE (Spigot bug caused by handleDisconnection())
