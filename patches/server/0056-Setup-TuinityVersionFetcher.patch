@@ -1,0 +1,143 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ben Kerllenevich <me@notom3ga.me>
+Date: Tue, 1 Dec 2020 21:13:39 -0500
+Subject: [PATCH] Setup TuinityVersionFetcher
+
+This replaces the previous version fetcher. The version command will
+now get build numbers from Jenkins and determine versoning from that.
+
+If the Jenkins version fetching fails, it will revert to git hash
+versioning from GitHub.
+
+diff --git a/src/main/java/com/tuinity/tuinity/TuinityVersionFetcher.java b/src/main/java/com/tuinity/tuinity/TuinityVersionFetcher.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..370fc8be4785b269f73f8cb8244e39c09b2d9df4
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/TuinityVersionFetcher.java
+@@ -0,0 +1,113 @@
++package com.tuinity.tuinity;
++
++import com.destroystokyo.paper.VersionHistoryManager;
++import com.destroystokyo.paper.util.VersionFetcher;
++import com.google.common.base.Charsets;
++import com.google.common.io.Resources;
++import com.google.gson.Gson;
++import com.google.gson.JsonObject;
++import com.google.gson.JsonSyntaxException;
++import java.io.BufferedReader;
++import java.io.IOException;
++import java.io.InputStreamReader;
++import java.net.HttpURLConnection;
++import java.net.URL;
++import javax.annotation.Nonnull;
++import javax.annotation.Nullable;
++
++public class TuinityVersionFetcher implements VersionFetcher {
++    private static final String JENKINS_URL = "https://ci.codemc.io/job/Spottedleaf/job/Tuinity/lastSuccessfulBuild/buildNumber";
++    private static final String GITHUB_BRANCH_NAME = "master";
++
++    @Override
++    public long getCacheTime() {
++        return 720000;
++    }
++
++    @Nonnull
++    @Override
++    public String getVersionMessage(@Nonnull String serverVersion) {
++        String[] parts = serverVersion.substring("git-Tuinity-".length()).split("[-\\s]");
++        String updateMessage = getUpdateStatusMessage("Spottedleaf/Tuinity", GITHUB_BRANCH_NAME, parts[0]);
++        String history = getHistory();
++
++        return history != null ? history + "\n" + updateMessage : updateMessage;
++    }
++
++    private static String getUpdateStatusMessage(@Nonnull String repo, @Nonnull String branch, @Nonnull String versionInfo) {
++        int distance;
++        try {
++            int jenkinsBuild = Integer.parseInt(versionInfo);
++            distance = fetchDistanceFromJenkins(jenkinsBuild);
++        } catch (NumberFormatException ignored) {
++            versionInfo = versionInfo.replace("\"", "");
++            distance = fetchDistanceFromGitHub(repo, branch, versionInfo);
++        }
++
++        switch (distance) {
++            case -1:
++                return "Error obtaining version information";
++            case 0:
++                return "You are running the latest version";
++            case -2:
++                return "Unknown version";
++            default:
++                return "You are " + distance + " version(s) behind";
++        }
++    }
++
++    private static int fetchDistanceFromJenkins(int jenkinsBuild) {
++        try {
++            try (BufferedReader reader = Resources.asCharSource(new URL(JENKINS_URL), Charsets.UTF_8).openBufferedStream()) {
++                return Integer.decode(reader.readLine()) - jenkinsBuild;
++            } catch (NumberFormatException ex) {
++                ex.printStackTrace();
++                return -2;
++            }
++        } catch (IOException e) {
++            e.printStackTrace();
++            return -1;
++        }
++    }
++
++    private static int fetchDistanceFromGitHub(@Nonnull String repo, @Nonnull String branch, @Nonnull String hash) {
++        try {
++            HttpURLConnection connection = (HttpURLConnection) new URL("https://api.github.com/repos/" + repo + "/compare/" + branch + "..." + hash).openConnection();
++            connection.connect();
++            if (connection.getResponseCode() == HttpURLConnection.HTTP_NOT_FOUND) return -2; // Unknown commit
++            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), Charsets.UTF_8))) {
++                JsonObject obj = new Gson().fromJson(reader, JsonObject.class);
++                String status = obj.get("status").getAsString();
++                switch (status) {
++                    case "identical":
++                        return 0;
++                    case "behind":
++                        return obj.get("behind_by").getAsInt();
++                    default:
++                        return -1;
++                }
++            } catch (JsonSyntaxException | NumberFormatException e) {
++                e.printStackTrace();
++                return -1;
++            }
++        } catch (IOException e) {
++            e.printStackTrace();
++            return -1;
++        }
++    }
++
++    @Nullable
++    private String getHistory() {
++        final VersionHistoryManager.VersionData data = VersionHistoryManager.INSTANCE.getVersionData();
++        if (data == null) {
++            return null;
++        }
++
++        final String oldVersion = data.getOldVersion();
++                if (oldVersion == null) {
++                    return null;
++                }
++
++                return "Previous version: " + oldVersion;
++    }
++}
+diff --git a/src/main/java/org/bukkit/craftbukkit/util/CraftMagicNumbers.java b/src/main/java/org/bukkit/craftbukkit/util/CraftMagicNumbers.java
+index 0f7f1503d07bdff7ce7644dfe21e444adb52c7db..d604cd3a07353e1493ee9ecbd7dc921b4019ae5b 100644
+--- a/src/main/java/org/bukkit/craftbukkit/util/CraftMagicNumbers.java
++++ b/src/main/java/org/bukkit/craftbukkit/util/CraftMagicNumbers.java
+@@ -353,7 +353,7 @@ public final class CraftMagicNumbers implements UnsafeValues {
+ 
+     @Override
+     public com.destroystokyo.paper.util.VersionFetcher getVersionFetcher() {
+-        return new com.destroystokyo.paper.PaperVersionFetcher();
++        return new com.tuinity.tuinity.TuinityVersionFetcher(); // Tuinity
+     }
+ 
+     @Override
