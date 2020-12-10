@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 10 Dec 2020 15:18:05 -0800
+Subject: [PATCH] Improve abnormal server shutdown process
+
+- When we're trying to kill the main thread from watchdog,
+step up the stop() spamming after 15s to really kill the main thread.
+
+- Do not wait for window disposing when disposing of the server
+gui. It looks like during sigint shutdown there can be some
+deadlock between the server thread and awt shutdown thread here.
+
+diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
+index fcba187bbdc1b468cfea2bc922187d9b8959a9d5..ecff0657e5666ddc2e6a5c3111bfb2b8dd2b78d3 100644
+--- a/src/main/java/net/minecraft/server/DedicatedServer.java
++++ b/src/main/java/net/minecraft/server/DedicatedServer.java
+@@ -358,7 +358,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
+         }
+ 
+         if (this.q != null) {
+-            this.q.b();
++            //this.q.b(); // Tuinity - do not wait for AWT, causes deadlock with sigint handler (AWT shutdown will properly clear our resources anyways)
+         }
+ 
+         if (this.remoteControlListener != null) {
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 2cf510b6d97e5e462077c0effb04668af9a213ac..e58ead9a1e2734147a525532a7458e236ea52cec 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -755,10 +755,11 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+         org.spigotmc.WatchdogThread.doStop(); // Paper
+         if (!isMainThread()) {
+             MinecraftServer.LOGGER.info("Stopping main thread (Ignore any thread death message you see! - DO NOT REPORT THREAD DEATH TO PAPER)");
++            long start = System.nanoTime(); // Tuinity - really try hard to kill the main thread
+             while (this.getThread().isAlive()) {
+                 this.getThread().stop();
+                 try {
+-                    Thread.sleep(1);
++                    if ((System.nanoTime() - start) <= (15L * 1000L * 1000L * 1000L)) Thread.sleep(1); // Tuinity - really try hard to kill the main thread - if we're past 15s we're probably in a terrible loop, spam it to really kill it
+                 } catch (InterruptedException e) {}
+             }
+         }
