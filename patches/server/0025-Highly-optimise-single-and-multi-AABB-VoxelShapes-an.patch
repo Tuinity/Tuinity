@@ -233,10 +233,10 @@ index 0000000000000000000000000000000000000000..b321ad51635949d07b9b818f2940a31b
 +    }
 +}
 diff --git a/src/main/java/net/minecraft/server/AxisAlignedBB.java b/src/main/java/net/minecraft/server/AxisAlignedBB.java
-index ed9b2f9adfecdc6d1b9925579ec510657adde11f..20e9e06b36cda913809b46e71144d212322619aa 100644
+index ed9b2f9adfecdc6d1b9925579ec510657adde11f..acd009844099293befd28c5f1c20d947016fa19b 100644
 --- a/src/main/java/net/minecraft/server/AxisAlignedBB.java
 +++ b/src/main/java/net/minecraft/server/AxisAlignedBB.java
-@@ -13,6 +13,158 @@ public class AxisAlignedBB {
+@@ -13,6 +13,166 @@ public class AxisAlignedBB {
      public final double maxY;
      public final double maxZ;
  
@@ -387,6 +387,14 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..20e9e06b36cda913809b46e71144d212
 +        return new AxisAlignedBB(this.minX, this.minY, this.minZ, this.maxX, this.maxY + dy, this.maxZ, false);
 +    }
 +
++    public final  AxisAlignedBB cutUpwards(final double dy) { // dy > 0.0
++        return new AxisAlignedBB(this.minX, this.maxY, this.minZ, this.maxX, this.maxY + dy, this.maxZ, false);
++    }
++
++    public final AxisAlignedBB cutDownwards(final double dy) { // dy < 0.0
++        return new AxisAlignedBB(this.minX, this.minY + dy, this.minZ, this.maxX, this.minY, this.maxZ, false);
++    }
++
 +    public final AxisAlignedBB expandUpwardsAndCutBelow(double dy) {
 +        return new AxisAlignedBB(this.minX, this.maxY, this.minZ, this.maxX, this.maxY + dy, this.maxZ, false);
 +    }
@@ -395,7 +403,7 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..20e9e06b36cda913809b46e71144d212
      public AxisAlignedBB(double d0, double d1, double d2, double d3, double d4, double d5) {
          this.minX = Math.min(d0, d3);
          this.minY = Math.min(d1, d4);
-@@ -185,6 +337,7 @@ public class AxisAlignedBB {
+@@ -185,6 +345,7 @@ public class AxisAlignedBB {
          return new AxisAlignedBB(d0, d1, d2, d3, d4, d5);
      }
  
@@ -403,7 +411,7 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..20e9e06b36cda913809b46e71144d212
      public AxisAlignedBB d(double d0, double d1, double d2) {
          return new AxisAlignedBB(this.minX + d0, this.minY + d1, this.minZ + d2, this.maxX + d0, this.maxY + d1, this.maxZ + d2);
      }
-@@ -193,6 +346,7 @@ public class AxisAlignedBB {
+@@ -193,6 +354,7 @@ public class AxisAlignedBB {
          return new AxisAlignedBB(this.minX + (double) blockposition.getX(), this.minY + (double) blockposition.getY(), this.minZ + (double) blockposition.getZ(), this.maxX + (double) blockposition.getX(), this.maxY + (double) blockposition.getY(), this.maxZ + (double) blockposition.getZ());
      }
  
@@ -411,7 +419,7 @@ index ed9b2f9adfecdc6d1b9925579ec510657adde11f..20e9e06b36cda913809b46e71144d212
      public AxisAlignedBB c(Vec3D vec3d) {
          return this.d(vec3d.x, vec3d.y, vec3d.z);
      }
-@@ -212,6 +366,7 @@ public class AxisAlignedBB {
+@@ -212,6 +374,7 @@ public class AxisAlignedBB {
          return this.e(vec3d.x, vec3d.y, vec3d.z);
      }
  
@@ -591,7 +599,7 @@ index 95ef96286855624590b72d69514b0fc0e08fddba..73163b417af7e522a4509bf9c1ab56d6
          T t0 = this.h.a(this.a.a(i));
  
 diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 1b16bf2418552103e8b6b29e9761bf99812401ef..d023394f0d0be90c3d9e2ab36274f1b89fceb51b 100644
+index 82099329cfb47abc7aef60a672ca28e48ecf507d..d6a4065424932cd66d995f12560d0d13d56c1493 100644
 --- a/src/main/java/net/minecraft/server/Entity.java
 +++ b/src/main/java/net/minecraft/server/Entity.java
 @@ -136,7 +136,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
@@ -656,7 +664,7 @@ index 1b16bf2418552103e8b6b29e9761bf99812401ef..d023394f0d0be90c3d9e2ab36274f1b8
  
              if (this.aG() && this.isBurning()) {
                  this.playSound(SoundEffects.ENTITY_GENERIC_EXTINGUISH_FIRE, 0.7F, 1.6F + (this.random.nextFloat() - this.random.nextFloat()) * 0.4F);
-@@ -897,6 +925,135 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -897,6 +925,146 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return d0;
      }
  
@@ -744,16 +752,27 @@ index 1b16bf2418552103e8b6b29e9761bf99812401ef..d023394f0d0be90c3d9e2ab36274f1b8
 +        try {
 +            AxisAlignedBB collisionBox;
 +            double stepHeight = (double)this.getStepHeight();
-+            if (stepHeight > 0.0 && (this.onGround || (moveVector.y < 0.0)) && (moveVector.x != 0.0 || moveVector.z != 0.0)) {
-+                // don't bother getting the collisions if we don't need them.
-+                if (moveVector.y <= 0.0) {
-+                    collisionBox = currBoundingBox.expand(moveVector.x, moveVector.y, moveVector.z).expandUpwards(stepHeight);
++
++            if (moveVector.x == 0.0 && moveVector.z == 0.0 && moveVector.y != 0.0) {
++                // a lot of entities just stand still. optimise the search AABB
++                if (moveVector.y > 0.0) {
++                    collisionBox = currBoundingBox.cutUpwards(moveVector.y);
 +                } else {
-+                    collisionBox = currBoundingBox.expand(moveVector.x, Math.max(stepHeight, moveVector.y), moveVector.z);
++                    collisionBox = currBoundingBox.cutDownwards(moveVector.y);
 +                }
 +            } else {
-+                collisionBox = currBoundingBox.expand(moveVector.x, moveVector.y, moveVector.z);
++                if (stepHeight > 0.0 && (this.onGround || (moveVector.y < 0.0)) && (moveVector.x != 0.0 || moveVector.z != 0.0)) {
++                    // don't bother getting the collisions if we don't need them.
++                    if (moveVector.y <= 0.0) {
++                        collisionBox = currBoundingBox.expand(moveVector.x, moveVector.y, moveVector.z).expandUpwards(stepHeight);
++                    } else {
++                        collisionBox = currBoundingBox.expand(moveVector.x, Math.max(stepHeight, moveVector.y), moveVector.z);
++                    }
++                } else {
++                    collisionBox = currBoundingBox.expand(moveVector.x, moveVector.y, moveVector.z);
++                }
 +            }
++
 +            world.getCollisions(this, collisionBox, potentialCollisions, this instanceof EntityPlayer && !this.world.paperConfig.preventMovingIntoUnloadedChunks);
 +            if (world.getWorldBorder().isCollidingWithBorderEdge(collisionBox)) {
 +                VoxelShapes.addBoxesToIfIntersects(world.getWorldBorder().getCollisionShape(), collisionBox, potentialCollisions);
@@ -792,7 +811,7 @@ index 1b16bf2418552103e8b6b29e9761bf99812401ef..d023394f0d0be90c3d9e2ab36274f1b8
      private Vec3D g(Vec3D vec3d) {
          AxisAlignedBB axisalignedbb = this.getBoundingBox();
          VoxelShapeCollision voxelshapecollision = VoxelShapeCollision.a(this);
-@@ -932,6 +1089,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -932,6 +1100,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return vec3d1;
      }
  
@@ -800,7 +819,7 @@ index 1b16bf2418552103e8b6b29e9761bf99812401ef..d023394f0d0be90c3d9e2ab36274f1b8
      public static double c(Vec3D vec3d) {
          return vec3d.x * vec3d.x + vec3d.z * vec3d.z;
      }
-@@ -2026,9 +2184,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -2026,9 +2195,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
              float f1 = this.size.width * 0.8F;
              AxisAlignedBB axisalignedbb = AxisAlignedBB.g((double) f1, 0.10000000149011612D, (double) f1).d(this.locX(), this.getHeadY(), this.locZ());
  
@@ -812,7 +831,7 @@ index 1b16bf2418552103e8b6b29e9761bf99812401ef..d023394f0d0be90c3d9e2ab36274f1b8
          }
      }
  
-@@ -2036,10 +2194,12 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -2036,10 +2205,12 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
          return EnumInteractionResult.PASS;
      }
  
