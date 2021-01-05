@@ -11,7 +11,7 @@ patch, as we now use PacketPlayOutMapChunk as an extra packet.
 See its patch notes for further details.
 
 diff --git a/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java b/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java
-index 5094a5d6fb3c1a84d6e8f6abe79e894c047d9cfa..72fdbf1534b65284ac8020dcc15fe1512766d087 100644
+index b9276928a58d56ca9aac95d262d8555522946bd7..d5a8036b764699a70a69b7dc3d45ea6d10835c44 100644
 --- a/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java
 +++ b/src/main/java/net/minecraft/server/PacketPlayOutMapChunk.java
 @@ -19,7 +19,7 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
@@ -23,7 +23,7 @@ index 5094a5d6fb3c1a84d6e8f6abe79e894c047d9cfa..72fdbf1534b65284ac8020dcc15fe151
      private boolean h;
  
      // Paper start - Async-Anti-Xray - Set the ready flag to true
-@@ -31,14 +31,16 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+@@ -31,7 +31,9 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
  
      // Paper start
      private final java.util.List<Packet> extraPackets = new java.util.ArrayList<>();
@@ -34,15 +34,16 @@ index 5094a5d6fb3c1a84d6e8f6abe79e894c047d9cfa..72fdbf1534b65284ac8020dcc15fe151
  
      @Override
      public java.util.List<Packet> getExtraPackets() {
-         return extraPackets;
-     }
+@@ -40,7 +42,7 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
      // Paper end
--    public PacketPlayOutMapChunk(Chunk chunk, int i) {
-+    public PacketPlayOutMapChunk(Chunk chunk, int i) { final int chunkSectionBitSet = i; // Tuinity - handle oversized chunk data packets more robustly
-         ChunkPacketInfo<IBlockData> chunkPacketInfo = chunk.world.chunkPacketBlockController.getChunkPacketInfo(this, chunk, i); // Paper - Anti-Xray - Add chunk packet info
+     // Paper start - Anti-Xray - Add chunk packet info
+     @Deprecated public PacketPlayOutMapChunk(Chunk chunk, int i) { this(chunk, i, true); } // Notice for updates: Please make sure this constructor isn't used anywhere
+-    public PacketPlayOutMapChunk(Chunk chunk, int i, boolean modifyBlocks) {
++    public PacketPlayOutMapChunk(Chunk chunk, int i, boolean modifyBlocks) { final int chunkSectionBitSet = i; // Tuinity - handle oversized chunk data packets more robustly
+         ChunkPacketInfo<IBlockData> chunkPacketInfo = modifyBlocks ? chunk.world.chunkPacketBlockController.getChunkPacketInfo(this, chunk, i) : null;
+         // Paper end
          ChunkCoordIntPair chunkcoordintpair = chunk.getPos();
- 
-@@ -46,27 +48,12 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+@@ -49,27 +51,12 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
          this.b = chunkcoordintpair.z;
          this.h = i == 65535;
          this.d = new NBTTagCompound();
@@ -76,7 +77,7 @@ index 5094a5d6fb3c1a84d6e8f6abe79e894c047d9cfa..72fdbf1534b65284ac8020dcc15fe151
          // Paper end
          this.g = Lists.newArrayList();
          iterator = chunk.getTileEntities().entrySet().iterator();
-@@ -79,8 +66,16 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+@@ -82,8 +69,16 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
              int j = blockposition.getY() >> 4;
  
              if (this.f() || (i & 1 << j) != 0) {
@@ -94,7 +95,7 @@ index 5094a5d6fb3c1a84d6e8f6abe79e894c047d9cfa..72fdbf1534b65284ac8020dcc15fe151
                      PacketPlayOutTileEntityData updatePacket = tileentity.getUpdatePacket();
                      if (updatePacket != null) {
                          this.extraPackets.add(updatePacket);
-@@ -94,7 +89,42 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+@@ -97,7 +92,42 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
                  this.g.add(nbttagcompound);
              }
          }
@@ -137,7 +138,7 @@ index 5094a5d6fb3c1a84d6e8f6abe79e894c047d9cfa..72fdbf1534b65284ac8020dcc15fe151
      }
  
      // Paper start - Async-Anti-Xray - Getter and Setter for the ready flag
-@@ -185,7 +215,7 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+@@ -188,7 +218,7 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
          for (int l = achunksection.length; k < l; ++k) {
              ChunkSection chunksection = achunksection[k];
  
@@ -146,7 +147,7 @@ index 5094a5d6fb3c1a84d6e8f6abe79e894c047d9cfa..72fdbf1534b65284ac8020dcc15fe151
                  j |= 1 << k;
                  chunksection.writeChunkSection(packetdataserializer, chunkPacketInfo); // Paper - Anti-Xray - Add chunk packet info
              }
-@@ -202,7 +232,7 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
+@@ -205,7 +235,7 @@ public class PacketPlayOutMapChunk implements Packet<PacketListenerPlayOut> {
          for (int l = achunksection.length; k < l; ++k) {
              ChunkSection chunksection = achunksection[k];
  
