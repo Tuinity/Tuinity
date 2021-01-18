@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 18 Jan 2021 10:17:39 -0800
+Subject: [PATCH] Don't allow StructureLocateEvent to change worlds
+
+Callers and even the function itself aren't expecting
+this to happen
+
+diff --git a/src/main/java/net/minecraft/server/ChunkGenerator.java b/src/main/java/net/minecraft/server/ChunkGenerator.java
+index 097cb9896c525a605c50e83548f828e0c71ab3d5..17cf00dfe8b24adf2fb66eca4710ab7888a894e3 100644
+--- a/src/main/java/net/minecraft/server/ChunkGenerator.java
++++ b/src/main/java/net/minecraft/server/ChunkGenerator.java
+@@ -135,7 +135,7 @@ public abstract class ChunkGenerator {
+         // Get origin location (re)defined by event call.
+         blockposition = new BlockPosition(event.getOrigin().getBlockX(), event.getOrigin().getBlockY(), event.getOrigin().getBlockZ());
+         // Get world (re)defined by event call.
+-        worldserver = ((org.bukkit.craftbukkit.CraftWorld) event.getOrigin().getWorld()).getHandle();
++        //worldserver = ((org.bukkit.craftbukkit.CraftWorld) event.getOrigin().getWorld()).getHandle(); // Tuinity - callers and this function don't expect this to change
+         // Get radius and whether to find unexplored structures (re)defined by event call.
+         i = event.getRadius();
+         flag = event.shouldFindUnexplored();

@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 18 Jan 2021 14:02:22 -0800
+Subject: [PATCH] Properly handle cancellation of projectile hit event
+
+Subclasses override and run logic. Some of this logic destroys
+the projectile as well, which wouldn't be fitting for cancellation.
+
+diff --git a/src/main/java/net/minecraft/server/EntityArrow.java b/src/main/java/net/minecraft/server/EntityArrow.java
+index 1e7f5957d879d1ba8cf2b29cf9397b8e204e4381..f983516b89cdf7ce7fdea8f5a5b1a29dd01ae597 100644
+--- a/src/main/java/net/minecraft/server/EntityArrow.java
++++ b/src/main/java/net/minecraft/server/EntityArrow.java
+@@ -173,8 +173,10 @@ public abstract class EntityArrow extends IProjectile {
+                 // Paper end
+ 
+                 if (object != null && !flag) {
++                    if (org.bukkit.craftbukkit.event.CraftEventFactory.callProjectileHitEvent(this, (MovingObjectPosition) object)) { // CraftBukkit - Call event // Paper - make cancellable // Tuinity - implement cancellation properly
+                     this.a((MovingObjectPosition) object);
+                     this.impulse = true;
++                    } // Tuinity - implement cancellation properly
+                 }
+ 
+                 if (movingobjectpositionentity == null || this.getPierceLevel() <= 0) {
+diff --git a/src/main/java/net/minecraft/server/EntityFireball.java b/src/main/java/net/minecraft/server/EntityFireball.java
+index 0840fdf3585407ec317f0326359619220c64db78..6b9b64539d2272070b523ed6b927de02d2b00af5 100644
+--- a/src/main/java/net/minecraft/server/EntityFireball.java
++++ b/src/main/java/net/minecraft/server/EntityFireball.java
+@@ -67,7 +67,9 @@ public abstract class EntityFireball extends IProjectile {
+             // Paper end
+ 
+             if (movingobjectposition != null && movingobjectposition.getType() != MovingObjectPosition.EnumMovingObjectType.MISS) { // Paper - add null check in case cancelled
++                if (org.bukkit.craftbukkit.event.CraftEventFactory.callProjectileHitEvent(this, movingobjectposition)) { // CraftBukkit - Call event // Paper - make cancellable // Tuinity - implement cancellation properly
+                 this.a(movingobjectposition);
++                } // Tuinity - implement cancellation properly
+ 
+                 // CraftBukkit start - Fire ProjectileHitEvent
+                 if (this.dead) {
+diff --git a/src/main/java/net/minecraft/server/EntityFireworks.java b/src/main/java/net/minecraft/server/EntityFireworks.java
+index a646dc9f030ad1f76ba2b7bb1bc7897cd34b648c..dd18eabd7104995f0e6a8ecb279a3872b46773de 100644
+--- a/src/main/java/net/minecraft/server/EntityFireworks.java
++++ b/src/main/java/net/minecraft/server/EntityFireworks.java
+@@ -124,8 +124,10 @@ public class EntityFireworks extends IProjectile {
+         MovingObjectPosition movingobjectposition = ProjectileHelper.a((Entity) this, this::a);
+ 
+         if (!this.noclip) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.callProjectileHitEvent(this, movingobjectposition)) { // CraftBukkit - Call event // Paper - make cancellable // Tuinity - implement cancellation properly
+             this.a(movingobjectposition);
+             this.impulse = true;
++            } // Tuinity - implement cancellation properly
+         }
+ 
+         this.x();
+diff --git a/src/main/java/net/minecraft/server/EntityFishingHook.java b/src/main/java/net/minecraft/server/EntityFishingHook.java
+index e97c7794e86c0518bcec0a0370bffbeab20e2623..0816ab54bc99bcf29356b56516e83759a3f2988f 100644
+--- a/src/main/java/net/minecraft/server/EntityFishingHook.java
++++ b/src/main/java/net/minecraft/server/EntityFishingHook.java
+@@ -226,7 +226,9 @@ public class EntityFishingHook extends IProjectile {
+     private void m() {
+         MovingObjectPosition movingobjectposition = ProjectileHelper.a((Entity) this, this::a);
+ 
++        if (org.bukkit.craftbukkit.event.CraftEventFactory.callProjectileHitEvent(this, movingobjectposition)) { // CraftBukkit - Call event // Paper - make cancellable // Tuinity - implement cancellation properly
+         this.a(movingobjectposition);
++        } // Tuinity - implement cancellation properly
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/minecraft/server/EntityLlamaSpit.java b/src/main/java/net/minecraft/server/EntityLlamaSpit.java
+index 7636a51a7ef0aa05b5b2aaa9d17e7b551dedac96..480a02a8f6ec7110f9af8f2037fdc09a7a54ef01 100644
+--- a/src/main/java/net/minecraft/server/EntityLlamaSpit.java
++++ b/src/main/java/net/minecraft/server/EntityLlamaSpit.java
+@@ -19,7 +19,9 @@ public class EntityLlamaSpit extends IProjectile {
+         MovingObjectPosition movingobjectposition = ProjectileHelper.a((Entity) this, this::a);
+ 
+         if (movingobjectposition != null) {
++            if (org.bukkit.craftbukkit.event.CraftEventFactory.callProjectileHitEvent(this, movingobjectposition)) { // CraftBukkit - Call event // Paper - make cancellable // Tuinity - implement cancellation properly
+             this.a(movingobjectposition);
++            } // Tuinity - implement cancellation properly
+         }
+ 
+         double d0 = this.locX() + vec3d.x;
+diff --git a/src/main/java/net/minecraft/server/EntityProjectile.java b/src/main/java/net/minecraft/server/EntityProjectile.java
+index 53a8ea7d1eff84abe6c49464d556aa2788a6abcb..d85a19905efab7189e461a61becb6ca2b8c50803 100644
+--- a/src/main/java/net/minecraft/server/EntityProjectile.java
++++ b/src/main/java/net/minecraft/server/EntityProjectile.java
+@@ -48,7 +48,7 @@ public abstract class EntityProjectile extends IProjectile {
+                     movingobjectposition = null;
+                 }
+             }
+-            if (movingobjectposition != null) {
++            if (movingobjectposition != null && org.bukkit.craftbukkit.event.CraftEventFactory.callProjectileHitEvent(this, movingobjectposition)) { // Tuinity - implement cancellation properly
+             // Paper end
+             this.a(movingobjectposition);
+             } // Paper
+diff --git a/src/main/java/net/minecraft/server/EntityShulkerBullet.java b/src/main/java/net/minecraft/server/EntityShulkerBullet.java
+index 23017b5486530bcf76b3934cfa8621e8b4772b27..a4d94385ede0303417d676155c2c0b226681cc59 100644
+--- a/src/main/java/net/minecraft/server/EntityShulkerBullet.java
++++ b/src/main/java/net/minecraft/server/EntityShulkerBullet.java
+@@ -206,7 +206,7 @@ public class EntityShulkerBullet extends IProjectile {
+ 
+             MovingObjectPosition movingobjectposition = ProjectileHelper.a((Entity) this, this::a);
+ 
+-            if (movingobjectposition.getType() != MovingObjectPosition.EnumMovingObjectType.MISS) {
++            if (movingobjectposition.getType() != MovingObjectPosition.EnumMovingObjectType.MISS && org.bukkit.craftbukkit.event.CraftEventFactory.callProjectileHitEvent(this, movingobjectposition)) { // Tuinity - implement cancellation properly
+                 this.a(movingobjectposition);
+             }
+         }
+diff --git a/src/main/java/net/minecraft/server/IProjectile.java b/src/main/java/net/minecraft/server/IProjectile.java
+index bbc089b41fcbe0141f13591db2cb44b9e688cac4..dc9f2a1a132b3a7925bd62aa1da0512afd90b8b1 100644
+--- a/src/main/java/net/minecraft/server/IProjectile.java
++++ b/src/main/java/net/minecraft/server/IProjectile.java
+@@ -118,7 +118,7 @@ public abstract class IProjectile extends Entity {
+     }
+ 
+     protected void a(MovingObjectPosition movingobjectposition) {
+-        if (!org.bukkit.craftbukkit.event.CraftEventFactory.callProjectileHitEvent(this, movingobjectposition)) return; // CraftBukkit - Call event // Paper - make cancellable
++        // Tuinity - proper cancellation requires moving this into the caller (see method overrides) - TODO this unfortunately means we need to manually inspect each call on update
+         MovingObjectPosition.EnumMovingObjectType movingobjectposition_enummovingobjecttype = movingobjectposition.getType();
+ 
+         if (movingobjectposition_enummovingobjecttype == MovingObjectPosition.EnumMovingObjectType.ENTITY) {
