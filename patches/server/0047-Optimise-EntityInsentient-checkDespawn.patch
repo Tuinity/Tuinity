@@ -135,7 +135,7 @@ index a072208bcd92ffa9ed47757de291b82be2e71e8e..8b4ab23563a9a0c047267143dc3c6c55
      // Paper end - optimise isOutsideOfRange
      // Paper start - optimize chunk status progression without jumping through thread pool
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 1cc9ec0377ce4f27ee1a9495b68325a29746c699..2861e46eb4d22346b4eeb167a023efedc7f0f33e 100644
+index 83f070229098ad31b8ae65ffcebe52886ef2884d..f4d5ff1d0f1ad34032aaab96e1077f4be43d4bf3 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -195,6 +195,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -180,7 +180,7 @@ index 1cc9ec0377ce4f27ee1a9495b68325a29746c699..2861e46eb4d22346b4eeb167a023efed
  
 @@ -462,6 +474,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          // Tuinity start
-         this.dataRegionManager = null;//new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
+         this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
          // Tuinity end
 +        // Tuinity start - optimise checkDespawn
 +        this.playerGeneralAreaMap = new com.destroystokyo.paper.util.misc.PlayerAreaMap(this.pooledLinkedPlayerHashSets,
@@ -242,7 +242,7 @@ index 3ad08863c00d96c827c26c8d4c9a206a43bb1db9..28ee325fcc8b50397768363403823f2e
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig(((WorldDataServer) worlddatamutable).getName()); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(((WorldDataServer) worlddatamutable).getName(), this.spigotConfig); // Paper
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 311685c9d8229d6bdde8d82375fc1d9db43d4edb..64704800c690e81f32537ec171f630dc078b3371 100644
+index 80b2507414dc603deb0b542e5f5d86969af9d21b..c0617e513d321439db3d5fd9517da1f38f1fbd88 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -300,6 +300,10 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -256,7 +256,7 @@ index 311685c9d8229d6bdde8d82375fc1d9db43d4edb..64704800c690e81f32537ec171f630dc
      // Add env and gen to constructor, WorldData -> WorldDataServer
      public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
          super(iworlddataserver, resourcekey, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
-@@ -858,6 +862,14 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -650,6 +654,14 @@ public class WorldServer extends World implements GeneratorAccessSeed {
  
      public void doTick(BooleanSupplier booleansupplier) {
          GameProfilerFiller gameprofilerfiller = this.getMethodProfiler();

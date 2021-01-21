@@ -6,10 +6,10 @@ Subject: [PATCH] Util patch
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa17d4046fc
+index 0000000000000000000000000000000000000000..20150ad0750a648d349701a09b31881be124e46c
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
-@@ -0,0 +1,405 @@
+@@ -0,0 +1,488 @@
 +package com.tuinity.tuinity.chunk;
 +
 +import co.aikar.timings.MinecraftTimings;
@@ -22,18 +22,18 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +import net.minecraft.server.MCUtil;
 +import net.minecraft.server.WorldServer;
 +import java.util.ArrayList;
++import java.util.Arrays;
 +import java.util.EnumMap;
 +import java.util.Iterator;
 +import java.util.List;
 +import java.util.function.Function;
-+import java.util.function.LongFunction;
 +
 +public final class SingleThreadChunkRegionManager<T extends Enum<T> & SingleThreadChunkRegionManager.RegionDataCreator<T>> {
 +
 +    static final int REGION_SECTION_MERGE_RADIUS = 1;
 +    // if this becomes > 8, then the RegionSection needs to be properly modified (see bitset)
-+    public static final int REGION_CHUNK_SIZE = 8;
-+    public static final int REGION_CHUNK_SIZE_SHIFT = 3; // log2(REGION_CHUNK_SIZE)
++    public static final int REGION_CHUNK_SIZE = 32;
++    public static final int REGION_CHUNK_SIZE_SHIFT = 5; // log2(REGION_CHUNK_SIZE)
 +
 +    public final WorldServer world;
 +    public final Class<T> dataClass;
@@ -63,6 +63,23 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +        this.regionRecalculateTimings = MinecraftTimings.getInternalTaskName(prefix.concat("recalculate"));
 +    }
 +
++    // tested via https://gist.github.com/Spottedleaf/aa7ade3451c37b4cac061fc77074db2f
++
++    /*
++    protected void check() {
++        ReferenceOpenHashSet<Region<T>> checked = new ReferenceOpenHashSet<>();
++
++        for (RegionSection<T> section : this.regionsBySection.values()) {
++            if (!checked.add(section.region)) {
++                section.region.check();
++            }
++        }
++        for (Region<T> region : this.needsRecalculation) {
++            region.check();
++        }
++    }
++    */
++
 +    protected void addToRecalcQueue(final Region<T> region) {
 +        this.needsRecalculation.add(region);
 +    }
@@ -81,20 +98,26 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +    }
 +
 +    private final List<Region<T>> toMerge = new ArrayList<>((2 * REGION_SECTION_MERGE_RADIUS + 1) * (2 * REGION_SECTION_MERGE_RADIUS + 1));
-+    protected final LongFunction<RegionSection<T>> createRegionIfAbsent = (final long keyInMap) -> {
-+        return new RegionSection<>(keyInMap, SingleThreadChunkRegionManager.this);
-+    };
 +
 +    protected RegionSection<T> getOrCreateAndMergeSection(final int sectionX, final int sectionZ, final RegionSection<T> force) {
-+        // find optimal candidate to merge into
-+        final int minX = sectionX - REGION_SECTION_MERGE_RADIUS;
-+        final int maxX = sectionX + REGION_SECTION_MERGE_RADIUS;
-+        final int minZ = sectionZ - REGION_SECTION_MERGE_RADIUS;
-+        final int maxZ = sectionZ + REGION_SECTION_MERGE_RADIUS;
++        final long sectionKey = MCUtil.getCoordinateKey(sectionX, sectionZ);
++
++        if (force == null) {
++            RegionSection<T> region = this.regionsBySection.get(sectionKey);
++            if (region != null) {
++                return region;
++            }
++        }
 +
 +        int mergeCandidateSectionSize = -1;
 +        Region<T> mergeIntoCandidate = null;
 +
++        // find optimal candidate to merge into
++
++        final int minX = sectionX - REGION_SECTION_MERGE_RADIUS;
++        final int maxX = sectionX + REGION_SECTION_MERGE_RADIUS;
++        final int minZ = sectionZ - REGION_SECTION_MERGE_RADIUS;
++        final int maxZ = sectionZ + REGION_SECTION_MERGE_RADIUS;
 +        for (int currX = minX; currX <= maxX; ++currX) {
 +            for (int currZ = minZ; currZ <= maxZ; ++currZ) {
 +                final RegionSection<T> section = this.regionsBySection.get(MCUtil.getCoordinateKey(currX, currZ));
@@ -117,21 +140,21 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +
 +        // merge
 +        if (mergeIntoCandidate != null) {
-+            for (int len = this.toMerge.size(), i = len - 1; i >= 0; --i) {
-+                final Region<T> region = this.toMerge.remove(i);
++            for (int i = 0; i < this.toMerge.size(); ++i) {
++                final Region<T> region = this.toMerge.get(i);
 +                if (region.dead || mergeIntoCandidate == region) {
 +                    continue;
 +                }
 +                region.mergeInto(mergeIntoCandidate);
 +            }
++            this.toMerge.clear();
 +        } else {
 +            mergeIntoCandidate = new Region<>(this);
 +        }
 +
-+        final long sectionKey = MCUtil.getCoordinateKey(sectionX, sectionZ);
 +        final RegionSection<T> section;
 +        if (force == null) {
-+            section = this.regionsBySection.computeIfAbsent(sectionKey, this.createRegionIfAbsent);
++            this.regionsBySection.put(sectionKey, section = new RegionSection<>(sectionKey, this));
 +        } else {
 +            final RegionSection<T> existing = this.regionsBySection.putIfAbsent(sectionKey, force);
 +            if (existing != null) {
@@ -144,6 +167,8 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +
 +        section.region = mergeIntoCandidate;
 +        mergeIntoCandidate.sections.add(section);
++        //mergeIntoCandidate.check();
++        //this.check();
 +
 +        return section;
 +    }
@@ -161,7 +186,8 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +        this.removeChunkTimings.startTiming();
 +        try {
 +            final RegionSection<T> section = this.regionsBySection.get(
-+                    MCUtil.getCoordinateKey(chunkX >> REGION_CHUNK_SIZE_SHIFT, chunkZ >> REGION_CHUNK_SIZE_SHIFT));
++                    MCUtil.getCoordinateKey(chunkX >> REGION_CHUNK_SIZE_SHIFT, chunkZ >> REGION_CHUNK_SIZE_SHIFT)
++            );
 +            if (section != null) {
 +                section.removeChunk(chunkX, chunkZ);
 +            } else {
@@ -177,6 +203,7 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +            final Region<T> region = this.needsRecalculation.removeFirst();
 +
 +            this.recalculateRegion(region);
++            //this.check();
 +        }
 +    }
 +
@@ -184,23 +211,28 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +        this.regionRecalculateTimings.startTiming();
 +        try {
 +            region.markedForRecalc = false;
++            //region.check();
 +            // clear unused regions
-+            for (final Iterator<RegionSection<T>> iterator = region.deadSections.iterator(); iterator.hasNext(); ) {
++            for (final Iterator<RegionSection<T>> iterator = region.deadSections.iterator(); iterator.hasNext();) {
 +                final RegionSection<T> deadSection = iterator.next();
++
++                if (deadSection.hasChunks()) {
++                    throw new IllegalStateException("Dead section '" + deadSection.toStringWithRegion() + "' is marked dead but has chunks!");
++                }
++                if (!region.sections.remove(deadSection)) {
++                    throw new IllegalStateException("Region " + region + " has inconsistent state, it should contain section " + deadSection);
++                }
 +                if (!this.regionsBySection.remove(deadSection.regionCoordinate, deadSection)) {
 +                    throw new IllegalStateException("Cannot remove dead section '" +
 +                            deadSection.toStringWithRegion() + "' from section state! State at section coordinate: " +
 +                            this.regionsBySection.get(deadSection.regionCoordinate));
 +                }
-+                if (!region.sections.remove(deadSection)) {
-+                    throw new IllegalStateException("Region " + region + " has inconsistent state, it should contain section " + deadSection);
-+                }
-+
-+                iterator.remove();
 +            }
++            region.deadSections.clear();
 +
 +            // implicitly cover cases where size == 0
 +            if (region.sections.size() < this.minSectionRecalcCount) {
++                //region.check();
 +                return;
 +            }
 +
@@ -213,6 +245,9 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +            // destroy region state
 +            for (final Iterator<RegionSection<T>> iterator = region.sections.unsafeIterator(IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
 +                final RegionSection<T> aliveSection = iterator.next();
++                if (!aliveSection.hasChunks()) {
++                    throw new IllegalStateException("Alive section '" + aliveSection.toStringWithRegion() + "' has no chunks!");
++                }
 +                if (!this.regionsBySection.remove(aliveSection.regionCoordinate, aliveSection)) {
 +                    throw new IllegalStateException("Cannot remove alive section '" +
 +                            aliveSection.toStringWithRegion() + "' from section state! State at section coordinate: " +
@@ -250,13 +285,36 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +            return (double)this.deadSections.size() / (double)this.sections.size();
 +        }
 +
++        /*
++        protected void check() {
++            if (this.dead) {
++                throw new IllegalStateException("Dead region!");
++            }
++            for (final Iterator<RegionSection<T>> iterator = this.sections.unsafeIterator(IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
++                final RegionSection<T> section = iterator.next();
++                if (section.region != this) {
++                    throw new IllegalStateException("Region section must point to us!");
++                }
++                if (this.regionManager.regionsBySection.get(section.regionCoordinate) != section) {
++                    throw new IllegalStateException("Region section must match the regionmanager state!");
++                }
++            }
++        }
++        */
++
 +        protected void mergeInto(final Region<T> mergeTarget) {
++            if (this == mergeTarget) {
++                throw new IllegalStateException("Cannot merge a region onto itself");
++            }
 +            if (this.dead) {
 +                throw new IllegalStateException("Source region is dead! Source " + this + ", target " + mergeTarget);
 +            } else if (mergeTarget.dead) {
 +                throw new IllegalStateException("Target region is dead! Source " + this + ", target " + mergeTarget);
 +            }
 +            this.dead = true;
++            if (this.markedForRecalc) {
++                this.regionManager.removeFromRecalcQueue(this);
++            }
 +
 +            for (final Iterator<RegionSection<T>> iterator = this.sections.unsafeIterator(IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
 +                final RegionSection<T> section = iterator.next();
@@ -274,6 +332,7 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +                }
 +                mergeTarget.deadSections.add(deadSection);
 +            }
++            //mergeTarget.check();
 +        }
 +
 +        protected void markSectionAlive(final RegionSection<T> section) {
@@ -318,7 +377,8 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +
 +    public static final class RegionSection<T extends Enum<T> & SingleThreadChunkRegionManager.RegionDataCreator<T>> {
 +        protected final long regionCoordinate;
-+        protected long chunksBitset;
++        protected final long[] chunksBitset = new long[Math.max(1, REGION_CHUNK_SIZE * REGION_CHUNK_SIZE / Long.SIZE)];
++        protected int chunkCount;
 +        protected Region<T> region;
 +        protected final EnumMap<T, Object> data;
 +        protected final Function<? super T, Object> createIfAbsentFunction;
@@ -366,25 +426,31 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +            return (chunkX & (REGION_CHUNK_SIZE - 1)) | ((chunkZ & (REGION_CHUNK_SIZE - 1)) << REGION_CHUNK_SIZE_SHIFT);
 +        }
 +
++        protected boolean hasChunks() {
++            return this.chunkCount != 0;
++        }
++
 +        protected void addChunk(final int chunkX, final int chunkZ) {
-+            final long bitset = this.chunksBitset;
-+            final long after = this.chunksBitset = bitset | (1L << getChunkIndex(chunkX, chunkZ));
++            final int index = getChunkIndex(chunkX, chunkZ);
++            final long bitset = this.chunksBitset[index >>> 6]; // index / Long.SIZE
++            final long after = this.chunksBitset[index >>> 6] = bitset | (1L << (index & (Long.SIZE - 1)));
 +            if (after == bitset) {
 +                throw new IllegalStateException("Cannot add a chunk to a section which already has the chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
 +            }
-+            if (bitset != 0L) {
++            if (++this.chunkCount != 1) {
 +                return;
 +            }
 +            this.region.markSectionAlive(this);
 +        }
 +
 +        protected void removeChunk(final int chunkX, final int chunkZ) {
-+            final long before = this.chunksBitset;
-+            final long bitset = this.chunksBitset = before & ~(1L << getChunkIndex(chunkX, chunkZ));
++            final int index = getChunkIndex(chunkX, chunkZ);
++            final long before = this.chunksBitset[index >>> 6]; // index / Long.SIZE
++            final long bitset = this.chunksBitset[index >>> 6] = before & ~(1L << (index & (Long.SIZE - 1)));
 +            if (before == bitset) {
 +                throw new IllegalStateException("Cannot remove a chunk from a section which does not have that chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
 +            }
-+            if (bitset != 0L) {
++            if (--this.chunkCount != 0) {
 +                return;
 +            }
 +            this.region.markSectionDead(this);
@@ -394,18 +460,35 @@ index 0000000000000000000000000000000000000000..b8f5aafc8a9cb75364adf26c2d653fa1
 +        public String toString() {
 +            return "RegionSection{" +
 +                    "regionCoordinate=" + new ChunkCoordIntPair(this.regionCoordinate).toString() + "," +
-+                    "chunksBitset=" + Long.toHexString(this.chunksBitset) + "," +
-+                    "hash=" + this.hashCode() + "," +
++                    "chunkCount=" + this.chunkCount + "," +
++                    "chunksBitset=" + toString(this.chunksBitset) + "," +
++                    "hash=" + this.hashCode() +
 +                    "}";
 +        }
 +
 +        public String toStringWithRegion() {
 +            return "RegionSection{" +
 +                    "regionCoordinate=" + new ChunkCoordIntPair(this.regionCoordinate).toString() + "," +
-+                    "chunksBitset=" + Long.toHexString(this.chunksBitset) + "," +
++                    "chunkCount=" + this.chunkCount + "," +
++                    "chunksBitset=" + toString(this.chunksBitset) + "," +
 +                    "hash=" + this.hashCode() + "," +
-+                    "region=" + this.region + "," +
++                    "region=" + this.region +
 +                    "}";
++        }
++
++        private static String toString(final long[] array) {
++            StringBuilder ret = new StringBuilder();
++            for (long value : array) {
++                // zero pad the hex string
++                char[] zeros = new char[Long.SIZE / 4];
++                Arrays.fill(zeros, '0');
++                String string = Long.toHexString(value);
++                System.arraycopy(string.toCharArray(), 0, zeros, zeros.length - string.length(), string.length());
++
++                ret.append(zeros);
++            }
++
++            return ret.toString();
 +        }
 +    }
 +
@@ -524,14 +607,15 @@ index 0000000000000000000000000000000000000000..d2c7d2c7920324d7207225ed19484e80
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..6d2851ffa32e299dc7588e29ad5076253786080e
+index 0000000000000000000000000000000000000000..be408aebbccbda46e8aa82ef337574137cfa0096
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,335 @@
 +package com.tuinity.tuinity.util.maplist;
 +
 +import it.unimi.dsi.fastutil.objects.Reference2IntLinkedOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.Reference2IntMap;
++import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 +import org.bukkit.Bukkit;
 +import java.util.Arrays;
 +import java.util.NoSuchElementException;
@@ -573,6 +657,48 @@ index 0000000000000000000000000000000000000000..6d2851ffa32e299dc7588e29ad507625
 +        this.listElements = (E[])new Object[arrayCapacity];
 +        this.threadRestricted = threadRestricted;
 +    }
++
++    /*
++    public void check() {
++        int iterated = 0;
++        ReferenceOpenHashSet<E> check = new ReferenceOpenHashSet<>();
++        if (this.listElements != null) {
++            for (int i = 0; i < this.listSize; ++i) {
++                Object obj = this.listElements[i];
++                if (obj != null) {
++                    iterated++;
++                    if (!check.add((E)obj)) {
++                        throw new IllegalStateException("contains duplicate");
++                    }
++                    if (!this.contains((E)obj)) {
++                        throw new IllegalStateException("desync");
++                    }
++                }
++            }
++        }
++
++        if (iterated != this.size()) {
++            throw new IllegalStateException("Size is mismatched! Got " + iterated + ", expected " + this.size());
++        }
++
++        check.clear();
++        iterated = 0;
++        for (final java.util.Iterator<E> iterator = this.unsafeIterator(IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
++            final E element = iterator.next();
++            iterated++;
++            if (!check.add(element)) {
++                throw new IllegalStateException("contains duplicate (iterator is wrong)");
++            }
++            if (!this.contains(element)) {
++                throw new IllegalStateException("desync (iterator is wrong)");
++            }
++        }
++
++        if (iterated != this.size()) {
++            throw new IllegalStateException("Size is mismatched! (iterator is wrong) Got " + iterated + ", expected " + this.size());
++        }
++    }
++    */
 +
 +    protected final boolean allowSafeIteration() {
 +        return !this.threadRestricted || Bukkit.isPrimaryThread();
@@ -626,6 +752,7 @@ index 0000000000000000000000000000000000000000..6d2851ffa32e299dc7588e29ad507625
 +            if (this.allowSafeIteration() && this.iteratorCount == 0 && this.getFragFactor() >= this.maxFragFactor) {
 +                this.defrag();
 +            }
++            //this.check();
 +            return true;
 +        }
 +        return false;
@@ -649,6 +776,7 @@ index 0000000000000000000000000000000000000000..6d2851ffa32e299dc7588e29ad507625
 +        this.listElements[listSize] = element;
 +        this.listSize = listSize + 1;
 +
++        //this.check();
 +        return true;
 +    }
 +
@@ -661,6 +789,7 @@ index 0000000000000000000000000000000000000000..6d2851ffa32e299dc7588e29ad507625
 +            Arrays.fill(this.listElements, 0, this.listSize, null);
 +            this.listSize = 0;
 +            this.firstInvalidIndex = -1;
++            //this.check();
 +            return;
 +        }
 +
@@ -705,6 +834,7 @@ index 0000000000000000000000000000000000000000..6d2851ffa32e299dc7588e29ad507625
 +        Arrays.fill(backingArray, lastValidIndex, this.listSize, null);
 +        this.listSize = lastValidIndex;
 +        this.firstInvalidIndex = -1;
++        //this.check();
 +    }
 +
 +    public E rawGet(final int index) {
@@ -813,6 +943,1026 @@ index 0000000000000000000000000000000000000000..6d2851ffa32e299dc7588e29ad507625
 +            if (this.set.allowSafeIteration()) {
 +                this.set.finishRawIterator();
 +            }
++        }
++    }
++}
+diff --git a/src/main/java/com/tuinity/tuinity/util/misc/Delayed26WayDistancePropagator3D.java b/src/main/java/com/tuinity/tuinity/util/misc/Delayed26WayDistancePropagator3D.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..155d10994f2d7df9ac927d955d99016fe304360f
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/util/misc/Delayed26WayDistancePropagator3D.java
+@@ -0,0 +1,295 @@
++package com.tuinity.tuinity.util.misc;
++
++import it.unimi.dsi.fastutil.HashCommon;
++import it.unimi.dsi.fastutil.bytes.ByteArrayFIFOQueue;
++import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
++import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
++import it.unimi.dsi.fastutil.longs.LongIterator;
++import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
++import net.minecraft.server.MCUtil;
++
++public final class Delayed26WayDistancePropagator3D {
++
++    // this map is considered "stale" unless updates are propagated.
++    protected final Delayed8WayDistancePropagator2D.LevelMap levels = new Delayed8WayDistancePropagator2D.LevelMap(8192*2, 0.6f);
++
++    // this map is never stale
++    protected final Long2ByteOpenHashMap sources = new Long2ByteOpenHashMap(4096, 0.6f);
++
++    // Generally updates to positions are made close to other updates, so we link to decrease cache misses when
++    // propagating updates
++    protected final LongLinkedOpenHashSet updatedSources = new LongLinkedOpenHashSet();
++
++    @FunctionalInterface
++    public static interface LevelChangeCallback {
++
++        /**
++         * This can be called for intermediate updates. So do not rely on newLevel being close to or
++         * the exact level that is expected after a full propagation has occured.
++         */
++        public void onLevelUpdate(final long coordinate, final byte oldLevel, final byte newLevel);
++
++    }
++
++    protected final LevelChangeCallback changeCallback;
++
++    public Delayed26WayDistancePropagator3D() {
++        this(null);
++    }
++
++    public Delayed26WayDistancePropagator3D(final LevelChangeCallback changeCallback) {
++        this.changeCallback = changeCallback;
++    }
++
++    public int getLevel(final long pos) {
++        return this.levels.get(pos);
++    }
++
++    public int getLevel(final int x, final int y, final int z) {
++        return this.levels.get(MCUtil.getSectionKey(x, y, z));
++    }
++
++    public void setSource(final int x, final int y, final int z, final int level) {
++        this.setSource(MCUtil.getSectionKey(x, y, z), level);
++    }
++
++    public void setSource(final long coordinate, final int level) {
++        if ((level & 63) != level || level == 0) {
++            throw new IllegalArgumentException("Level must be in (0, 63], not " + level);
++        }
++
++        final byte byteLevel = (byte)level;
++        final byte oldLevel = this.sources.put(coordinate, byteLevel);
++
++        if (oldLevel == byteLevel) {
++            return; // nothing to do
++        }
++
++        // queue to update later
++        this.updatedSources.add(coordinate);
++    }
++
++    public void removeSource(final int x, final int y, final int z) {
++        this.removeSource(MCUtil.getSectionKey(x, y, z));
++    }
++
++    public void removeSource(final long coordinate) {
++        if (this.sources.remove(coordinate) != 0) {
++            this.updatedSources.add(coordinate);
++        }
++    }
++
++    // queues used for BFS propagating levels
++    protected final Delayed8WayDistancePropagator2D.WorkQueue[] levelIncreaseWorkQueues = new Delayed8WayDistancePropagator2D.WorkQueue[64];
++    {
++        for (int i = 0; i < this.levelIncreaseWorkQueues.length; ++i) {
++            this.levelIncreaseWorkQueues[i] = new Delayed8WayDistancePropagator2D.WorkQueue();
++        }
++    }
++    protected final Delayed8WayDistancePropagator2D.WorkQueue[] levelRemoveWorkQueues = new Delayed8WayDistancePropagator2D.WorkQueue[64];
++    {
++        for (int i = 0; i < this.levelRemoveWorkQueues.length; ++i) {
++            this.levelRemoveWorkQueues[i] = new Delayed8WayDistancePropagator2D.WorkQueue();
++        }
++    }
++    protected long levelIncreaseWorkQueueBitset;
++    protected long levelRemoveWorkQueueBitset;
++
++    protected final void addToIncreaseWorkQueue(final long coordinate, final byte level) {
++        final Delayed8WayDistancePropagator2D.WorkQueue queue = this.levelIncreaseWorkQueues[level];
++        queue.queuedCoordinates.enqueue(coordinate);
++        queue.queuedLevels.enqueue(level);
++
++        this.levelIncreaseWorkQueueBitset |= (1L << level);
++    }
++
++    protected final void addToIncreaseWorkQueue(final long coordinate, final byte index, final byte level) {
++        final Delayed8WayDistancePropagator2D.WorkQueue queue = this.levelIncreaseWorkQueues[index];
++        queue.queuedCoordinates.enqueue(coordinate);
++        queue.queuedLevels.enqueue(level);
++
++        this.levelIncreaseWorkQueueBitset |= (1L << index);
++    }
++
++    protected final void addToRemoveWorkQueue(final long coordinate, final byte level) {
++        final Delayed8WayDistancePropagator2D.WorkQueue queue = this.levelRemoveWorkQueues[level];
++        queue.queuedCoordinates.enqueue(coordinate);
++        queue.queuedLevels.enqueue(level);
++
++        this.levelRemoveWorkQueueBitset |= (1L << level);
++    }
++
++    public void propagateUpdates() {
++        if (this.updatedSources.isEmpty()) {
++            return;
++        }
++
++        for (final LongIterator iterator = this.updatedSources.iterator(); iterator.hasNext();) {
++            final long coordinate = iterator.nextLong();
++
++            final byte currentLevel = this.levels.get(coordinate);
++            final byte updatedSource = this.sources.get(coordinate);
++
++            if (currentLevel == updatedSource) {
++                continue;
++            }
++
++            if (updatedSource > currentLevel) {
++                // level increase
++                this.addToIncreaseWorkQueue(coordinate, updatedSource);
++            } else {
++                // level decrease
++                this.addToRemoveWorkQueue(coordinate, currentLevel);
++                // if the current coordinate is a source, then the decrease propagation will detect that and queue
++                // the source propagation
++            }
++        }
++
++        this.updatedSources.clear();
++
++        // propagate source level increases first for performance reasons (in crowded areas hopefully the additions
++        // make the removes remove less)
++        this.propagateIncreases();
++
++        // now we propagate the decreases (which will then re-propagate clobbered sources)
++        this.propagateDecreases();
++    }
++
++    protected void propagateIncreases() {
++        for (int queueIndex = 63 ^ Long.numberOfLeadingZeros(this.levelIncreaseWorkQueueBitset);
++             this.levelIncreaseWorkQueueBitset != 0L;
++             this.levelIncreaseWorkQueueBitset ^= (1L << queueIndex), queueIndex = 63 ^ Long.numberOfLeadingZeros(this.levelIncreaseWorkQueueBitset)) {
++
++            final Delayed8WayDistancePropagator2D.WorkQueue queue = this.levelIncreaseWorkQueues[queueIndex];
++            while (!queue.queuedLevels.isEmpty()) {
++                final long coordinate = queue.queuedCoordinates.removeFirstLong();
++                byte level = queue.queuedLevels.removeFirstByte();
++
++                final boolean neighbourCheck = level < 0;
++
++                final byte currentLevel;
++                if (neighbourCheck) {
++                    level = (byte)-level;
++                    currentLevel = this.levels.get(coordinate);
++                } else {
++                    currentLevel = this.levels.putIfGreater(coordinate, level);
++                }
++
++                if (neighbourCheck) {
++                    // used when propagating from decrease to indicate that this level needs to check its neighbours
++                    // this means the level at coordinate could be equal, but would still need neighbours checked
++
++                    if (currentLevel != level) {
++                        // something caused the level to change, which means something propagated to it (which means
++                        // us propagating here is redundant), or something removed the level (which means we
++                        // cannot propagate further)
++                        continue;
++                    }
++                } else if (currentLevel >= level) {
++                    // something higher/equal propagated
++                    continue;
++                }
++                if (this.changeCallback != null) {
++                    this.changeCallback.onLevelUpdate(coordinate, currentLevel, level);
++                }
++
++                if (level == 1) {
++                    // can't propagate 0 to neighbours
++                    continue;
++                }
++
++                // propagate to neighbours
++                final byte neighbourLevel = (byte)(level - 1);
++                final int x = MCUtil.getSectionX(coordinate);
++                final int y = MCUtil.getSectionY(coordinate);
++                final int z = MCUtil.getSectionZ(coordinate);
++
++                for (int dy = -1; dy <= 1; ++dy) {
++                    for (int dz = -1; dz <= 1; ++dz) {
++                        for (int dx = -1; dx <= 1; ++dx) {
++                            if ((dy | dz | dx) == 0) {
++                                // already propagated to coordinate
++                                continue;
++                            }
++
++                            // sure we can check the neighbour level in the map right now and avoid a propagation,
++                            // but then we would still have to recheck it when popping the value off of the queue!
++                            // so just avoid the double lookup
++                            final long neighbourCoordinate = MCUtil.getSectionKey(dx + x, dy + y, dz + z);
++                            this.addToIncreaseWorkQueue(neighbourCoordinate, neighbourLevel);
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    protected void propagateDecreases() {
++        for (int queueIndex = 63 ^ Long.numberOfLeadingZeros(this.levelRemoveWorkQueueBitset);
++             this.levelRemoveWorkQueueBitset != 0L;
++             this.levelRemoveWorkQueueBitset ^= (1L << queueIndex), queueIndex = 63 ^ Long.numberOfLeadingZeros(this.levelRemoveWorkQueueBitset)) {
++
++            final Delayed8WayDistancePropagator2D.WorkQueue queue = this.levelRemoveWorkQueues[queueIndex];
++            while (!queue.queuedLevels.isEmpty()) {
++                final long coordinate = queue.queuedCoordinates.removeFirstLong();
++                final byte level = queue.queuedLevels.removeFirstByte();
++
++                final byte currentLevel = this.levels.removeIfGreaterOrEqual(coordinate, level);
++                if (currentLevel == 0) {
++                    // something else removed
++                    continue;
++                }
++
++                if (currentLevel > level) {
++                    // something higher propagated here or we hit the propagation of another source
++                    // in the second case we need to re-propagate because we could have just clobbered another source's
++                    // propagation
++                    this.addToIncreaseWorkQueue(coordinate, currentLevel, (byte)-currentLevel); // indicate to the increase code that the level's neighbours need checking
++                    continue;
++                }
++
++                if (this.changeCallback != null) {
++                    this.changeCallback.onLevelUpdate(coordinate, currentLevel, (byte)0);
++                }
++
++                final byte source = this.sources.get(coordinate);
++                if (source != 0) {
++                    // must re-propagate source later
++                    this.addToIncreaseWorkQueue(coordinate, source);
++                }
++
++                if (level == 0) {
++                    // can't propagate -1 to neighbours
++                    // we have to check neighbours for removing 1 just in case the neighbour is 2
++                    continue;
++                }
++
++                // propagate to neighbours
++                final byte neighbourLevel = (byte)(level - 1);
++                final int x = MCUtil.getSectionX(coordinate);
++                final int y = MCUtil.getSectionY(coordinate);
++                final int z = MCUtil.getSectionZ(coordinate);
++
++                for (int dy = -1; dy <= 1; ++dy) {
++                    for (int dz = -1; dz <= 1; ++dz) {
++                        for (int dx = -1; dx <= 1; ++dx) {
++                            if ((dy | dz | dx) == 0) {
++                                // already propagated to coordinate
++                                continue;
++                            }
++
++                            // sure we can check the neighbour level in the map right now and avoid a propagation,
++                            // but then we would still have to recheck it when popping the value off of the queue!
++                            // so just avoid the double lookup
++                            final long neighbourCoordinate = MCUtil.getSectionKey(dx + x, dy + y, dz + z);
++                            this.addToRemoveWorkQueue(neighbourCoordinate, neighbourLevel);
++                        }
++                    }
++                }
++            }
++        }
++
++        // propagate sources we clobbered in the process
++        this.propagateIncreases();
++    }
++}
+diff --git a/src/main/java/com/tuinity/tuinity/util/misc/Delayed8WayDistancePropagator2D.java b/src/main/java/com/tuinity/tuinity/util/misc/Delayed8WayDistancePropagator2D.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..606417a8aeaca2682595f417bba8e9d411999da9
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/util/misc/Delayed8WayDistancePropagator2D.java
+@@ -0,0 +1,713 @@
++package com.tuinity.tuinity.util.misc;
++
++import it.unimi.dsi.fastutil.HashCommon;
++import it.unimi.dsi.fastutil.bytes.ByteArrayFIFOQueue;
++import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
++import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
++import it.unimi.dsi.fastutil.longs.LongIterator;
++import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
++import net.minecraft.server.MCUtil;
++
++public final class Delayed8WayDistancePropagator2D {
++
++    // Test
++    /*
++    protected static void test(int x, int z, com.destroystokyo.paper.util.misc.DistanceTrackingAreaMap<Ticket> reference, Delayed8WayDistancePropagator2D test) {
++        int got = test.getLevel(x, z);
++
++        int expect = 0;
++        Object[] nearest = reference.getObjectsInRange(x, z) == null ? null : reference.getObjectsInRange(x, z).getBackingSet();
++        if (nearest != null) {
++            for (Object _obj : nearest) {
++                if (_obj instanceof Ticket) {
++                    Ticket ticket = (Ticket)_obj;
++                    long ticketCoord = reference.getLastCoordinate(ticket);
++                    int viewDistance = reference.getLastViewDistance(ticket);
++                    int distance = Math.max(com.destroystokyo.paper.util.math.IntegerUtil.branchlessAbs(MCUtil.getCoordinateX(ticketCoord) - x),
++                            com.destroystokyo.paper.util.math.IntegerUtil.branchlessAbs(MCUtil.getCoordinateZ(ticketCoord) - z));
++                    int level = viewDistance - distance;
++                    if (level > expect) {
++                        expect = level;
++                    }
++                }
++            }
++        }
++
++        if (expect != got) {
++            throw new IllegalStateException("Expected " + expect + " at pos (" + x + "," + z + ") but got " + got);
++        }
++    }
++
++    static class Ticket {
++
++        int x;
++        int z;
++
++        final com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<Ticket> empty
++                = new com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<>(this);
++
++    }
++
++    public static void main(final String[] args) {
++        com.destroystokyo.paper.util.misc.DistanceTrackingAreaMap<Ticket> reference = new com.destroystokyo.paper.util.misc.DistanceTrackingAreaMap<Ticket>() {
++            @Override
++            protected com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<Ticket> getEmptySetFor(Ticket object) {
++                return object.empty;
++            }
++        };
++        Delayed8WayDistancePropagator2D test = new Delayed8WayDistancePropagator2D();
++
++        final int maxDistance = 64;
++        // test origin
++        {
++            Ticket originTicket = new Ticket();
++            int originDistance = 31;
++            // test single source
++            reference.add(originTicket, 0, 0, originDistance);
++            test.setSource(0, 0, originDistance); test.propagateUpdates(); // set and propagate
++            for (int dx = -originDistance; dx <= originDistance; ++dx) {
++                for (int dz = -originDistance; dz <= originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++            // test single source decrease
++            reference.update(originTicket, 0, 0, originDistance/2);
++            test.setSource(0, 0, originDistance/2); test.propagateUpdates(); // set and propagate
++            for (int dx = -originDistance; dx <= originDistance; ++dx) {
++                for (int dz = -originDistance; dz <= originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++            // test source increase
++            originDistance = 2*originDistance;
++            reference.update(originTicket, 0, 0, originDistance);
++            test.setSource(0, 0, originDistance); test.propagateUpdates(); // set and propagate
++            for (int dx = -4*originDistance; dx <= 4*originDistance; ++dx) {
++                for (int dz = -4*originDistance; dz <= 4*originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++
++            reference.remove(originTicket);
++            test.removeSource(0, 0); test.propagateUpdates();
++        }
++
++        // test multiple sources at origin
++        {
++            int originDistance = 31;
++            java.util.List<Ticket> list = new java.util.ArrayList<>();
++            for (int i = 0; i < 10; ++i) {
++                Ticket a = new Ticket();
++                list.add(a);
++                a.x = (i & 1) == 1 ? -i : i;
++                a.z = (i & 1) == 1 ? -i : i;
++            }
++            for (Ticket ticket : list) {
++                reference.add(ticket, ticket.x, ticket.z, originDistance);
++                test.setSource(ticket.x, ticket.z, originDistance);
++            }
++            test.propagateUpdates();
++
++            for (int dx = -8*originDistance; dx <= 8*originDistance; ++dx) {
++                for (int dz = -8*originDistance; dz <= 8*originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++
++            // test ticket level decrease
++
++            for (Ticket ticket : list) {
++                reference.update(ticket, ticket.x, ticket.z, originDistance/2);
++                test.setSource(ticket.x, ticket.z, originDistance/2);
++            }
++            test.propagateUpdates();
++
++            for (int dx = -8*originDistance; dx <= 8*originDistance; ++dx) {
++                for (int dz = -8*originDistance; dz <= 8*originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++
++            // test ticket level increase
++
++            for (Ticket ticket : list) {
++                reference.update(ticket, ticket.x, ticket.z, originDistance*2);
++                test.setSource(ticket.x, ticket.z, originDistance*2);
++            }
++            test.propagateUpdates();
++
++            for (int dx = -16*originDistance; dx <= 16*originDistance; ++dx) {
++                for (int dz = -16*originDistance; dz <= 16*originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++
++            // test ticket remove
++            for (int i = 0, len = list.size(); i < len; ++i) {
++                if ((i & 3) != 0) {
++                    continue;
++                }
++                Ticket ticket = list.get(i);
++                reference.remove(ticket);
++                test.removeSource(ticket.x, ticket.z);
++            }
++            test.propagateUpdates();
++
++            for (int dx = -16*originDistance; dx <= 16*originDistance; ++dx) {
++                for (int dz = -16*originDistance; dz <= 16*originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++        }
++
++        // now test at coordinate offsets
++        // test offset
++        {
++            Ticket originTicket = new Ticket();
++            int originDistance = 31;
++            int offX = 54432;
++            int offZ = -134567;
++            // test single source
++            reference.add(originTicket, offX, offZ, originDistance);
++            test.setSource(offX, offZ, originDistance); test.propagateUpdates(); // set and propagate
++            for (int dx = -originDistance; dx <= originDistance; ++dx) {
++                for (int dz = -originDistance; dz <= originDistance; ++dz) {
++                    test(dx + offX, dz + offZ, reference, test);
++                }
++            }
++            // test single source decrease
++            reference.update(originTicket, offX, offZ, originDistance/2);
++            test.setSource(offX, offZ, originDistance/2); test.propagateUpdates(); // set and propagate
++            for (int dx = -originDistance; dx <= originDistance; ++dx) {
++                for (int dz = -originDistance; dz <= originDistance; ++dz) {
++                    test(dx + offX, dz + offZ, reference, test);
++                }
++            }
++            // test source increase
++            originDistance = 2*originDistance;
++            reference.update(originTicket, offX, offZ, originDistance);
++            test.setSource(offX, offZ, originDistance); test.propagateUpdates(); // set and propagate
++            for (int dx = -4*originDistance; dx <= 4*originDistance; ++dx) {
++                for (int dz = -4*originDistance; dz <= 4*originDistance; ++dz) {
++                    test(dx + offX, dz + offZ, reference, test);
++                }
++            }
++
++            reference.remove(originTicket);
++            test.removeSource(offX, offZ); test.propagateUpdates();
++        }
++
++        // test multiple sources at origin
++        {
++            int originDistance = 31;
++            int offX = 54432;
++            int offZ = -134567;
++            java.util.List<Ticket> list = new java.util.ArrayList<>();
++            for (int i = 0; i < 10; ++i) {
++                Ticket a = new Ticket();
++                list.add(a);
++                a.x = offX + ((i & 1) == 1 ? -i : i);
++                a.z = offZ + ((i & 1) == 1 ? -i : i);
++            }
++            for (Ticket ticket : list) {
++                reference.add(ticket, ticket.x, ticket.z, originDistance);
++                test.setSource(ticket.x, ticket.z, originDistance);
++            }
++            test.propagateUpdates();
++
++            for (int dx = -8*originDistance; dx <= 8*originDistance; ++dx) {
++                for (int dz = -8*originDistance; dz <= 8*originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++
++            // test ticket level decrease
++
++            for (Ticket ticket : list) {
++                reference.update(ticket, ticket.x, ticket.z, originDistance/2);
++                test.setSource(ticket.x, ticket.z, originDistance/2);
++            }
++            test.propagateUpdates();
++
++            for (int dx = -8*originDistance; dx <= 8*originDistance; ++dx) {
++                for (int dz = -8*originDistance; dz <= 8*originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++
++            // test ticket level increase
++
++            for (Ticket ticket : list) {
++                reference.update(ticket, ticket.x, ticket.z, originDistance*2);
++                test.setSource(ticket.x, ticket.z, originDistance*2);
++            }
++            test.propagateUpdates();
++
++            for (int dx = -16*originDistance; dx <= 16*originDistance; ++dx) {
++                for (int dz = -16*originDistance; dz <= 16*originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++
++            // test ticket remove
++            for (int i = 0, len = list.size(); i < len; ++i) {
++                if ((i & 3) != 0) {
++                    continue;
++                }
++                Ticket ticket = list.get(i);
++                reference.remove(ticket);
++                test.removeSource(ticket.x, ticket.z);
++            }
++            test.propagateUpdates();
++
++            for (int dx = -16*originDistance; dx <= 16*originDistance; ++dx) {
++                for (int dz = -16*originDistance; dz <= 16*originDistance; ++dz) {
++                    test(dx, dz, reference, test);
++                }
++            }
++        }
++    }
++     */
++
++    // this map is considered "stale" unless updates are propagated.
++    protected final LevelMap levels = new LevelMap(8192*2, 0.6f);
++
++    // this map is never stale
++    protected final Long2ByteOpenHashMap sources = new Long2ByteOpenHashMap(4096, 0.6f);
++
++    // Generally updates to positions are made close to other updates, so we link to decrease cache misses when
++    // propagating updates
++    protected final LongLinkedOpenHashSet updatedSources = new LongLinkedOpenHashSet();
++
++    @FunctionalInterface
++    public static interface LevelChangeCallback {
++
++        /**
++         * This can be called for intermediate updates. So do not rely on newLevel being close to or
++         * the exact level that is expected after a full propagation has occured.
++         */
++        public void onLevelUpdate(final long coordinate, final byte oldLevel, final byte newLevel);
++
++    }
++
++    protected final LevelChangeCallback changeCallback;
++
++    public Delayed8WayDistancePropagator2D() {
++        this(null);
++    }
++
++    public Delayed8WayDistancePropagator2D(final LevelChangeCallback changeCallback) {
++        this.changeCallback = changeCallback;
++    }
++
++    public int getLevel(final long pos) {
++        return this.levels.get(pos);
++    }
++
++    public int getLevel(final int x, final int z) {
++        return this.levels.get(MCUtil.getCoordinateKey(x, z));
++    }
++
++    public void setSource(final int x, final int z, final int level) {
++        this.setSource(MCUtil.getCoordinateKey(x, z), level);
++    }
++
++    public void setSource(final long coordinate, final int level) {
++        if ((level & 63) != level || level == 0) {
++            throw new IllegalArgumentException("Level must be in (0, 63], not " + level);
++        }
++
++        final byte byteLevel = (byte)level;
++        final byte oldLevel = this.sources.put(coordinate, byteLevel);
++
++        if (oldLevel == byteLevel) {
++            return; // nothing to do
++        }
++
++        // queue to update later
++        this.updatedSources.add(coordinate);
++    }
++
++    public void removeSource(final int x, final int z) {
++        this.removeSource(MCUtil.getCoordinateKey(x, z));
++    }
++
++    public void removeSource(final long coordinate) {
++        if (this.sources.remove(coordinate) != 0) {
++            this.updatedSources.add(coordinate);
++        }
++    }
++
++    // queues used for BFS propagating levels
++    protected final WorkQueue[] levelIncreaseWorkQueues = new WorkQueue[64];
++    {
++        for (int i = 0; i < this.levelIncreaseWorkQueues.length; ++i) {
++            this.levelIncreaseWorkQueues[i] = new WorkQueue();
++        }
++    }
++    protected final WorkQueue[] levelRemoveWorkQueues = new WorkQueue[64];
++    {
++        for (int i = 0; i < this.levelRemoveWorkQueues.length; ++i) {
++            this.levelRemoveWorkQueues[i] = new WorkQueue();
++        }
++    }
++    protected long levelIncreaseWorkQueueBitset;
++    protected long levelRemoveWorkQueueBitset;
++
++    protected final void addToIncreaseWorkQueue(final long coordinate, final byte level) {
++        final WorkQueue queue = this.levelIncreaseWorkQueues[level];
++        queue.queuedCoordinates.enqueue(coordinate);
++        queue.queuedLevels.enqueue(level);
++
++        this.levelIncreaseWorkQueueBitset |= (1L << level);
++    }
++
++    protected final void addToIncreaseWorkQueue(final long coordinate, final byte index, final byte level) {
++        final WorkQueue queue = this.levelIncreaseWorkQueues[index];
++        queue.queuedCoordinates.enqueue(coordinate);
++        queue.queuedLevels.enqueue(level);
++
++        this.levelIncreaseWorkQueueBitset |= (1L << index);
++    }
++
++    protected final void addToRemoveWorkQueue(final long coordinate, final byte level) {
++        final WorkQueue queue = this.levelRemoveWorkQueues[level];
++        queue.queuedCoordinates.enqueue(coordinate);
++        queue.queuedLevels.enqueue(level);
++
++        this.levelRemoveWorkQueueBitset |= (1L << level);
++    }
++
++    public void propagateUpdates() {
++        if (this.updatedSources.isEmpty()) {
++            return;
++        }
++
++        for (final LongIterator iterator = this.updatedSources.iterator(); iterator.hasNext();) {
++            final long coordinate = iterator.nextLong();
++
++            final byte currentLevel = this.levels.get(coordinate);
++            final byte updatedSource = this.sources.get(coordinate);
++
++            if (currentLevel == updatedSource) {
++                continue;
++            }
++
++            if (updatedSource > currentLevel) {
++                // level increase
++                this.addToIncreaseWorkQueue(coordinate, updatedSource);
++            } else {
++                // level decrease
++                this.addToRemoveWorkQueue(coordinate, currentLevel);
++                // if the current coordinate is a source, then the decrease propagation will detect that and queue
++                // the source propagation
++            }
++        }
++
++        this.updatedSources.clear();
++
++        // propagate source level increases first for performance reasons (in crowded areas hopefully the additions
++        // make the removes remove less)
++        this.propagateIncreases();
++
++        // now we propagate the decreases (which will then re-propagate clobbered sources)
++        this.propagateDecreases();
++    }
++
++    protected void propagateIncreases() {
++        for (int queueIndex = 63 ^ Long.numberOfLeadingZeros(this.levelIncreaseWorkQueueBitset);
++             this.levelIncreaseWorkQueueBitset != 0L;
++             this.levelIncreaseWorkQueueBitset ^= (1L << queueIndex), queueIndex = 63 ^ Long.numberOfLeadingZeros(this.levelIncreaseWorkQueueBitset)) {
++
++            final WorkQueue queue = this.levelIncreaseWorkQueues[queueIndex];
++            while (!queue.queuedLevels.isEmpty()) {
++                final long coordinate = queue.queuedCoordinates.removeFirstLong();
++                byte level = queue.queuedLevels.removeFirstByte();
++
++                final boolean neighbourCheck = level < 0;
++
++                final byte currentLevel;
++                if (neighbourCheck) {
++                    level = (byte)-level;
++                    currentLevel = this.levels.get(coordinate);
++                } else {
++                    currentLevel = this.levels.putIfGreater(coordinate, level);
++                }
++
++                if (neighbourCheck) {
++                    // used when propagating from decrease to indicate that this level needs to check its neighbours
++                    // this means the level at coordinate could be equal, but would still need neighbours checked
++
++                    if (currentLevel != level) {
++                        // something caused the level to change, which means something propagated to it (which means
++                        // us propagating here is redundant), or something removed the level (which means we
++                        // cannot propagate further)
++                        continue;
++                    }
++                } else if (currentLevel >= level) {
++                    // something higher/equal propagated
++                    continue;
++                }
++                if (this.changeCallback != null) {
++                    this.changeCallback.onLevelUpdate(coordinate, currentLevel, level);
++                }
++
++                if (level == 1) {
++                    // can't propagate 0 to neighbours
++                    continue;
++                }
++
++                // propagate to neighbours
++                final byte neighbourLevel = (byte)(level - 1);
++                final int x = (int)coordinate;
++                final int z = (int)(coordinate >>> 32);
++
++                for (int dx = -1; dx <= 1; ++dx) {
++                    for (int dz = -1; dz <= 1; ++dz) {
++                        if ((dx | dz) == 0) {
++                            // already propagated to coordinate
++                            continue;
++                        }
++
++                        // sure we can check the neighbour level in the map right now and avoid a propagation,
++                        // but then we would still have to recheck it when popping the value off of the queue!
++                        // so just avoid the double lookup
++                        final long neighbourCoordinate = MCUtil.getCoordinateKey(x + dx, z + dz);
++                        this.addToIncreaseWorkQueue(neighbourCoordinate, neighbourLevel);
++                    }
++                }
++            }
++        }
++    }
++
++    protected void propagateDecreases() {
++        for (int queueIndex = 63 ^ Long.numberOfLeadingZeros(this.levelRemoveWorkQueueBitset);
++             this.levelRemoveWorkQueueBitset != 0L;
++             this.levelRemoveWorkQueueBitset ^= (1L << queueIndex), queueIndex = 63 ^ Long.numberOfLeadingZeros(this.levelRemoveWorkQueueBitset)) {
++
++            final WorkQueue queue = this.levelRemoveWorkQueues[queueIndex];
++            while (!queue.queuedLevels.isEmpty()) {
++                final long coordinate = queue.queuedCoordinates.removeFirstLong();
++                final byte level = queue.queuedLevels.removeFirstByte();
++
++                final byte currentLevel = this.levels.removeIfGreaterOrEqual(coordinate, level);
++                if (currentLevel == 0) {
++                    // something else removed
++                    continue;
++                }
++
++                if (currentLevel > level) {
++                    // something higher propagated here or we hit the propagation of another source
++                    // in the second case we need to re-propagate because we could have just clobbered another source's
++                    // propagation
++                    this.addToIncreaseWorkQueue(coordinate, currentLevel, (byte)-currentLevel); // indicate to the increase code that the level's neighbours need checking
++                    continue;
++                }
++
++                if (this.changeCallback != null) {
++                    this.changeCallback.onLevelUpdate(coordinate, currentLevel, (byte)0);
++                }
++
++                final byte source = this.sources.get(coordinate);
++                if (source != 0) {
++                    // must re-propagate source later
++                    this.addToIncreaseWorkQueue(coordinate, source);
++                }
++
++                if (level == 0) {
++                    // can't propagate -1 to neighbours
++                    // we have to check neighbours for removing 1 just in case the neighbour is 2
++                    continue;
++                }
++
++                // propagate to neighbours
++                final byte neighbourLevel = (byte)(level - 1);
++                final int x = (int)coordinate;
++                final int z = (int)(coordinate >>> 32);
++
++                for (int dx = -1; dx <= 1; ++dx) {
++                    for (int dz = -1; dz <= 1; ++dz) {
++                        if ((dx | dz) == 0) {
++                            // already propagated to coordinate
++                            continue;
++                        }
++
++                        // sure we can check the neighbour level in the map right now and avoid a propagation,
++                        // but then we would still have to recheck it when popping the value off of the queue!
++                        // so just avoid the double lookup
++                        final long neighbourCoordinate = MCUtil.getCoordinateKey(x + dx, z + dz);
++                        this.addToRemoveWorkQueue(neighbourCoordinate, neighbourLevel);
++                    }
++                }
++            }
++        }
++
++        // propagate sources we clobbered in the process
++        this.propagateIncreases();
++    }
++
++    protected static final class LevelMap extends Long2ByteOpenHashMap {
++        public LevelMap() {
++            super();
++        }
++
++        public LevelMap(final int expected, final float loadFactor) {
++            super(expected, loadFactor);
++        }
++
++        // copied from superclass
++        private int find(final long k) {
++            if (k == 0L) {
++                return this.containsNullKey ? this.n : -(this.n + 1);
++            } else {
++                final long[] key = this.key;
++                long curr;
++                int pos;
++                if ((curr = key[pos = (int)HashCommon.mix(k) & this.mask]) == 0L) {
++                    return -(pos + 1);
++                } else if (k == curr) {
++                    return pos;
++                } else {
++                    while((curr = key[pos = pos + 1 & this.mask]) != 0L) {
++                        if (k == curr) {
++                            return pos;
++                        }
++                    }
++
++                    return -(pos + 1);
++                }
++            }
++        }
++
++        // copied from superclass
++        private void insert(final int pos, final long k, final byte v) {
++            if (pos == this.n) {
++                this.containsNullKey = true;
++            }
++
++            this.key[pos] = k;
++            this.value[pos] = v;
++            if (this.size++ >= this.maxFill) {
++                this.rehash(HashCommon.arraySize(this.size + 1, this.f));
++            }
++        }
++
++        // copied from superclass
++        public byte putIfGreater(final long key, final byte value) {
++            final int pos = this.find(key);
++            if (pos < 0) {
++                if (this.defRetValue < value) {
++                    this.insert(-pos - 1, key, value);
++                }
++                return this.defRetValue;
++            } else {
++                final byte curr = this.value[pos];
++                if (value > curr) {
++                    this.value[pos] = value;
++                    return curr;
++                }
++                return curr;
++            }
++        }
++
++        // copied from superclass
++        private void removeEntry(final int pos) {
++            --this.size;
++            this.shiftKeys(pos);
++            if (this.n > this.minN && this.size < this.maxFill / 4 && this.n > 16) {
++                this.rehash(this.n / 2);
++            }
++        }
++
++        // copied from superclass
++        private void removeNullEntry() {
++            this.containsNullKey = false;
++            --this.size;
++            if (this.n > this.minN && this.size < this.maxFill / 4 && this.n > 16) {
++                this.rehash(this.n / 2);
++            }
++        }
++
++        // copied from superclass
++        public byte removeIfGreaterOrEqual(final long key, final byte value) {
++            if (key == 0L) {
++                if (!this.containsNullKey) {
++                    return this.defRetValue;
++                }
++                final byte current = this.value[this.n];
++                if (value >= current) {
++                    this.removeNullEntry();
++                    return current;
++                }
++                return current;
++            } else {
++                long[] keys = this.key;
++                byte[] values = this.value;
++                long curr;
++                int pos;
++                if ((curr = keys[pos = (int)HashCommon.mix(key) & this.mask]) == 0L) {
++                    return this.defRetValue;
++                } else if (key == curr) {
++                    final byte current = values[pos];
++                    if (value >= current) {
++                        this.removeEntry(pos);
++                        return current;
++                    }
++                    return current;
++                } else {
++                    while((curr = keys[pos = pos + 1 & this.mask]) != 0L) {
++                        if (key == curr) {
++                            final byte current = values[pos];
++                            if (value >= current) {
++                                this.removeEntry(pos);
++                                return current;
++                            }
++                            return current;
++                        }
++                    }
++
++                    return this.defRetValue;
++                }
++            }
++        }
++    }
++
++    protected static final class WorkQueue {
++
++        public final NoResizeLongArrayFIFODeque queuedCoordinates = new NoResizeLongArrayFIFODeque();
++        public final NoResizeByteArrayFIFODeque queuedLevels = new NoResizeByteArrayFIFODeque();
++
++    }
++
++    protected static final class NoResizeLongArrayFIFODeque extends LongArrayFIFOQueue {
++
++        /**
++         * Assumes non-empty. If empty, undefined behaviour.
++         */
++        public long removeFirstLong() {
++            // copied from superclass
++            long t = this.array[this.start];
++            if (++this.start == this.length) {
++                this.start = 0;
++            }
++
++            return t;
++        }
++    }
++
++    protected static final class NoResizeByteArrayFIFODeque extends ByteArrayFIFOQueue {
++
++        /**
++         * Assumes non-empty. If empty, undefined behaviour.
++         */
++        public byte removeFirstByte() {
++            // copied from superclass
++            byte t = this.array[this.start];
++            if (++this.start == this.length) {
++                this.start = 0;
++            }
++
++            return t;
 +        }
 +    }
 +}
@@ -1102,6 +2252,74 @@ index 14ddb2a8949ce18a0c42e17a82d0d7a13ac325fe..476da43b9f0ef35b4985f88e4784b1f8
      public int a(int i, int j) {
          return this.a(c(i, j));
      }
+diff --git a/src/main/java/net/minecraft/server/MCUtil.java b/src/main/java/net/minecraft/server/MCUtil.java
+index ff74be14512a947e81b62d53e616131ca7d7f609..2371557d083446b17ffebdae576b1cc39e939eb1 100644
+--- a/src/main/java/net/minecraft/server/MCUtil.java
++++ b/src/main/java/net/minecraft/server/MCUtil.java
+@@ -221,6 +221,63 @@ public final class MCUtil {
+         return getBlockKey(getBlockCoordinate(entity.locX()), getBlockCoordinate(entity.locY()), getBlockCoordinate(entity.locZ()));
+     }
+ 
++    // Tuinity start
++
++    static final int SECTION_X_BITS = 22;
++    static final long SECTION_X_MASK = (1L << SECTION_X_BITS) - 1;
++    static final int SECTION_Y_BITS = 20;
++    static final long SECTION_Y_MASK = (1L << SECTION_Y_BITS) - 1;
++    static final int SECTION_Z_BITS = 22;
++    static final long SECTION_Z_MASK = (1L << SECTION_Z_BITS) - 1;
++    // format is y,z,x (in order of LSB to MSB)
++    static final int SECTION_Y_SHIFT = 0;
++    static final int SECTION_Z_SHIFT = SECTION_Y_SHIFT + SECTION_Y_BITS;
++    static final int SECTION_X_SHIFT = SECTION_Z_SHIFT + SECTION_X_BITS;
++    static final int SECTION_TO_BLOCK_SHIFT = 4;
++
++    public static long getSectionKey(final int x, final int y, final int z) {
++        return ((x & SECTION_X_MASK) << SECTION_X_SHIFT)
++                | ((y & SECTION_Y_MASK) << SECTION_Y_SHIFT)
++                | ((z & SECTION_Z_MASK) << SECTION_Z_SHIFT);
++    }
++
++    public static long getSectionKey(final SectionPosition pos) {
++        return ((pos.getX() & SECTION_X_MASK) << SECTION_X_SHIFT)
++                | ((pos.getY() & SECTION_Y_MASK) << SECTION_Y_SHIFT)
++                | ((pos.getZ() & SECTION_Z_MASK) << SECTION_Z_SHIFT);
++    }
++
++    public static long getSectionKey(final ChunkCoordIntPair pos, final int y) {
++        return ((pos.x & SECTION_X_MASK) << SECTION_X_SHIFT)
++                | ((y & SECTION_Y_MASK) << SECTION_Y_SHIFT)
++                | ((pos.z & SECTION_Z_MASK) << SECTION_Z_SHIFT);
++    }
++
++    public static long getSectionKey(final BlockPosition pos) {
++        return (((long)pos.getX() << (SECTION_X_SHIFT - SECTION_TO_BLOCK_SHIFT)) & (SECTION_X_MASK << SECTION_X_SHIFT)) |
++                ((pos.getY() >> SECTION_TO_BLOCK_SHIFT) & (SECTION_Y_MASK << SECTION_Y_SHIFT)) |
++                (((long)pos.getZ() << (SECTION_Z_SHIFT - SECTION_TO_BLOCK_SHIFT)) & (SECTION_Z_MASK << SECTION_Z_SHIFT));
++    }
++
++    public static long getSectionKey(final Entity entity) {
++        return ((MCUtil.fastFloor(entity.locX()) & SECTION_X_MASK) << SECTION_X_SHIFT)
++                | ((MCUtil.fastFloor(entity.locY()) & SECTION_Y_MASK) << SECTION_Y_SHIFT)
++                | ((MCUtil.fastFloor(entity.locZ()) & SECTION_Z_MASK) << SECTION_Z_SHIFT);
++    }
++
++    public static int getSectionX(final long key) {
++        return (int)(key << (Long.SIZE - (SECTION_X_SHIFT + SECTION_X_BITS)) >> (Long.SIZE - SECTION_X_BITS));
++    }
++
++    public static int getSectionY(final long key) {
++        return (int)(key << (Long.SIZE - (SECTION_Y_SHIFT + SECTION_Y_BITS)) >> (Long.SIZE - SECTION_Y_BITS));
++    }
++
++    public static int getSectionZ(final long key) {
++        return (int)(key << (Long.SIZE - (SECTION_Z_SHIFT + SECTION_Z_BITS)) >> (Long.SIZE - SECTION_Z_BITS));
++    }
++    // Tuinity end
++
+     // assumes the sets have the same comparator, and if this comparator is null then assume T is Comparable
+     public static <T> void mergeSortedSets(final java.util.function.Consumer<T> consumer, final java.util.Comparator<? super T> comparator, final java.util.SortedSet<T>...sets) {
+         final ObjectRBTreeSet<T> all = new ObjectRBTreeSet<>(comparator);
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
 index d19f944c774ad241626b268771df8e7e86cc71ae..49fae9a579d31e298c3d2c351bf0a330bf3aaf5d 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java

@@ -25,10 +25,10 @@ index 13d067f48647dea63ef1bf3a2a3e0868074ba75f..04afd7f285db2f281a038e0be6f557b8
          this.a(Long.MAX_VALUE, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 89d4d016e9e804732c12757cb7d64d113683c304..17f0a0ccbe89d88b7b6fccc1ed6b05d5aeab57da 100644
+index e136195f3e806c50492b89811e82940fd38bafa6..16779ffa00caf32752170700e1d88092802fa932 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -837,6 +837,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -838,6 +838,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.p, this);
                      this.dataRegionManager.addChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
                  }
@@ -36,7 +36,7 @@ index 89d4d016e9e804732c12757cb7d64d113683c304..17f0a0ccbe89d88b7b6fccc1ed6b05d5
  
                  this.updatingChunks.put(i, playerchunk);
                  this.updatingChunksModified = true;
-@@ -962,7 +963,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -963,7 +964,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      }
  
@@ -45,7 +45,7 @@ index 89d4d016e9e804732c12757cb7d64d113683c304..17f0a0ccbe89d88b7b6fccc1ed6b05d5
  
      protected void unloadChunks(BooleanSupplier booleansupplier) {
          GameProfilerFiller gameprofilerfiller = this.world.getMethodProfiler();
-@@ -1113,6 +1114,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1114,6 +1115,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      this.worldLoadListener.a(ichunkaccess.getPos(), (ChunkStatus) null);
                  }
                  if (removed) this.dataRegionManager.removeChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
@@ -53,7 +53,7 @@ index 89d4d016e9e804732c12757cb7d64d113683c304..17f0a0ccbe89d88b7b6fccc1ed6b05d5
                  } finally { this.unloadingPlayerChunk = unloadingBefore; } // Tuinity - do not allow ticket level changes while unloading chunks
  
              }
-@@ -1205,6 +1207,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1206,6 +1208,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
                  this.getVillagePlace().loadInData(chunkcoordintpair, chunkHolder.poiData);
                  chunkHolder.tasks.forEach(Runnable::run);
@@ -134,7 +134,7 @@ index d9362b74fda2ea937281f897fbc2cb501775a275..79a11d17a2822b192dec5981d0344ae6
          if (!this.d.isEmpty()) {
              for (int i = 0; i < 16; ++i) {
 diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
-index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..f202e80c8bbd1b3854a329248141f55eb0ee06cf 100644
+index 0094babbd59cc81554b9480088464d632824ae8e..fce9967912628c232fe41ccc17fe2296f001ec61 100644
 --- a/src/main/java/net/minecraft/server/VillagePlace.java
 +++ b/src/main/java/net/minecraft/server/VillagePlace.java
 @@ -4,6 +4,7 @@ import com.mojang.datafixers.DataFixer;
@@ -145,18 +145,34 @@ index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..f202e80c8bbd1b3854a329248141f55e
  import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
  import it.unimi.dsi.fastutil.longs.LongSet;
  import java.io.File;
-@@ -22,8 +23,8 @@ import java.util.stream.Stream;
+@@ -22,8 +23,24 @@ import java.util.stream.Stream;
  
  public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
  
 -    private final VillagePlace.a a = new VillagePlace.a();
 -    private final LongSet b = new LongOpenHashSet();
-+    private final VillagePlace.a a = new VillagePlace.a(); private final VillagePlace.a getVillageDistanceTracker() { return this.a; } // Tuinity - OBFHELPER
++    // Tuinity start - unload poi data
++    // the vanilla tracker needs to be replaced because it does not support level removes
++    private final com.tuinity.tuinity.util.misc.Delayed26WayDistancePropagator3D villageDistanceTracker = new com.tuinity.tuinity.util.misc.Delayed26WayDistancePropagator3D();
++    static final int POI_DATA_SOURCE = 7;
++    public static int convertBetweenLevels(final int level) {
++        return POI_DATA_SOURCE - level;
++    }
++
++    protected void updateDistanceTracking(long section) {
++        if (this.isSectionDistanceTrackerSource(section)) {
++            this.villageDistanceTracker.setSource(section, POI_DATA_SOURCE);
++        } else {
++            this.villageDistanceTracker.removeSource(section);
++        }
++    }
++    // Tuinity end - unload poi data
++
 +    private final LongSet b = new LongOpenHashSet(); private final LongSet getLoadedChunks() { return this.b; } // Tuinity - OBFHELPER
  
      private final WorldServer world; // Paper
  
-@@ -34,9 +35,124 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+@@ -34,9 +51,124 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
      public VillagePlace(File file, DataFixer datafixer, boolean flag, WorldServer world) {
          super(file, VillagePlaceSection::a, VillagePlaceSection::new, datafixer, DataFixTypes.POI_CHUNK, flag);
          this.world = world;
@@ -207,9 +223,9 @@ index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..f202e80c8bbd1b3854a329248141f55e
 +
 +    long determineDelay(long coordinate) {
 +        if (this.isEmpty(coordinate)) {
-+            return 60 * 20;
++            return 5 * 60 * 20;
 +        } else {
-+            return 5 * 20;
++            return 60 * 20;
 +        }
 +    }
 +
@@ -273,7 +289,7 @@ index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..f202e80c8bbd1b3854a329248141f55e
 +        int chunkZ = MCUtil.getCoordinateZ(coordinate);
 +        for (int section = 0; section < 16; ++section) {
 +            long sectionPos = SectionPosition.asLong(chunkX, section, chunkZ);
-+            this.getVillageDistanceTracker().update(sectionPos, this.getVillageDistanceTracker().getSource(sectionPos), false);
++            this.updateDistanceTracking(sectionPos);
 +        }
 +    }
 +    // Tuinity end - actually unload POI data
@@ -281,7 +297,21 @@ index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..f202e80c8bbd1b3854a329248141f55e
      public void a(BlockPosition blockposition, VillagePlaceType villageplacetype) {
          ((VillagePlaceSection) this.e(SectionPosition.a(blockposition).s())).a(blockposition, villageplacetype);
      }
-@@ -157,7 +273,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+@@ -140,10 +272,11 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+     }
+ 
+     public int a(SectionPosition sectionposition) {
+-        this.a.a();
+-        return this.a.c(sectionposition.s());
++        this.villageDistanceTracker.propagateUpdates(); // Tuinity - replace distance tracking util
++        return convertBetweenLevels(this.villageDistanceTracker.getLevel(MCUtil.getSectionKey(sectionposition))); // Tuinity - replace distance tracking util
+     }
+ 
++    private boolean isSectionDistanceTrackerSource(long section) { return this.f(section); } // Tuinity - OBFHELPER
+     private boolean f(long i) {
+         Optional<VillagePlaceSection> optional = this.c(i);
+ 
+@@ -159,7 +292,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
              super.a(booleansupplier);
          } else {
              //super.a(booleansupplier); // re-implement below
@@ -290,7 +320,7 @@ index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..f202e80c8bbd1b3854a329248141f55e
                  ChunkCoordIntPair chunkcoordintpair = SectionPosition.a(((RegionFileSection)this).d.firstLong()).r();
  
                  NBTTagCompound data;
-@@ -168,6 +284,11 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+@@ -170,19 +303,24 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
                      chunkcoordintpair.x, chunkcoordintpair.z, data, null, com.destroystokyo.paper.io.PrioritizedTaskQueue.NORMAL_PRIORITY); // Tuinity - use normal priority
              }
          }
@@ -300,5 +330,30 @@ index bd95db0163c41ec2e7a63db87ff8a3e77ed00a3a..f202e80c8bbd1b3854a329248141f55e
 +        }
 +        // Tuinity end - unload POI data
          // Paper end
-         this.a.a();
+-        this.a.a();
++        this.villageDistanceTracker.propagateUpdates(); // Tuinity - replace distance tracking until
      }
+ 
+     @Override
+     protected void a(long i) {
+         super.a(i);
+-        this.a.b(i, this.a.b(i), false);
++        this.updateDistanceTracking(i); // Tuinity - move to new distance tracking util
+     }
+ 
+     @Override
+     protected void b(long i) {
+-        this.a.b(i, this.a.b(i), false);
++        this.updateDistanceTracking(i); // Tuinity - move to new distance tracking util
+     }
+ 
+     public void a(ChunkCoordIntPair chunkcoordintpair, ChunkSection chunksection) {
+@@ -247,7 +385,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+ 
+         @Override
+         protected int b(long i) {
+-            return VillagePlace.this.f(i) ? 0 : 7;
++            return VillagePlace.this.f(i) ? 0 : 7; // Tuinity - unload poi data - diff on change, this specifies the source level to use for distance tracking
+         }
+ 
+         @Override
