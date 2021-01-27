@@ -4726,7 +4726,7 @@ index be5384ee41290b24b0c419c3e8f4553db34b2399..df28f7a6bf4c650a22ddf046eae4d5e8
  
      IBlockAccess getWorld();
 diff --git a/src/main/java/net/minecraft/server/LightEngineThreaded.java b/src/main/java/net/minecraft/server/LightEngineThreaded.java
-index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..7833846ffa52353f5a67da16df030f6edf2d30ec 100644
+index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..3c4c3e43b5b947f7332f2dd6d1f1dae4be7708ab 100644
 --- a/src/main/java/net/minecraft/server/LightEngineThreaded.java
 +++ b/src/main/java/net/minecraft/server/LightEngineThreaded.java
 @@ -2,6 +2,11 @@ package net.minecraft.server;
@@ -5061,7 +5061,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..7833846ffa52353f5a67da16df030f6e
          this.a(chunkcoordintpair.x, chunkcoordintpair.z, () -> {
              return 0;
          }, LightEngineThreaded.Update.PRE_UPDATE, SystemUtils.a(() -> {
-@@ -264,6 +513,30 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -264,6 +513,31 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
      public CompletableFuture<IChunkAccess> a(IChunkAccess ichunkaccess, boolean flag) {
          ChunkCoordIntPair chunkcoordintpair = ichunkaccess.getPos();
  
@@ -5084,7 +5084,8 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..7833846ffa52353f5a67da16df030f6e
 +                this.playerChunkMap.removeLightTicket(chunkcoordintpair); // copied from below
 +                return ichunkaccess;
 +            }, (runnable) -> {
-+                this.scheduleTask(chunkcoordintpair.x, chunkcoordintpair.z, LightEngineThreaded.Update.PRE_UPDATE, runnable);
++                LightEngineThreaded.this.scheduleTask(chunkcoordintpair.x, chunkcoordintpair.z, LightEngineThreaded.Update.PRE_UPDATE, runnable);
++                LightEngineThreaded.this.queueUpdate();
 +            });
 +        }
 +        // Tuinity end - replace light engine
@@ -5092,7 +5093,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..7833846ffa52353f5a67da16df030f6e
          // Paper start
          //ichunkaccess.b(false); // Don't need to disable this
          long pair = chunkcoordintpair.pair();
-@@ -311,7 +584,7 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -311,7 +585,7 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
      }
  
      public void queueUpdate() {
@@ -5101,7 +5102,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..7833846ffa52353f5a67da16df030f6e
              this.b.a((() -> { // Paper - decompile error
                  this.b();
                  this.g.set(false);
-@@ -325,17 +598,36 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -325,17 +599,36 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
      private final java.util.List<Runnable> pre = new java.util.ArrayList<>();
      private final java.util.List<Runnable> post = new java.util.ArrayList<>();
      private void b() {
