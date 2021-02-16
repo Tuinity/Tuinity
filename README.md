@@ -4,7 +4,7 @@ Tuinity ![Java CI](https://github.com/Spottedleaf/Tuinity/workflows/Java%20CI/ba
 Fork of [Paper](https://github.com/PaperMC/Paper) aimed at improving server performance at high playercounts.
 
 ## Contact
-[IRC](http://irc.spi.gt/iris/?channels=tuinity) | [Discord](https://discord.gg/CgDPu27)
+[IRC](http://irc.spi.gt/iris/?channels=tuinity) | [Discord](https://discord.gg/tuinity)
 
 ## How To (Server Admins)
 Tuinity uses the same paperclip jar system that Paper uses.
