@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Mon, 1 Feb 2021 15:35:14 -0800
+Subject: [PATCH] Fix chunks refusing to unload at low TPS
+
+The full chunk future is appended to the chunk save future, but
+when moving to unloaded ticket level it is not being completed with
+the empty chunk access, so the chunk save must wait for the full
+chunk future to complete. We can simply schedule to the immediate
+executor to get this effect, rather than the main mailbox.
+
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index a42571cfd2c9c80df27e59db832cb64c2a64e141..2c2becef8b56d7e5e998976222df85d2c8516c43 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -1494,9 +1494,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                 chunk.B();
+                 return chunk;
+             });
+-        }, (runnable) -> {
+-            this.mailboxMain.a(ChunkTaskQueueSorter.a(playerchunk, runnable));
+-        });
++        }, this.executor); // Tuinity - queue to execute immediately so this doesn't delay chunk unloading
+     }
+ 
+     public int c() {
