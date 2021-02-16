@@ -6,7 +6,7 @@ Subject: [PATCH] Optimise collision checking in player move packet handling
 Move collision logic to just the hasNewCollision call instead of getCubes + hasNewCollision
 
 diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
-index f1be42b5f1d0eb403e6895e8ff1d106861fa4298..4058c1f7ada7d0c9e4ba73a0073b4f94bf410a8f 100644
+index f1be42b5f1d0eb403e6895e8ff1d106861fa4298..4185ec46435ddf48d9e25c4d71ac4e14eb6301cf 100644
 --- a/src/main/java/net/minecraft/server/PlayerConnection.java
 +++ b/src/main/java/net/minecraft/server/PlayerConnection.java
 @@ -434,12 +434,14 @@ public class PlayerConnection implements PacketListenerPlayIn {
@@ -55,7 +55,41 @@ index f1be42b5f1d0eb403e6895e8ff1d106861fa4298..4058c1f7ada7d0c9e4ba73a0073b4f94
                      entity.setLocation(d0, d1, d2, f, f1);
                      player.setLocation(d0, d1, d2, this.player.yaw, this.player.pitch); // CraftBukkit
                      this.networkManager.sendPacket(new PacketPlayOutVehicleMove(entity));
-@@ -1070,7 +1081,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -548,7 +559,32 @@ public class PlayerConnection implements PacketListenerPlayIn {
+     }
+ 
+     private boolean a(Entity entity) {
+-        return entity.world.a(entity.getBoundingBox().g(0.0625D).b(0.0D, -0.55D, 0.0D)).allMatch(BlockBase.BlockData::isAir);
++        // Tuinity start - stop using streams, this is already a known fixed problem in Entity#move
++        AxisAlignedBB box = entity.getBoundingBox().g(0.0625D).b(0.0D, -0.55D, 0.0D);
++        int minX = MathHelper.floor(box.minX);
++        int minY = MathHelper.floor(box.minY);
++        int minZ = MathHelper.floor(box.minZ);
++        int maxX = MathHelper.floor(box.maxX);
++        int maxY = MathHelper.floor(box.maxY);
++        int maxZ = MathHelper.floor(box.maxZ);
++
++        World world = entity.world;
++        BlockPosition.MutableBlockPosition pos = new BlockPosition.MutableBlockPosition();
++
++        for (int y = minY; y <= maxY; ++y) {
++            for (int z = minZ; z <= maxZ; ++z) {
++                for (int x = minX; x <= maxX; ++x) {
++                    pos.setValues(x, y, z);
++                    IBlockData type = world.getTypeIfLoaded(pos);
++                    if (type != null && !type.isAir()) {
++                        return false;
++                    }
++                }
++            }
++        }
++
++        return true;
++        // Tuinity end - stop using streams, this is already a known fixed problem in Entity#move
+     }
+ 
+     @Override
+@@ -1070,7 +1106,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                  }
  
                  if (this.teleportPos != null) {
@@ -64,7 +98,7 @@ index f1be42b5f1d0eb403e6895e8ff1d106861fa4298..4058c1f7ada7d0c9e4ba73a0073b4f94
                          this.A = this.e;
                          this.a(this.teleportPos.x, this.teleportPos.y, this.teleportPos.z, this.player.yaw, this.player.pitch);
                      }
-@@ -1157,7 +1168,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1157,7 +1193,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                                  }
                              }
  
@@ -73,7 +107,7 @@ index f1be42b5f1d0eb403e6895e8ff1d106861fa4298..4058c1f7ada7d0c9e4ba73a0073b4f94
  
                              d7 = d4 - this.o;
                              d8 = d5 - this.p;
-@@ -1196,6 +1207,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1196,6 +1232,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                              }
  
                              this.player.move(EnumMoveType.PLAYER, new Vec3D(d7, d8, d9));
@@ -81,7 +115,7 @@ index f1be42b5f1d0eb403e6895e8ff1d106861fa4298..4058c1f7ada7d0c9e4ba73a0073b4f94
                              this.player.setOnGround(packetplayinflying.b()); // CraftBukkit - SPIGOT-5810, SPIGOT-5835: reset by this.player.move
                              // Paper start - prevent position desync
                              if (this.teleportPos != null) {
-@@ -1215,12 +1227,23 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1215,12 +1252,23 @@ public class PlayerConnection implements PacketListenerPlayIn {
                              boolean flag1 = false;
  
                              if (!this.player.H() && d11 > org.spigotmc.SpigotConfig.movedWronglyThreshold && !this.player.isSleeping() && !this.player.playerInteractManager.isCreative() && this.player.playerInteractManager.getGameMode() != EnumGamemode.SPECTATOR) { // Spigot
@@ -107,7 +141,7 @@ index f1be42b5f1d0eb403e6895e8ff1d106861fa4298..4058c1f7ada7d0c9e4ba73a0073b4f94
                                  this.a(d0, d1, d2, f, f1);
                              } else {
                                  // CraftBukkit start - fire PlayerMoveEvent
-@@ -1307,6 +1330,26 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1307,6 +1355,26 @@ public class PlayerConnection implements PacketListenerPlayIn {
          }
      }
  

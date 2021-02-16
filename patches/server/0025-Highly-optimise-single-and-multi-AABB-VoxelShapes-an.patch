@@ -907,12 +907,15 @@ index 25e54a1fadc5d31fb250a3f47524b4f345fc8cc6..cce0ac8a36bef3b9e5a2b95e0c3dd137
          return this.d(entity, axisalignedbb, predicate).allMatch(VoxelShape::isEmpty);
          } finally { if (entity != null) entity.collisionLoadChunks = false; } // Paper
 diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
-index b053bb74f6df174a27dbfd7b1b3e3ccbb0b26659..64b59b17d28803f510b8b088ebafe446c450d486 100644
+index b053bb74f6df174a27dbfd7b1b3e3ccbb0b26659..c17cbadeff9cb3ea955b9db99ab71d6d7fd8c247 100644
 --- a/src/main/java/net/minecraft/server/IEntityAccess.java
 +++ b/src/main/java/net/minecraft/server/IEntityAccess.java
-@@ -70,7 +70,8 @@ public interface IEntityAccess {
+@@ -68,9 +68,10 @@ public interface IEntityAccess {
+         if (axisalignedbb.a() < 1.0E-7D) {
+             return Stream.empty();
          } else {
-             AxisAlignedBB axisalignedbb1 = axisalignedbb.g(1.0E-7D);
+-            AxisAlignedBB axisalignedbb1 = axisalignedbb.g(1.0E-7D);
++            AxisAlignedBB axisalignedbb1 = axisalignedbb.g(-1.0E-7D); // Tuinity - to comply with vanilla intersection rules, expand by -epsilon so we only get stuff we definitely collide with. expanding by +epsilon gives us stuff we don't collide with, which will screw over callers in some cases.
  
 -            predicate = predicate.and((entity1) -> { // Tuinity - optimise entity hard collisions
 +            if (predicate == null) predicate = (e) -> true; // Tuinity - allow nullable
@@ -1454,10 +1457,10 @@ index f011869880fedae4b69e505491e8bdbc5f51dfba..0d10d317cd0b60fc0866ae505c7fd71f
          return this.j.d();
      }
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index da9172303b8acf5613b283a98bf7f6f0fe859d62..8cb3f69b5ccf6a6895fb6fef92d4023baf45593f 100644
+index da9172303b8acf5613b283a98bf7f6f0fe859d62..8e1bd6029a5230f03616d9ff00b55ab14feced3f 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -361,6 +361,243 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -361,6 +361,251 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          this.asyncChunkTaskManager = new com.destroystokyo.paper.io.chunk.ChunkTaskManager(this); // Paper
      }
  
@@ -1477,7 +1480,11 @@ index da9172303b8acf5613b283a98bf7f6f0fe859d62..8cb3f69b5ccf6a6895fb6fef92d4023b
 +        if (axisalignedbb.isEmpty()) {
 +            return false;
 +        }
-+        axisalignedbb = axisalignedbb.grow(MCUtil.COLLISION_EPSILON, MCUtil.COLLISION_EPSILON, MCUtil.COLLISION_EPSILON);
++
++        // to comply with vanilla intersection rules, expand by -epsilon so we only get stuff we definitely collide with.
++        // Vanilla for hard collisions has this backwards, and they expand by +epsilon but this causes terrible problems
++        // specifically with boat collisions.
++        axisalignedbb = axisalignedbb.grow(-MCUtil.COLLISION_EPSILON, -MCUtil.COLLISION_EPSILON, -MCUtil.COLLISION_EPSILON);
 +        List<Entity> entities = com.tuinity.tuinity.util.CachedLists.getTempGetEntitiesList();
 +        try {
 +            if (entity != null && entity.hardCollides()) {
@@ -1647,7 +1654,11 @@ index da9172303b8acf5613b283a98bf7f6f0fe859d62..8cb3f69b5ccf6a6895fb6fef92d4023b
 +        if (axisalignedbb.isEmpty()) {
 +            return;
 +        }
-+        axisalignedbb = axisalignedbb.grow(MCUtil.COLLISION_EPSILON, MCUtil.COLLISION_EPSILON, MCUtil.COLLISION_EPSILON);
++
++        // to comply with vanilla intersection rules, expand by -epsilon so we only get stuff we definitely collide with.
++        // Vanilla for hard collisions has this backwards, and they expand by +epsilon but this causes terrible problems
++        // specifically with boat collisions.
++        axisalignedbb = axisalignedbb.grow(-MCUtil.COLLISION_EPSILON, -MCUtil.COLLISION_EPSILON, -MCUtil.COLLISION_EPSILON);
 +        List<Entity> entities = com.tuinity.tuinity.util.CachedLists.getTempGetEntitiesList();
 +        try {
 +            if (entity != null && entity.hardCollides()) {

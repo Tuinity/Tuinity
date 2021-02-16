@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Tue, 16 Feb 2021 00:16:56 -0800
+Subject: [PATCH] Send full pos packets for hard colliding entities
+
+Prevent collision problems due to desync (i.e boats)
+
+Configurable under
+`send-full-pos-for-hard-colliding-entities`
+
+diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+index 42ce3b80217b574a1852e12f500b366a912e23e2..63dfad42c372a33b35c585aaa7ed24d8f16d44e0 100644
+--- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
++++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
+@@ -229,6 +229,12 @@ public final class TuinityConfig {
+         useNewLightEngine = TuinityConfig.getBoolean("use-new-light-engine", true);
+     }
+ 
++    public static boolean sendFullPosForHardCollidingEntities;
++
++    private static void sendFullPosForHardCollidingEntities() {
++        sendFullPosForHardCollidingEntities = TuinityConfig.getBoolean("send-full-pos-for-hard-colliding-entities", true);
++    }
++
+     public static final class WorldConfig {
+ 
+         public final String worldName;
+diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
+index 526c1419af7bd0b6098a8f9a0a24a64ba61c6ebc..81869215876d10a84ab27c0e6f41963c1346fd1c 100644
+--- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
++++ b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
+@@ -157,7 +157,7 @@ public class EntityTrackerEntry {
+                     // Paper end - remove allocation of Vec3D here
+                     boolean flag4 = k < -32768L || k > 32767L || l < -32768L || l > 32767L || i1 < -32768L || i1 > 32767L;
+ 
+-                    if (!flag4 && this.o <= 400 && !this.q && this.r == this.tracker.isOnGround()) {
++                    if (!flag4 && this.o <= 400 && !this.q && this.r == this.tracker.isOnGround() && !(com.tuinity.tuinity.config.TuinityConfig.sendFullPosForHardCollidingEntities && this.tracker.hardCollides())) { // Tuinity - send full pos for hard colliding entities to prevent collision problems due to desync
+                         if ((!flag2 || !flag3) && !(this.tracker instanceof EntityArrow)) {
+                             if (flag2) {
+                                 packet1 = new PacketPlayOutEntity.PacketPlayOutRelEntityMove(this.tracker.getId(), (short) ((int) k), (short) ((int) l), (short) ((int) i1), this.tracker.isOnGround());
