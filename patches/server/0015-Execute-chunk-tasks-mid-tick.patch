@@ -18,7 +18,7 @@ index a263cd7a0680e0cc3517f84308118eb32c487732..77df6888803093ad9527d276033f2ed7
                      // re-schedule eventually
                      toTick.tickState = STATE_SCHEDULED;
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index a61a9e71c435000eab1b906026767a45c998dafa..722a61d290243dc60dd9b7b9ae17572040e14f14 100644
+index a61a9e71c435000eab1b906026767a45c998dafa..437e13961234db01335f386f6c81bab55e5120d3 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
 @@ -885,7 +885,7 @@ public class ChunkProviderServer extends IChunkProvider {
@@ -39,16 +39,25 @@ index a61a9e71c435000eab1b906026767a45c998dafa..722a61d290243dc60dd9b7b9ae175720
          this.world.timings.doChunkUnload.stopTiming(); // Spigot
          this.world.getMethodProfiler().exit();
          this.clearCache();
-@@ -996,7 +996,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -967,6 +967,8 @@ public class ChunkProviderServer extends IChunkProvider {
+             // Paper end
+             this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
+ 
++            int ticked = 0; // Tuinity - exec chunk tasks during world tick
++
+             this.p = spawnercreature_d;
+             this.world.getMethodProfiler().exit();
+             //List<PlayerChunk> list = Lists.newArrayList(this.playerChunkMap.f()); // Paper
+@@ -996,7 +998,7 @@ public class ChunkProviderServer extends IChunkProvider {
                              this.world.timings.chunkTicks.startTiming(); // Spigot // Paper
                              this.world.a(chunk, k);
                              this.world.timings.chunkTicks.stopTiming(); // Spigot // Paper
 -                            if (chunksTicked[0]++ % 10 == 0) this.world.getMinecraftServer().midTickLoadChunks(); // Paper
-+                            MinecraftServer.getServer().executeMidTickTasks(); // Tuinity - exec chunk tasks during world tick
++                            if ((++ticked & 1) == 0) MinecraftServer.getServer().executeMidTickTasks(); // Tuinity - exec chunk tasks during world tick
                          }
                      }
                  }
-@@ -1152,41 +1152,7 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1152,41 +1154,7 @@ public class ChunkProviderServer extends IChunkProvider {
              ChunkProviderServer.this.world.getMethodProfiler().c("runTask");
              super.executeTask(runnable);
          }

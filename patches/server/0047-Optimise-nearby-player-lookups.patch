@@ -1,0 +1,476 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 27 Aug 2020 16:22:52 -0700
+Subject: [PATCH] Optimise nearby player lookups
+
+Use a distance map to map out close players.
+Note that it's important that we cache the distance map value per chunk
+since the penalty of a map lookup could outweigh the benefits of
+searching less players (as it basically did in the outside range patch).
+
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index 646a1a148851b13e058b41fed09deda07607a7de..c2a884d5ed02710603a8a668ea21f294834d8703 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -111,6 +111,92 @@ public class Chunk implements IChunkAccess {
+     }
+     // Tuinity end - optimised entity slices
+ 
++    // Tuinity start - optimise checkDespawn
++    private boolean playerGeneralAreaCacheSet;
++    private com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> playerGeneralAreaCache;
++
++    public com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> getPlayerGeneralAreaCache() {
++        if (!this.playerGeneralAreaCacheSet) {
++            this.updateGeneralAreaCache();
++        }
++        return this.playerGeneralAreaCache;
++    }
++
++    void updateGeneralAreaCache() {
++        this.updateGeneralAreaCache(((WorldServer)this.world).getChunkProvider().playerChunkMap.playerGeneralAreaMap.getObjectsInRange(this.coordinateKey));
++    }
++
++    void updateGeneralAreaCache(com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> value) {
++        this.playerGeneralAreaCacheSet = true;
++        this.playerGeneralAreaCache = value;
++    }
++
++    public EntityPlayer findNearestPlayer(double sourceX, double sourceY, double sourceZ, double maxRange, Predicate<Entity> predicate) {
++        if (!this.playerGeneralAreaCacheSet) {
++            this.updateGeneralAreaCache();
++        }
++
++        com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearby = this.playerGeneralAreaCache;
++
++        if (nearby == null) {
++            return null;
++        }
++
++        Object[] backingSet = nearby.getBackingSet();
++        double closestDistance = maxRange < 0.0 ? Double.MAX_VALUE : maxRange * maxRange;
++        EntityPlayer closest = null;
++        for (int i = 0, len = backingSet.length; i < len; ++i) {
++            Object _player = backingSet[i];
++            if (!(_player instanceof EntityPlayer)) {
++                continue;
++            }
++            EntityPlayer player = (EntityPlayer)_player;
++
++            double distance = player.getDistanceSquared(sourceX, sourceY, sourceZ);
++            if (distance < closestDistance && predicate.test(player)) {
++                closest = player;
++                closestDistance = distance;
++            }
++        }
++
++        return closest;
++    }
++
++    public void getNearestPlayers(double sourceX, double sourceY, double sourceZ, Predicate<Entity> predicate, double range, List<EntityPlayer> ret) {
++        if (!this.playerGeneralAreaCacheSet) {
++            this.updateGeneralAreaCache();
++        }
++
++        com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearby = this.playerGeneralAreaCache;
++
++        if (nearby == null) {
++            return;
++        }
++
++        double rangeSquared = range * range;
++
++        Object[] backingSet = nearby.getBackingSet();
++        for (int i = 0, len = backingSet.length; i < len; ++i) {
++            Object _player = backingSet[i];
++            if (!(_player instanceof EntityPlayer)) {
++                continue;
++            }
++            EntityPlayer player = (EntityPlayer)_player;
++
++            if (range >= 0.0) {
++                double distanceSquared = player.getDistanceSquared(sourceX, sourceY, sourceZ);
++                if (distanceSquared > rangeSquared) {
++                    continue;
++                }
++            }
++
++            if (predicate == null || predicate.test(player)) {
++                ret.add(player);
++            }
++        }
++    }
++    // Tuinity end - optimise checkDespawn
++
+     public Chunk(World world, ChunkCoordIntPair chunkcoordintpair, BiomeStorage biomestorage, ChunkConverter chunkconverter, TickList<Block> ticklist, TickList<FluidType> ticklist1, long i, @Nullable ChunkSection[] achunksection, @Nullable Consumer<Chunk> consumer) {
+         this.sections = new ChunkSection[16];
+         this.e = Maps.newHashMap();
+diff --git a/src/main/java/net/minecraft/server/EntityInsentient.java b/src/main/java/net/minecraft/server/EntityInsentient.java
+index a88521745f9f9b6935a61db52db915ea483af227..a47217c020d2c2a3caddafa0549dc827373798dd 100644
+--- a/src/main/java/net/minecraft/server/EntityInsentient.java
++++ b/src/main/java/net/minecraft/server/EntityInsentient.java
+@@ -711,7 +711,13 @@ public abstract class EntityInsentient extends EntityLiving {
+         if (this.world.getDifficulty() == EnumDifficulty.PEACEFUL && this.L()) {
+             this.die();
+         } else if (!this.isPersistent() && !this.isSpecialPersistence()) {
+-            EntityHuman entityhuman = this.world.findNearbyPlayer(this, -1.0D, IEntitySelector.affectsSpawning); // Paper
++            // Tuinity start - optimise checkDespawn
++            Chunk chunk = this.getCurrentChunk();
++            EntityHuman entityhuman = chunk == null || this.world.paperConfig.hardDespawnDistance >= (PlayerChunkMap.GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE_SQUARED) ? this.world.findNearbyPlayer(this, -1.0D, IEntitySelector.affectsSpawning) : chunk.findNearestPlayer(this.locX(), this.locY(), this.locZ(), -1.0, IEntitySelector.affectsSpawning); // Paper
++            if (entityhuman == null) {
++                entityhuman = ((WorldServer)this.world).playersAffectingSpawning.isEmpty() ? null : ((WorldServer)this.world).playersAffectingSpawning.get(0);
++            }
++            // Tuinity end - optimise checkDespawn
+ 
+             if (entityhuman != null) {
+                 double d0 = entityhuman.h((Entity) this); // CraftBukkit - decompile error
+diff --git a/src/main/java/net/minecraft/server/IEntityAccess.java b/src/main/java/net/minecraft/server/IEntityAccess.java
+index 93f2ac996904ddefed04704e554209d047faa59f..ad286848ddb7803640ef7eeea46b58473dd1d0c4 100644
+--- a/src/main/java/net/minecraft/server/IEntityAccess.java
++++ b/src/main/java/net/minecraft/server/IEntityAccess.java
+@@ -98,7 +98,7 @@ public interface IEntityAccess {
+ 
+     default EntityHuman findNearbyPlayer(Entity entity, double d0, @Nullable Predicate<Entity> predicate) { return this.findNearbyPlayer(entity.locX(), entity.locY(), entity.locZ(), d0, predicate); } // Paper
+     @Nullable default EntityHuman findNearbyPlayer(double d0, double d1, double d2, double d3, @Nullable Predicate<Entity> predicate) { return a(d0, d1, d2, d3, predicate); } // Paper - OBFHELPER
+-    @Nullable default EntityHuman a(double d0, double d1, double d2, double d3, @Nullable Predicate<Entity> predicate) { // Paper
++    @Nullable default EntityHuman a(double d0, double d1, double d2, double d3, @Nullable Predicate<Entity> predicate) { // Paper // Tuinity - diff on change, override in World - this should be "get closest player that matches predicate"
+         double d4 = -1.0D;
+         EntityHuman entityhuman = null;
+         Iterator iterator = this.getPlayers().iterator();
+@@ -199,17 +199,17 @@ public interface IEntityAccess {
+     }
+ 
+     @Nullable
+-    default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving) {
++    default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving) { // Tuinity - diff on change, override in World - this should be "get closest player that matches path finder target condition"
+         return (EntityHuman) this.a(this.getPlayers(), pathfindertargetcondition, entityliving, entityliving.locX(), entityliving.locY(), entityliving.locZ());
+     }
+ 
+     @Nullable
+-    default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving, double d0, double d1, double d2) {
++    default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving, double d0, double d1, double d2) { // Tuinity - diff on change, override in World - this should be "get closest player that matches path finder target condition"
+         return (EntityHuman) this.a(this.getPlayers(), pathfindertargetcondition, entityliving, d0, d1, d2);
+     }
+ 
+     @Nullable
+-    default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, double d0, double d1, double d2) {
++    default EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, double d0, double d1, double d2) { // Tuinity - diff on change, override in World - this should be "get closest player that matches path finder target condition"
+         return (EntityHuman) this.a(this.getPlayers(), pathfindertargetcondition, (EntityLiving) null, d0, d1, d2);
+     }
+ 
+@@ -245,7 +245,7 @@ public interface IEntityAccess {
+         return t0;
+     }
+ 
+-    default List<EntityHuman> a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving, AxisAlignedBB axisalignedbb) {
++    default List<EntityHuman> a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving, AxisAlignedBB axisalignedbb) { // Tuinity - diff on change, override in World - this should be "get players that matches path finder target condition"
+         List<EntityHuman> list = Lists.newArrayList();
+         Iterator iterator = this.getPlayers().iterator();
+ 
+diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
+index a072208bcd92ffa9ed47757de291b82be2e71e8e..8b4ab23563a9a0c047267143dc3c6c5545d6c125 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/PlayerChunk.java
+@@ -56,6 +56,12 @@ public class PlayerChunk {
+         long key = net.minecraft.server.MCUtil.getCoordinateKey(this.location);
+         this.playersInMobSpawnRange = this.chunkMap.playerMobSpawnMap.getObjectsInRange(key);
+         this.playersInChunkTickRange = this.chunkMap.playerChunkTickRangeMap.getObjectsInRange(key);
++        // Tuinity start - optimise checkDespawn
++        Chunk chunk = this.getFullChunkIfCached();
++        if (chunk != null) {
++            chunk.updateGeneralAreaCache();
++        }
++        // Tuinity end - optimise checkDespawn
+     }
+     // Paper end - optimise isOutsideOfRange
+     // Paper start - optimize chunk status progression without jumping through thread pool
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index 83f070229098ad31b8ae65ffcebe52886ef2884d..f9753b5ada318e39b48a7fd954afdd0e48cd091c 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -195,6 +195,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+     public final com.destroystokyo.paper.util.misc.PlayerAreaMap playerViewDistanceTickMap;
+     public final com.destroystokyo.paper.util.misc.PlayerAreaMap playerViewDistanceNoTickMap;
+     // Paper end - no-tick view distance
++    // Tuinity start - optimise checkDespawn
++    public static final int GENERAL_AREA_MAP_SQUARE_RADIUS = 38;
++    public static final double GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE = 16.0 * (GENERAL_AREA_MAP_SQUARE_RADIUS - 1);
++    public static final double GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE_SQUARED = GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE * GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE;
++    public final com.destroystokyo.paper.util.misc.PlayerAreaMap playerGeneralAreaMap;
++    // Tuinity end - optimise checkDespawn
+ 
+     void addPlayerToDistanceMaps(EntityPlayer player) {
+         com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot update distance maps off of the main thread"); // Tuinity
+@@ -225,6 +231,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         this.playerViewDistanceBroadcastMap.add(player, chunkX, chunkZ, effectiveNoTickViewDistance + 1); // clients need an extra neighbour to render the full view distance configured
+         player.needsChunkCenterUpdate = false;
+         // Paper end - no-tick view distance
++        // Tuinity start - optimise checkDespawn
++        this.playerGeneralAreaMap.add(player, chunkX, chunkZ, GENERAL_AREA_MAP_SQUARE_RADIUS);
++        // Tuinity end - optimise checkDespawn
+     }
+ 
+     void removePlayerFromDistanceMaps(EntityPlayer player) {
+@@ -243,6 +252,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         this.playerViewDistanceTickMap.remove(player);
+         this.playerViewDistanceNoTickMap.remove(player);
+         // Paper end - no-tick view distance
++        // Tuinity start - optimise checkDespawn
++        this.playerGeneralAreaMap.remove(player);
++        // Tuinity end - optimise checkDespawn
+     }
+ 
+     void updateMaps(EntityPlayer player) {
+@@ -274,6 +286,9 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         this.playerViewDistanceBroadcastMap.update(player, chunkX, chunkZ, effectiveNoTickViewDistance + 1); // clients need an extra neighbour to render the full view distance configured
+         player.needsChunkCenterUpdate = false;
+         // Paper end - no-tick view distance
++        // Tuinity start - optimise checkDespawn
++        this.playerGeneralAreaMap.update(player, chunkX, chunkZ, GENERAL_AREA_MAP_SQUARE_RADIUS);
++        // Tuinity end - optimise checkDespawn
+     }
+     // Paper end
+ 
+@@ -462,6 +477,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         // Tuinity start
+         this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
+         // Tuinity end
++        // Tuinity start - optimise checkDespawn
++        this.playerGeneralAreaMap = new com.destroystokyo.paper.util.misc.PlayerAreaMap(this.pooledLinkedPlayerHashSets,
++            (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
++             com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfCachedImmediately(rangeX, rangeZ);
++                if (chunk != null) {
++                    chunk.updateGeneralAreaCache(newState);
++                }
++            },
++            (EntityPlayer player, int rangeX, int rangeZ, int currPosX, int currPosZ, int prevPosX, int prevPosZ,
++             com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> newState) -> {
++                Chunk chunk = PlayerChunkMap.this.world.getChunkProvider().getChunkAtIfCachedImmediately(rangeX, rangeZ);
++                if (chunk != null) {
++                    chunk.updateGeneralAreaCache(newState);
++                }
++            });
++        // Tuinity end - optimise checkDespawn
+     }
+     // Paper start - Chunk Prioritization
+     public void queueHolderUpdate(PlayerChunk playerchunk) {
+diff --git a/src/main/java/net/minecraft/server/SpawnerCreature.java b/src/main/java/net/minecraft/server/SpawnerCreature.java
+index 661ad8f8e67046211e001ea40d97660d7c88f8e5..a77b1d61b9dcb0a2a27d7e50357eaf44c99a661e 100644
+--- a/src/main/java/net/minecraft/server/SpawnerCreature.java
++++ b/src/main/java/net/minecraft/server/SpawnerCreature.java
+@@ -216,7 +216,7 @@ public final class SpawnerCreature {
+                             blockposition_mutableblockposition.d(l, i, i1);
+                             double d0 = (double) l + 0.5D;
+                             double d1 = (double) i1 + 0.5D;
+-                            EntityHuman entityhuman = worldserver.a(d0, (double) i, d1, -1.0D, false);
++                            EntityHuman entityhuman = worldserver.a(d0, (double) i, d1, 576.0D, false); // Tuinity - copied from below method for range, for the love of god we do not need to fucking find the closet player outside of this range - limiting range lets us use the distance map
+ 
+                             if (entityhuman != null) {
+                                 double d2 = entityhuman.h(d0, (double) i, d1);
+@@ -288,7 +288,7 @@ public final class SpawnerCreature {
+     }
+ 
+     private static boolean a(WorldServer worldserver, IChunkAccess ichunkaccess, BlockPosition.MutableBlockPosition blockposition_mutableblockposition, double d0) {
+-        if (d0 <= 576.0D) {
++        if (d0 <= 576.0D) { // Tuinity - diff on change, copy into caller
+             return false;
+         } else if (worldserver.getSpawn().a((IPosition) (new Vec3D((double) blockposition_mutableblockposition.getX() + 0.5D, (double) blockposition_mutableblockposition.getY(), (double) blockposition_mutableblockposition.getZ() + 0.5D)), 24.0D)) {
+             return false;
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 1d87e7461d28d8a639fafcfdfa5496014e9180f6..970c1be5477a01ab9c6d79e84c519e22775564ff 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -123,6 +123,65 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+         return typeKey;
+     }
+ 
++    // Tuinity start - optimise checkDespawn
++    public final List<EntityPlayer> getNearbyPlayers(@Nullable Entity source, double sourceX, double sourceY, double sourceZ, double maxRange, @Nullable Predicate<Entity> predicate) {
++        Chunk chunk;
++        if (source == null || (chunk = source.getCurrentChunk()) == null || maxRange < 0.0 || maxRange >= PlayerChunkMap.GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE) {
++            return this.getNearbyPlayersSlow(source, sourceX, sourceY, sourceZ, maxRange, predicate);
++        }
++
++        List<EntityPlayer> ret = new java.util.ArrayList<>();
++        chunk.getNearestPlayers(sourceX, sourceY, sourceZ, predicate, maxRange, ret);
++        return ret;
++    }
++
++    private List<EntityPlayer> getNearbyPlayersSlow(@Nullable Entity source, double sourceX, double sourceY, double sourceZ, double maxRange, @Nullable Predicate<Entity> predicate) {
++        List<EntityPlayer> ret = new java.util.ArrayList<>();
++        double maxRangeSquared = maxRange * maxRange;
++
++        for (EntityPlayer player : (List<EntityPlayer>)this.getPlayers()) {
++            if ((maxRange < 0.0 || player.getDistanceSquared(sourceX, sourceY, sourceZ) < maxRangeSquared)) {
++                if (predicate == null || predicate.test(player)) {
++                    ret.add(player);
++                }
++            }
++        }
++
++        return ret;
++    }
++
++    private EntityPlayer getNearestPlayerSlow(@Nullable Entity source, double sourceX, double sourceY, double sourceZ, double maxRange, @Nullable Predicate<Entity> predicate) {
++        EntityPlayer closest = null;
++        double closestRangeSquared = maxRange < 0.0 ? Double.MAX_VALUE : maxRange * maxRange;
++
++        for (EntityPlayer player : (List<EntityPlayer>)this.getPlayers()) {
++            double distanceSquared = player.getDistanceSquared(sourceX, sourceY, sourceZ);
++            if (distanceSquared < closestRangeSquared && (predicate == null || predicate.test(player))) {
++                closest = player;
++                closestRangeSquared = distanceSquared;
++            }
++        }
++
++        return closest;
++    }
++
++
++    public final EntityPlayer getNearestPlayer(@Nullable Entity source, double sourceX, double sourceY, double sourceZ, double maxRange, @Nullable Predicate<Entity> predicate) {
++        Chunk chunk;
++        if (source == null || (chunk = source.getCurrentChunk()) == null || maxRange < 0.0 || maxRange >= PlayerChunkMap.GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE) {
++            return this.getNearestPlayerSlow(source, sourceX, sourceY, sourceZ, maxRange, predicate);
++        }
++
++        return chunk.findNearestPlayer(sourceX, sourceY, sourceZ, maxRange, predicate);
++    }
++
++    @Override
++    public @Nullable EntityHuman a(double d0, double d1, double d2, double d3, @Nullable Predicate<Entity> predicate) {
++        return this.getNearestPlayer(null, d0, d1, d2, d3, predicate);
++    }
++
++    // Tuinity end - optimise checkDespawn
++
+     protected World(WorldDataMutable worlddatamutable, ResourceKey<World> resourcekey, final DimensionManager dimensionmanager, Supplier<GameProfilerFiller> supplier, boolean flag, boolean flag1, long i, org.bukkit.generator.ChunkGenerator gen, org.bukkit.World.Environment env, java.util.concurrent.Executor executor) { // Paper
+         this.spigotConfig = new org.spigotmc.SpigotWorldConfig(((WorldDataServer) worlddatamutable).getName()); // Spigot
+         this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(((WorldDataServer) worlddatamutable).getName(), this.spigotConfig); // Paper
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index 6e5a3467f92c29181d26c03ecf49d598d75a4633..0376c780aedf77e0f3ec3c9d155679bd45bd429a 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -301,6 +301,107 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+     long lastMidTickExecuteFailure;
+     // Tuinity end - execute chunk tasks mid tick
+ 
++    // Tuinity start - optimise checkDespawn
++    final List<EntityPlayer> playersAffectingSpawning = new java.util.ArrayList<>();
++    // Tuinity end - optimise checkDespawn
++    // Tuinity start - optimise get nearest players for entity AI
++    public final EntityPlayer getNearestPlayer(PathfinderTargetCondition condition, @Nullable EntityLiving source,
++                                               double centerX, double centerY, double centerZ) {
++        com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearby;
++        if (source != null) {
++            Chunk chunk = source.getCurrentChunk();
++            if (chunk != null && (MathHelper.floor(centerX) >> 4) == chunk.locX &&
++                    (MathHelper.floor(centerZ) >> 4) == chunk.locZ) {
++                nearby = chunk.getPlayerGeneralAreaCache();
++            } else {
++                nearby = this.getChunkProvider().playerChunkMap.playerGeneralAreaMap.getObjectsInRange(MathHelper.floor(centerX) >> 4, MathHelper.floor(centerZ) >> 4);
++            }
++        } else {
++            nearby = this.getChunkProvider().playerChunkMap.playerGeneralAreaMap.getObjectsInRange(MathHelper.floor(centerX) >> 4, MathHelper.floor(centerZ) >> 4);
++        }
++
++        if (nearby == null) {
++            return null;
++        }
++
++        Object[] backingSet = nearby.getBackingSet();
++
++        double closestDistanceSquared = Double.MAX_VALUE;
++        EntityPlayer closest = null;
++
++        for (int i = 0, len = backingSet.length; i < len; ++i) {
++            Object _player = backingSet[i];
++            if (!(_player instanceof EntityPlayer)) {
++                continue;
++            }
++            EntityPlayer player = (EntityPlayer)_player;
++
++            double distanceSquared = player.getDistanceSquared(centerX, centerY, centerZ);
++            if (distanceSquared < closestDistanceSquared && condition.test(source, player)) {
++                closest = player;
++                closestDistanceSquared = distanceSquared;
++            }
++        }
++
++        return closest;
++    }
++
++    @Override
++    public EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, EntityLiving entityliving) {
++        return this.getNearestPlayer(pathfindertargetcondition, entityliving, entityliving.locX(), entityliving.locY(), entityliving.locZ());
++    }
++
++    @Override
++    public EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, @Nullable EntityLiving entityliving, double d0, double d1, double d2) {
++        return this.getNearestPlayer(pathfindertargetcondition, entityliving, d0, d1, d2);
++    }
++
++    @Override
++    public EntityHuman a(PathfinderTargetCondition pathfindertargetcondition, double d0, double d1, double d2) {
++        return this.getNearestPlayer(pathfindertargetcondition, null, d0, d1, d2);
++    }
++
++    @Override
++    public List<EntityHuman> a(PathfinderTargetCondition condition, EntityLiving source, AxisAlignedBB axisalignedbb) {
++        com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> nearby;
++        double centerX = (axisalignedbb.maxX + axisalignedbb.minX) * 0.5;
++        double centerZ = (axisalignedbb.maxZ + axisalignedbb.minZ) * 0.5;
++        if (source != null) {
++            Chunk chunk = source.getCurrentChunk();
++            if (chunk != null && (MathHelper.floor(centerX) >> 4) == chunk.locX &&
++                    (MathHelper.floor(centerZ) >> 4) == chunk.locZ) {
++                nearby = chunk.getPlayerGeneralAreaCache();
++            } else {
++                nearby = this.getChunkProvider().playerChunkMap.playerGeneralAreaMap.getObjectsInRange(MathHelper.floor(centerX) >> 4, MathHelper.floor(centerZ) >> 4);
++            }
++        } else {
++            nearby = this.getChunkProvider().playerChunkMap.playerGeneralAreaMap.getObjectsInRange(MathHelper.floor(centerX) >> 4, MathHelper.floor(centerZ) >> 4);
++        }
++
++        List<EntityHuman> ret = new java.util.ArrayList<>();
++
++        if (nearby == null) {
++            return ret;
++        }
++
++        Object[] backingSet = nearby.getBackingSet();
++
++        for (int i = 0, len = backingSet.length; i < len; ++i) {
++            Object _player = backingSet[i];
++            if (!(_player instanceof EntityPlayer)) {
++                continue;
++            }
++            EntityPlayer player = (EntityPlayer)_player;
++
++            if (axisalignedbb.contains(player.locX(), player.locY(), player.locZ()) && condition.test(source, player)) {
++                ret.add(player);
++            }
++        }
++
++        return ret;
++    }
++    // Tuinity end - optimise get nearest players for entity AI
++
+     // Add env and gen to constructor, WorldData -> WorldDataServer
+     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
+         super(iworlddataserver, resourcekey, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
+@@ -659,6 +760,14 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+ 
+     public void doTick(BooleanSupplier booleansupplier) {
+         GameProfilerFiller gameprofilerfiller = this.getMethodProfiler();
++        // Tuinity start - optimise checkDespawn
++        this.playersAffectingSpawning.clear();
++        for (EntityPlayer player : this.getPlayers()) {
++            if (IEntitySelector.affectsSpawning.test(player)) {
++                this.playersAffectingSpawning.add(player);
++            }
++        }
++        // Tuinity end - optimise checkDespawn
+ 
+         this.ticking = true;
+         gameprofilerfiller.enter("world border");
