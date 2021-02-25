@@ -91,8 +91,27 @@ index 0b25e0a4d050e77fa2fabd4e389d4ce693431aca..7690b5a8b0c595d664f88d161f5da793
              int i = MathHelper.floor(d0);
              int j = MathHelper.floor(d1);
              int k = MathHelper.floor(d2);
+diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
+index fb1e3c705b8abee13695762cdfd0e9f1bfdb5ad8..ed9c06c91a3ee77dad6e616cf28a34a4177ce6e3 100644
+--- a/src/main/java/net/minecraft/server/NetworkManager.java
++++ b/src/main/java/net/minecraft/server/NetworkManager.java
+@@ -387,7 +387,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+         }
+ 
+         if (this.packetListener instanceof PlayerConnection) {
++            // Tuinity start - detailed watchdog information
++            PlayerConnectionUtils.packetProcessing.push(this.packetListener);
++            try {
++            // Tuinity end - detailed watchdog information
+             ((PlayerConnection) this.packetListener).tick();
++            } finally { // Tuinity start - detailed watchdog information
++                PlayerConnectionUtils.packetProcessing.pop();
++            } // Tuinity start - detailed watchdog information
+         }
+ 
+         if (this.channel != null) {
 diff --git a/src/main/java/net/minecraft/server/PlayerConnectionUtils.java b/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
-index 8c7080777b370f97e1291dfedde5b419290f39cc..7fff1b3e4eda519851b714502d33122c1e408009 100644
+index 8c7080777b370f97e1291dfedde5b419290f39cc..8112b01f15c33f50fe5ec9aebf75d8091d440994 100644
 --- a/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
 +++ b/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
 @@ -13,10 +13,30 @@ public class PlayerConnectionUtils {
@@ -100,8 +119,8 @@ index 8c7080777b370f97e1291dfedde5b419290f39cc..7fff1b3e4eda519851b714502d33122c
      }
  
 +    // Tuinity start - detailed watchdog information
-+    private static final java.util.concurrent.ConcurrentLinkedDeque<PacketListener> packetProcessing = new java.util.concurrent.ConcurrentLinkedDeque<>();
-+    private static final java.util.concurrent.atomic.AtomicLong totalMainThreadPacketsProcessed = new java.util.concurrent.atomic.AtomicLong();
++    static final java.util.concurrent.ConcurrentLinkedDeque<PacketListener> packetProcessing = new java.util.concurrent.ConcurrentLinkedDeque<>();
++    static final java.util.concurrent.atomic.AtomicLong totalMainThreadPacketsProcessed = new java.util.concurrent.atomic.AtomicLong();
 +
 +    public static long getTotalProcessedPackets() {
 +        return totalMainThreadPacketsProcessed.get();
@@ -183,10 +202,10 @@ index e285038154d83cbf0d7c0b6b8a247c11b9e20119..97a9a201a055520a7ab92b3ecc8987eb
  
      public void a(Entity entity, Entity entity1) {
 diff --git a/src/main/java/org/spigotmc/WatchdogThread.java b/src/main/java/org/spigotmc/WatchdogThread.java
-index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..58d01c6f8abcd9e1792495abd08b186f9d03f834 100644
+index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..e0f5da720d1d9c11b57c80911fc8a909bbb52afc 100644
 --- a/src/main/java/org/spigotmc/WatchdogThread.java
 +++ b/src/main/java/org/spigotmc/WatchdogThread.java
-@@ -65,6 +65,84 @@ public class WatchdogThread extends Thread
+@@ -65,6 +65,89 @@ public class WatchdogThread extends Thread
          }
      }
  
@@ -218,6 +237,7 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..58d01c6f8abcd9e1792495abd08b186f
 +            log.log(Level.SEVERE, "Ticking entity: " + entityType);
 +            log.log(Level.SEVERE, "Position: world: '" + (world == null ? "unknown world?" : world.getWorld().getName()) + "' at location (" + posX + ", " + posY + ", " + posZ + ")");
 +            log.log(Level.SEVERE, "Velocity: " + (mot == null ? "unknown velocity" : mot.toString()) + " (in blocks per tick)");
++            log.log(Level.SEVERE, "Entity AABB: " + entity.getBoundingBox());
 +            if (moveVec != null) {
 +                log.log(Level.SEVERE, "Move call information: ");
 +                log.log(Level.SEVERE, "Start position: (" + moveStartX + ", " + moveStartY + ", " + moveStartZ + ")");
@@ -232,17 +252,19 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..58d01c6f8abcd9e1792495abd08b186f
 +                net.minecraft.server.EntityPlayer player = ((net.minecraft.server.PlayerConnection)packetListener).player;
 +                long totalPackets = net.minecraft.server.PlayerConnectionUtils.getTotalProcessedPackets();
 +                if (player == null) {
-+                    log.log(Level.SEVERE, "Handling packet for player connection (null player): " + packetListener);
++                    log.log(Level.SEVERE, "Handling packet for player connection or ticking player connection (null player): " + packetListener);
 +                    log.log(Level.SEVERE, "Total packets processed on the main thread for all players: " + totalPackets);
 +                } else {
 +                    // exclude velocity, this is set client side... Paper will also warn on high velocity set too
 +                    double posX, posY, posZ;
++                    net.minecraft.server.Vec3D mot;
 +                    double moveStartX, moveStartY, moveStartZ;
 +                    net.minecraft.server.Vec3D moveVec;
 +                    synchronized (player.posLock) {
 +                        posX = player.locX();
 +                        posY = player.locY();
 +                        posZ = player.locZ();
++                        mot = player.getMot();
 +                        moveStartX = player.getMoveStartX();
 +                        moveStartY = player.getMoveStartY();
 +                        moveStartZ = player.getMoveStartZ();
@@ -254,6 +276,8 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..58d01c6f8abcd9e1792495abd08b186f
 +
 +                    log.log(Level.SEVERE, "Handling packet for player '" + player.getName() + "', UUID: " + entityUUID);
 +                    log.log(Level.SEVERE, "Position: world: '" + (world == null ? "unknown world?" : world.getWorld().getName()) + "' at location (" + posX + ", " + posY + ", " + posZ + ")");
++                    log.log(Level.SEVERE, "Velocity: " + (mot == null ? "unknown velocity" : mot.toString()) + " (in blocks per tick)");
++                    log.log(Level.SEVERE, "Player AABB: " + player.getBoundingBox());
 +                    if (moveVec != null) {
 +                        log.log(Level.SEVERE, "Move call information: ");
 +                        log.log(Level.SEVERE, "Start position: (" + moveStartX + ", " + moveStartY + ", " + moveStartZ + ")");
@@ -271,7 +295,7 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..58d01c6f8abcd9e1792495abd08b186f
      @Override
      public void run()
      {
-@@ -121,6 +199,7 @@ public class WatchdogThread extends Thread
+@@ -121,6 +204,7 @@ public class WatchdogThread extends Thread
                  log.log( Level.SEVERE, "------------------------------" );
                  log.log( Level.SEVERE, "Server thread dump (Look for plugins here before reporting to Paper!):" ); // Paper
                  ChunkTaskManager.dumpAllChunkLoadInfo(); // Paper
