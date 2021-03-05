@@ -1436,10 +1436,10 @@ index 0000000000000000000000000000000000000000..26534e05ff5aac5a963906ba678411c8
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/light/StarLightEngine.java b/src/main/java/com/tuinity/tuinity/chunk/light/StarLightEngine.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..d1aff9117e74d8cd7c3ca9334edfaf174a240956
+index 0000000000000000000000000000000000000000..433c27813bbcddea09b21f7629a0bbce7a658082
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/light/StarLightEngine.java
-@@ -0,0 +1,1610 @@
+@@ -0,0 +1,1615 @@
 +package com.tuinity.tuinity.chunk.light;
 +
 +import com.tuinity.tuinity.util.CoordinateUtils;
@@ -1877,10 +1877,14 @@ index 0000000000000000000000000000000000000000..d1aff9117e74d8cd7c3ca9334edfaf17
 +
 +    protected abstract boolean canUseChunk(final IChunkAccess chunk);
 +
++    // This reference is explicitly stored here so that a heap dump will show what blocks were being processed.
++    // This is to debug a rather nasty unbounded queue problem.
++    protected Set<BlockPosition> changedBlocksSet;
 +    public final void blocksChangedInChunk(final ILightAccess lightAccess, final int chunkX, final int chunkZ,
 +                                           final Set<BlockPosition> positions, final Boolean[] changedSections) {
 +        this.setupCaches(lightAccess, chunkX * 16 + 7, 128, chunkZ * 16 + 7, true, true);
 +        try {
++            this.changedBlocksSet = positions;
 +            final IChunkAccess chunk = this.getChunkInCache(chunkX, chunkZ);
 +            if (this.isClientSide && chunk == null) {
 +                return;
@@ -1896,6 +1900,7 @@ index 0000000000000000000000000000000000000000..d1aff9117e74d8cd7c3ca9334edfaf17
 +            }
 +            this.updateVisible(lightAccess);
 +        } finally {
++            this.changedBlocksSet = null;
 +            this.destroyCaches();
 +        }
 +    }
