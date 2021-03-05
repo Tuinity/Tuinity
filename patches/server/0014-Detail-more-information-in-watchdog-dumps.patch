@@ -202,48 +202,59 @@ index e285038154d83cbf0d7c0b6b8a247c11b9e20119..97a9a201a055520a7ab92b3ecc8987eb
  
      public void a(Entity entity, Entity entity1) {
 diff --git a/src/main/java/org/spigotmc/WatchdogThread.java b/src/main/java/org/spigotmc/WatchdogThread.java
-index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..e0f5da720d1d9c11b57c80911fc8a909bbb52afc 100644
+index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..089ddda8892c3660c5dcb62d0fd56544857a2eba 100644
 --- a/src/main/java/org/spigotmc/WatchdogThread.java
 +++ b/src/main/java/org/spigotmc/WatchdogThread.java
-@@ -65,6 +65,89 @@ public class WatchdogThread extends Thread
+@@ -65,6 +65,78 @@ public class WatchdogThread extends Thread
          }
      }
  
 +    // Tuinity start - log detailed tick information
++    private void dumpEntity(net.minecraft.server.Entity entity) {
++        Logger log = Bukkit.getServer().getLogger();
++        double posX, posY, posZ;
++        net.minecraft.server.Vec3D mot;
++        double moveStartX, moveStartY, moveStartZ;
++        net.minecraft.server.Vec3D moveVec;
++        synchronized (entity.posLock) {
++            posX = entity.locX();
++            posY = entity.locY();
++            posZ = entity.locZ();
++            mot = entity.getMot();
++            moveStartX = entity.getMoveStartX();
++            moveStartY = entity.getMoveStartY();
++            moveStartZ = entity.getMoveStartZ();
++            moveVec = entity.getMoveVector();
++        }
++
++        String entityType = entity.getMinecraftKey().toString();
++        java.util.UUID entityUUID = entity.getUniqueID();
++        net.minecraft.server.World world = entity.getWorld();
++
++        log.log(Level.SEVERE, "Ticking entity: " + entityType + ", entity class: " + entity.getClass().getName());
++        log.log(Level.SEVERE, "Entity status: dead: " + entity.dead + ", valid: " + entity.valid + ", alive: " + entity.isAlive() + ", is passenger: " + entity.isPassenger());
++        log.log(Level.SEVERE, "Entity UUID: " + entityUUID);
++        log.log(Level.SEVERE, "Position: world: '" + (world == null ? "unknown world?" : world.getWorld().getName()) + "' at location (" + posX + ", " + posY + ", " + posZ + ")");
++        log.log(Level.SEVERE, "Velocity: " + (mot == null ? "unknown velocity" : mot.toString()) + " (in blocks per tick)");
++        log.log(Level.SEVERE, "Entity AABB: " + entity.getBoundingBox());
++        if (moveVec != null) {
++            log.log(Level.SEVERE, "Move call information: ");
++            log.log(Level.SEVERE, "Start position: (" + moveStartX + ", " + moveStartY + ", " + moveStartZ + ")");
++            log.log(Level.SEVERE, "Move vector: " + moveVec.toString());
++        }
++    }
++
 +    private void dumpTickingInfo() {
 +        Logger log = Bukkit.getServer().getLogger();
 +
 +        // ticking entities
 +        for (net.minecraft.server.Entity entity : net.minecraft.server.WorldServer.getCurrentlyTickingEntities()) {
-+            double posX, posY, posZ;
-+            net.minecraft.server.Vec3D mot;
-+            double moveStartX, moveStartY, moveStartZ;
-+            net.minecraft.server.Vec3D moveVec;
-+            synchronized (entity.posLock) {
-+                posX = entity.locX();
-+                posY = entity.locY();
-+                posZ = entity.locZ();
-+                mot = entity.getMot();
-+                moveStartX = entity.getMoveStartX();
-+                moveStartY = entity.getMoveStartY();
-+                moveStartZ = entity.getMoveStartZ();
-+                moveVec = entity.getMoveVector();
++            this.dumpEntity(entity);
++            net.minecraft.server.Entity vehicle = entity.getVehicle();
++            if (vehicle != null) {
++                log.log(Level.SEVERE, "Detailing vehicle for above entity:");
++                this.dumpEntity(vehicle);
 +            }
-+
-+            String entityType = entity.getMinecraftKey().toString();
-+            java.util.UUID entityUUID = entity.getUniqueID();
-+            net.minecraft.server.World world = entity.getWorld();
-+
-+            log.log(Level.SEVERE, "Ticking entity: " + entityType);
-+            log.log(Level.SEVERE, "Position: world: '" + (world == null ? "unknown world?" : world.getWorld().getName()) + "' at location (" + posX + ", " + posY + ", " + posZ + ")");
-+            log.log(Level.SEVERE, "Velocity: " + (mot == null ? "unknown velocity" : mot.toString()) + " (in blocks per tick)");
-+            log.log(Level.SEVERE, "Entity AABB: " + entity.getBoundingBox());
-+            if (moveVec != null) {
-+                log.log(Level.SEVERE, "Move call information: ");
-+                log.log(Level.SEVERE, "Start position: (" + moveStartX + ", " + moveStartY + ", " + moveStartZ + ")");
-+                log.log(Level.SEVERE, "Move vector: " + moveVec.toString());
-+            }
-+            log.log(Level.SEVERE, "UUID: " + entityUUID);
 +        }
 +
 +        // packet processors
@@ -255,33 +266,11 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..e0f5da720d1d9c11b57c80911fc8a909
 +                    log.log(Level.SEVERE, "Handling packet for player connection or ticking player connection (null player): " + packetListener);
 +                    log.log(Level.SEVERE, "Total packets processed on the main thread for all players: " + totalPackets);
 +                } else {
-+                    // exclude velocity, this is set client side... Paper will also warn on high velocity set too
-+                    double posX, posY, posZ;
-+                    net.minecraft.server.Vec3D mot;
-+                    double moveStartX, moveStartY, moveStartZ;
-+                    net.minecraft.server.Vec3D moveVec;
-+                    synchronized (player.posLock) {
-+                        posX = player.locX();
-+                        posY = player.locY();
-+                        posZ = player.locZ();
-+                        mot = player.getMot();
-+                        moveStartX = player.getMoveStartX();
-+                        moveStartY = player.getMoveStartY();
-+                        moveStartZ = player.getMoveStartZ();
-+                        moveVec = player.getMoveVector();
-+                    }
-+
-+                    java.util.UUID entityUUID = player.getUniqueID();
-+                    net.minecraft.server.World world = player.getWorld();
-+
-+                    log.log(Level.SEVERE, "Handling packet for player '" + player.getName() + "', UUID: " + entityUUID);
-+                    log.log(Level.SEVERE, "Position: world: '" + (world == null ? "unknown world?" : world.getWorld().getName()) + "' at location (" + posX + ", " + posY + ", " + posZ + ")");
-+                    log.log(Level.SEVERE, "Velocity: " + (mot == null ? "unknown velocity" : mot.toString()) + " (in blocks per tick)");
-+                    log.log(Level.SEVERE, "Player AABB: " + player.getBoundingBox());
-+                    if (moveVec != null) {
-+                        log.log(Level.SEVERE, "Move call information: ");
-+                        log.log(Level.SEVERE, "Start position: (" + moveStartX + ", " + moveStartY + ", " + moveStartZ + ")");
-+                        log.log(Level.SEVERE, "Move vector: " + moveVec.toString());
++                    this.dumpEntity(player);
++                    net.minecraft.server.Entity vehicle = player.getVehicle();
++                    if (vehicle != null) {
++                        log.log(Level.SEVERE, "Detailing vehicle for above entity:");
++                        this.dumpEntity(vehicle);
 +                    }
 +                    log.log(Level.SEVERE, "Total packets processed on the main thread for all players: " + totalPackets);
 +                }
@@ -295,7 +284,7 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..e0f5da720d1d9c11b57c80911fc8a909
      @Override
      public void run()
      {
-@@ -121,6 +204,7 @@ public class WatchdogThread extends Thread
+@@ -121,6 +193,7 @@ public class WatchdogThread extends Thread
                  log.log( Level.SEVERE, "------------------------------" );
                  log.log( Level.SEVERE, "Server thread dump (Look for plugins here before reporting to Paper!):" ); // Paper
                  ChunkTaskManager.dumpAllChunkLoadInfo(); // Paper
