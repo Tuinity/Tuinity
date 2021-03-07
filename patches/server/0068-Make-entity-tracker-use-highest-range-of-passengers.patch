@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 7 Mar 2021 14:14:47 -0800
+Subject: [PATCH] Make entity tracker use highest range of passengers
+
+This should prevent people from having to up their animal range
+just so players riding horses or whatever can be seen at the
+configured player range.
+
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index 2b76b5a70280def08f239ff387407a9d328d484c..6d809048026b073524cc8a6cc7bcc945ca1bb104 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -225,8 +225,21 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+     }
+ 
+     final com.destroystokyo.paper.util.misc.PooledLinkedHashSets.PooledObjectLinkedOpenHashSet<EntityPlayer> getPlayersInTrackRange() {
+-        return ((WorldServer)this.world).getChunkProvider().playerChunkMap.playerEntityTrackerTrackMaps[this.trackingRangeType.ordinal()]
+-            .getObjectsInRange(MCUtil.getCoordinateKey(this));
++        Collection<Entity> passengers = this.getAllPassengers();
++        PlayerChunkMap chunkMap = ((WorldServer)this.world).getChunkProvider().playerChunkMap;
++        org.spigotmc.TrackingRange.TrackingRangeType type = this.trackingRangeType;
++        int range = chunkMap.entityTrackerTrackRanges[type.ordinal()];
++
++        for (Entity passenger : passengers) {
++            org.spigotmc.TrackingRange.TrackingRangeType passengerType = passenger.trackingRangeType;
++            int passengerRange = chunkMap.entityTrackerTrackRanges[passengerType.ordinal()];
++            if (passengerRange > range) {
++                type = passengerType;
++                range = passengerRange;
++            }
++        }
++
++        return chunkMap.playerEntityTrackerTrackMaps[type.ordinal()].getObjectsInRange(MCUtil.getCoordinateKey(this));
+     }
+     // Paper end - optimise entity tracking
+ 
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index 61570ab947b5a153a4c2bcb5a09344f060e6052d..b529001bb96903454860f9f1b6e85e30d1e0eb4f 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -2542,7 +2542,7 @@ Sections go from 0..16. Now whenever a section is not empty, it can potentially
+                 int j = entity.getEntityType().getChunkRange() * 16;
+                 j = org.spigotmc.TrackingRange.getEntityTrackingRange(entity, j); // Paper
+ 
+-                if (j < i) { // Paper - we need the lowest range thanks to the fact that our tracker doesn't account for passenger logic
++                if (j > i) { // Paper - we need the lowest range thanks to the fact that our tracker doesn't account for passenger logic // Tuinity - not anymore!
+                     i = j;
+                 }
+             }
