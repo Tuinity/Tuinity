@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 7 Mar 2021 13:15:04 -0800
+Subject: [PATCH] Do not run raytrace logic for AIR
+
+Saves approx. 5% for the raytrace call, as most (expensive)
+raytracing tends to go through air and returning early is an
+easy win. The remaining problems with this function
+are mostly with the block getting itself.
+
+diff --git a/src/main/java/net/minecraft/server/IBlockAccess.java b/src/main/java/net/minecraft/server/IBlockAccess.java
+index 5c3eb4fc7e5aec2ad8d0050673fc8f4d2bff6a71..5ccf6b483fe15d4ad12ce2d3d11e9440ee9e8ab7 100644
+--- a/src/main/java/net/minecraft/server/IBlockAccess.java
++++ b/src/main/java/net/minecraft/server/IBlockAccess.java
+@@ -55,6 +55,7 @@ public interface IBlockAccess {
+                 return MovingObjectPositionBlock.a(raytrace1.a(), EnumDirection.a(vec3d.x, vec3d.y, vec3d.z), new BlockPosition(raytrace1.a()));
+             }
+             // Paper end
++            if (iblockdata.isAir()) return null; // Tuinity - optimise air cases
+             Fluid fluid = iblockdata.getFluid(); // Tuinity - don't need to go to world state again
+             Vec3D vec3d = raytrace1.b();
+             Vec3D vec3d1 = raytrace1.a();
