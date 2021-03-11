@@ -1,0 +1,68 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Thu, 11 Mar 2021 03:03:32 -0800
+Subject: [PATCH] Do not run close logic for inventories on chunk unload
+
+Still call the event and change the active container though. We
+want to avoid close logic because it's possible to load the
+chunk through it. This should also be OK from a leak prevention/
+state desync POV because the TE is getting unloaded anyways.
+
+diff --git a/src/main/java/net/minecraft/server/EntityHuman.java b/src/main/java/net/minecraft/server/EntityHuman.java
+index 59b00c78f8d92bcceca35d0f25e4d94b3ebdc6e2..9976b8ba3b8f19459327c3e4407b1b4f0a1f7bfd 100644
+--- a/src/main/java/net/minecraft/server/EntityHuman.java
++++ b/src/main/java/net/minecraft/server/EntityHuman.java
+@@ -354,6 +354,12 @@ public abstract class EntityHuman extends EntityLiving {
+         this.activeContainer = this.defaultContainer;
+     }
+     // Paper end
++    // Tuinity start - special close for unloaded inventory
++    public void closeUnloadedInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason reason) {
++        closeInventory();
++        this.activeContainer = this.defaultContainer;
++    }
++    // Tuinity end - special close for unloaded inventory
+ 
+     public void closeInventory() {
+         this.activeContainer = this.defaultContainer;
+diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
+index 173a210392d71cdfc551f095dc0d9c9040d22d3f..f958a4075721aea8805ddc5b49e0533d90d14d49 100644
+--- a/src/main/java/net/minecraft/server/EntityPlayer.java
++++ b/src/main/java/net/minecraft/server/EntityPlayer.java
+@@ -1591,6 +1591,17 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+         this.playerConnection.sendPacket(new PacketPlayOutCloseWindow(this.activeContainer.windowId));
+         this.o();
+     }
++    // Tuinity start - special close for unloaded inventory
++    public void closeUnloadedInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason reason) {
++        // copied from above
++        CraftEventFactory.handleInventoryCloseEvent(this, reason); // CraftBukkit
++        // Paper end
++        // copied from below
++        this.playerConnection.sendPacket(new PacketPlayOutCloseWindow(this.activeContainer.windowId));
++        this.activeContainer = this.defaultContainer;
++        // do not run close logic
++    }
++    // Tuinity end - special close for unloaded inventory
+ 
+     public void broadcastCarriedItem() {
+         if (!this.e) {
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index d2b50cdc43c737d9fdfdcd7838de24cbca2017e4..9c77be805eb71c409a5d41c2730338583527e447 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -1792,9 +1792,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+         // Spigot Start
+         for (TileEntity tileentity : chunk.getTileEntities().values()) {
+             if (tileentity instanceof IInventory) {
++                // Tuinity start - this area looks like it can load chunks, change the behavior
++                // chests for example can apply physics to the world
++                // so instead we just change the active container and call the event
+                 for (org.bukkit.entity.HumanEntity h : Lists.newArrayList(((IInventory) tileentity).getViewers())) {
+-                    h.closeInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason.UNLOADED); // Paper
++                    ((org.bukkit.craftbukkit.entity.CraftHumanEntity)h).getHandle().closeUnloadedInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason.UNLOADED); // Paper
+                 }
++                // Tuiniy end
+             }
+         }
+         // Spigot End
