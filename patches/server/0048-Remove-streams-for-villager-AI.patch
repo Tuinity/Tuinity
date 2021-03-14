@@ -3,13 +3,6 @@ From: Spottedleaf <spottedleaf@spottedleaf.dev>
 Date: Thu, 27 Aug 2020 20:51:40 -0700
 Subject: [PATCH] Remove streams for villager AI
 
-POI searching:
-Turns out chaining a lot of streams together has inane amounts of
-overheard. Use the good ol iterator method to remove that overhead.
-
-The rest is just standard stream removal.
-
-Also remove streams for poi searching in some zombie pathfinding.
 
 diff --git a/src/main/java/net/minecraft/server/Behavior.java b/src/main/java/net/minecraft/server/Behavior.java
 index 65af976527133ee5c2f52e411e19c4f7f06df3ef..0b9d469a92decfb0632805791868ef7faa88c535 100644
@@ -25,247 +18,10 @@ index 65af976527133ee5c2f52e411e19c4f7f06df3ef..0b9d469a92decfb0632805791868ef7f
      private final int d;
      private final int e;
 diff --git a/src/main/java/net/minecraft/server/BehaviorFindPosition.java b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-index 63a761ebef80d4af09cdc2682e496d78492c4a3a..8d445e9c0875db6cf45e4d8bcfce7cd3d5094d94 100644
+index 63a761ebef80d4af09cdc2682e496d78492c4a3a..275d4cad8ff0dd64b74ef8f8056cdef093523f97 100644
 --- a/src/main/java/net/minecraft/server/BehaviorFindPosition.java
 +++ b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-@@ -55,6 +55,227 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
-         }
-     }
- 
-+    // Tuinity - remove streams entirely for poi search
-+    // the only intentional vanilla diff is that this function will NOT load in poi data, anything else is a bug!
-+    protected static Set<BlockPosition> findNearestPoi(VillagePlace poiStorage,
-+                                                                          Predicate<VillagePlaceType> villagePlaceType,
-+                                                                          Predicate<BlockPosition> positionPredicate,
-+                                                                          BlockPosition sourcePosition,
-+                                                                          int range, // distance on x y z axis
-+                                                                          VillagePlace.Occupancy occupancy,
-+                                                                          int max) {
-+        java.util.TreeSet<BlockPosition> ret = new java.util.TreeSet<>((blockpos1, blockpos2) -> {
-+            // important to keep distanceSquared order: the param is the source
-+            return Double.compare(blockpos1.distanceSquared(sourcePosition), blockpos2.distanceSquared(sourcePosition));
-+        });
-+        findNearestPoi(poiStorage, villagePlaceType, positionPredicate, sourcePosition, range, occupancy, max, ret);
-+        return new java.util.HashSet<>(ret);
-+    }
-+    protected static void findNearestPoi(VillagePlace poiStorage,
-+                                            Predicate<VillagePlaceType> villagePlaceType,
-+                                            Predicate<BlockPosition> positionPredicate,
-+                                            BlockPosition sourcePosition,
-+                                            int range, // distance on x y z axis
-+                                            VillagePlace.Occupancy occupancy,
-+                                            int max,
-+                                            java.util.SortedSet<BlockPosition> ret) {
-+        // the biggest issue with the original mojang implementation is that they chain so many streams together
-+        // the amount of streams chained just rolls performance, even if nothing is iterated over
-+        Predicate<? super VillagePlaceRecord> occupancyFilter = occupancy.getPredicate();
-+        double rangeSquared = range * range;
-+
-+        // First up, we need to iterate the chunks
-+        // all the values here are in chunk sections
-+        int lowerX = MathHelper.floor(sourcePosition.getX() - range) >> 4;
-+        int lowerY = Math.max(0, MathHelper.floor(sourcePosition.getY() - range) >> 4);
-+        int lowerZ = MathHelper.floor(sourcePosition.getZ() - range) >> 4;
-+        int upperX = MathHelper.floor(sourcePosition.getX() + range) >> 4;
-+        int upperY = Math.min(15, MathHelper.floor(sourcePosition.getY() + range) >> 4);
-+        int upperZ = MathHelper.floor(sourcePosition.getZ() + range) >> 4;
-+
-+        // Vanilla iterates by x until max is reached then increases z
-+        // vanilla also searches by increasing Y section value
-+        for (int currZ = lowerZ; currZ <= upperZ; ++currZ) {
-+            for (int currX = lowerX; currX <= upperX; ++currX) {
-+                for (int currY = lowerY; currY <= upperY; ++currY) { // vanilla searches the entire chunk because they're actually stupid. just search the sections we need
-+                    Optional<VillagePlaceSection> poiSectionOptional = poiStorage.getIfLoaded(SectionPosition.asLong(currX, currY, currZ));
-+                    VillagePlaceSection poiSection = poiSectionOptional == null ? null : poiSectionOptional.orElse(null);
-+                    if (poiSection == null) {
-+                        continue;
-+                    }
-+
-+                    java.util.Map<VillagePlaceType, Set<VillagePlaceRecord>> sectionData = poiSection.getData();
-+                    if (sectionData.isEmpty()) {
-+                        continue;
-+                    }
-+
-+                    // now we search the section data
-+                    for (java.util.Iterator<java.util.Map.Entry<VillagePlaceType, Set<VillagePlaceRecord>>> iterator = sectionData.entrySet().iterator();
-+                         iterator.hasNext();) {
-+                        java.util.Map.Entry<VillagePlaceType, Set<VillagePlaceRecord>> entry = iterator.next();
-+                        if (!villagePlaceType.test(entry.getKey())) {
-+                            // filter out by poi type
-+                            continue;
-+                        }
-+
-+                        // now we can look at the poi data
-+                        for (VillagePlaceRecord poiData : entry.getValue()) {
-+                            if (!occupancyFilter.test(poiData)) {
-+                                // filter by occupancy
-+                                continue;
-+                            }
-+
-+                            // vanilla code is pretty dumb about filtering by distance: first they filter out
-+                            // so that only values in the square radius of range are returned but then they
-+                            // filter out so that the distance is in range
-+                            // but there's a catch! distanceSquared, by default, will ADD 0.5 to ONLY ONE OF the
-+                            // block position parameters (itself, in this case the poi position)! So if we want to
-+                            // maintain exact vanilla behaviour, well shit we need to play dumb as well.
-+
-+                            BlockPosition poiPosition = poiData.getPosition();
-+
-+                            if (Math.abs(poiPosition.getX() - sourcePosition.getX()) > range
-+                                    || Math.abs(poiPosition.getZ() - sourcePosition.getZ()) > range) {
-+                                // out of range for square radius
-+                                continue;
-+                            }
-+
-+                            if (poiPosition.distanceSquared(sourcePosition) > rangeSquared) {
-+                                // out of range for distance check
-+                                continue;
-+                            }
-+
-+                            if (!positionPredicate.test(poiPosition)) {
-+                                // filter by position
-+                                continue;
-+                            }
-+
-+                            // found one!
-+                            ret.add(poiPosition);
-+                            if (ret.size() > max) {
-+                                ret.remove(ret.last());
-+                            }
-+                        }
-+                    }
-+                }
-+            }
-+        }
-+    }
-+
-+    protected static BlockPosition findAnyFirstPoi(VillagePlace poiStorage,
-+                                                   Predicate<VillagePlaceType> villagePlaceType,
-+                                                   Predicate<BlockPosition> positionPredicate,
-+                                                   BlockPosition sourcePosition,
-+                                                   int range, // distance on x y z axis
-+                                                   VillagePlace.Occupancy occupancy) {
-+        Set<BlockPosition> ret = new java.util.HashSet<>();
-+        findPoi(poiStorage, villagePlaceType, positionPredicate, sourcePosition, range, occupancy, 1, ret);
-+        return ret.isEmpty() ? null : ret.iterator().next();
-+    }
-+
-+    protected static Set<BlockPosition> findPoi(VillagePlace poiStorage,
-+                                                Predicate<VillagePlaceType> villagePlaceType,
-+                                                Predicate<BlockPosition> positionPredicate,
-+                                                BlockPosition sourcePosition,
-+                                                int range, // distance on x y z axis
-+                                                VillagePlace.Occupancy occupancy,
-+                                                int max) {
-+        Set<BlockPosition> ret = new java.util.HashSet<>();
-+        findPoi(poiStorage, villagePlaceType, positionPredicate, sourcePosition, range, occupancy, max, ret);
-+        return ret;
-+    }
-+    protected static void findPoi(VillagePlace poiStorage,
-+                                                Predicate<VillagePlaceType> villagePlaceType,
-+                                                Predicate<BlockPosition> positionPredicate,
-+                                                BlockPosition sourcePosition,
-+                                                int range, // distance on x y z axis
-+                                                VillagePlace.Occupancy occupancy,
-+                                                int max,
-+                                                Set<BlockPosition> ret) {
-+        // the biggest issue with the original mojang implementation is that they chain so many streams together
-+        // the amount of streams chained just rolls performance, even if nothing is iterated over
-+        Predicate<? super VillagePlaceRecord> occupancyFilter = occupancy.getPredicate();
-+        double rangeSquared = range * range;
-+
-+        // First up, we need to iterate the chunks
-+        // all the values here are in chunk sections
-+        int lowerX = MathHelper.floor(sourcePosition.getX() - range) >> 4;
-+        int lowerY = Math.max(0, MathHelper.floor(sourcePosition.getY() - range) >> 4);
-+        int lowerZ = MathHelper.floor(sourcePosition.getZ() - range) >> 4;
-+        int upperX = MathHelper.floor(sourcePosition.getX() + range) >> 4;
-+        int upperY = Math.min(15, MathHelper.floor(sourcePosition.getY() + range) >> 4);
-+        int upperZ = MathHelper.floor(sourcePosition.getZ() + range) >> 4;
-+
-+        // Vanilla iterates by x until max is reached then increases z
-+        // vanilla also searches by increasing Y section value
-+        for (int currZ = lowerZ; currZ <= upperZ; ++currZ) {
-+            for (int currX = lowerX; currX <= upperX; ++currX) {
-+                for (int currY = lowerY; currY <= upperY; ++currY) { // vanilla searches the entire chunk because they're actually stupid. just search the sections we need
-+                    Optional<VillagePlaceSection> poiSectionOptional = poiStorage.getIfLoaded(SectionPosition.asLong(currX, currY, currZ));
-+                    VillagePlaceSection poiSection = poiSectionOptional == null ? null : poiSectionOptional.orElse(null);
-+                    if (poiSection == null) {
-+                        continue;
-+                    }
-+
-+                    java.util.Map<VillagePlaceType, Set<VillagePlaceRecord>> sectionData = poiSection.getData();
-+                    if (sectionData.isEmpty()) {
-+                        continue;
-+                    }
-+
-+                    // now we search the section data
-+                    for (java.util.Iterator<java.util.Map.Entry<VillagePlaceType, Set<VillagePlaceRecord>>> iterator = sectionData.entrySet().iterator();
-+                            iterator.hasNext();) {
-+                        java.util.Map.Entry<VillagePlaceType, Set<VillagePlaceRecord>> entry = iterator.next();
-+                        if (!villagePlaceType.test(entry.getKey())) {
-+                            // filter out by poi type
-+                            continue;
-+                        }
-+
-+                        // now we can look at the poi data
-+                        for (VillagePlaceRecord poiData : entry.getValue()) {
-+                            if (!occupancyFilter.test(poiData)) {
-+                                // filter by occupancy
-+                                continue;
-+                            }
-+
-+                            // vanilla code is pretty dumb about filtering by distance: first they filter out
-+                            // so that only values in the square radius of range are returned but then they
-+                            // filter out so that the distance is in range
-+                            // but there's a catch! distanceSquared, by default, will ADD 0.5 to ONLY ONE OF the
-+                            // block position parameters (itself, in this case the poi position)! So if we want to
-+                            // maintain exact vanilla behaviour, well shit we need to play dumb as well.
-+
-+                            BlockPosition poiPosition = poiData.getPosition();
-+
-+                            if (Math.abs(poiPosition.getX() - sourcePosition.getX()) > range
-+                                    || Math.abs(poiPosition.getZ() - sourcePosition.getZ()) > range) {
-+                                // out of range for square radius
-+                                continue;
-+                            }
-+
-+                            if (poiPosition.distanceSquared(sourcePosition) > rangeSquared) {
-+                                // out of range for distance check
-+                                continue;
-+                            }
-+
-+                            if (!positionPredicate.test(poiPosition)) {
-+                                // filter by position
-+                                continue;
-+                            }
-+
-+                            // found one!
-+                            ret.add(poiPosition);
-+                            if (ret.size() >= max) {
-+                                return;
-+                            }
-+                        }
-+                    }
-+                }
-+            }
-+        }
-+    }
-+    // Tuinity - remove streams entirely for poi search
-+
-     protected void a(WorldServer worldserver, EntityCreature entitycreature, long i) {
-         this.f = i + 20L + (long) worldserver.getRandom().nextInt(20);
-         VillagePlace villageplace = worldserver.y();
-@@ -74,7 +295,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
-                 return true;
-             }
-         };
--        Set<BlockPosition> set = (Set) villageplace.b(this.b.c(), predicate, entitycreature.getChunkCoordinates(), 48, VillagePlace.Occupancy.HAS_SPACE).limit(5L).collect(Collectors.toSet());
-+        Set<BlockPosition> set = findNearestPoi(villageplace, this.b.c(), predicate, entitycreature.getChunkCoordinates(), 48, VillagePlace.Occupancy.HAS_SPACE, 5); // Tuinity - remove streams entirely for poi search
-         PathEntity pathentity = entitycreature.getNavigation().a(set, this.b.d());
- 
-         if (pathentity != null && pathentity.j()) {
-@@ -84,7 +305,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
+@@ -84,7 +84,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
                  villageplace.a(this.b.c(), (blockposition1) -> {
                      return blockposition1.equals(blockposition);
                  }, blockposition, 1);
@@ -473,41 +229,6 @@ index 99b01cb35e2af2d61688b0b10ad1c655b9f2e4c3..1b56d83bdac536e8189901f03ad58e82
      public double h(Entity entity) {
          return this.e(entity.getPositionVector());
      }
-diff --git a/src/main/java/net/minecraft/server/NavigationAbstract.java b/src/main/java/net/minecraft/server/NavigationAbstract.java
-index 1558c5f8256f50be6850f1d7f70eee3e8ec76496..55fa3911703f96cf1f97c82b19d8e2d0d220016b 100644
---- a/src/main/java/net/minecraft/server/NavigationAbstract.java
-+++ b/src/main/java/net/minecraft/server/NavigationAbstract.java
-@@ -85,7 +85,7 @@ public abstract class NavigationAbstract {
- 
-     @Nullable
-     public PathEntity a(Stream<BlockPosition> stream, int i) {
--        return this.a((Set) stream.collect(Collectors.toSet()), 8, false, i);
-+        return this.a((Set) stream.collect(Collectors.toSet()), 8, false, i); // Tuinity - diff on change, inlined into SensorNearestBed
-     }
- 
-     @Nullable
-diff --git a/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java b/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java
-index 475c0764b97b056f17720f37b1ca3eb1a2375334..9f48d476c05dbeabbfe3c650ce4ad33ec691a56a 100644
---- a/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java
-+++ b/src/main/java/net/minecraft/server/PathfinderGoalMoveThroughVillage.java
-@@ -50,7 +50,7 @@ public class PathfinderGoalMoveThroughVillage extends PathfinderGoal {
-                         if (!worldserver.a_(blockposition1)) {
-                             return Double.NEGATIVE_INFINITY;
-                         } else {
--                            Optional<BlockPosition> optional = worldserver.y().c(VillagePlaceType.b, this::a, blockposition1, 10, VillagePlace.Occupancy.IS_OCCUPIED);
-+                            Optional<BlockPosition> optional = Optional.ofNullable(BehaviorFindPosition.findAnyFirstPoi(worldserver.y(), VillagePlaceType.b, this::a, blockposition1, 10, VillagePlace.Occupancy.IS_OCCUPIED)); // Tuinity - remove streams here
- 
-                             return !optional.isPresent() ? Double.NEGATIVE_INFINITY : -((BlockPosition) optional.get()).j(blockposition);
-                         }
-@@ -59,7 +59,7 @@ public class PathfinderGoalMoveThroughVillage extends PathfinderGoal {
-                     if (vec3d == null) {
-                         return false;
-                     } else {
--                        Optional<BlockPosition> optional = worldserver.y().c(VillagePlaceType.b, this::a, new BlockPosition(vec3d), 10, VillagePlace.Occupancy.IS_OCCUPIED);
-+                        Optional<BlockPosition> optional = Optional.ofNullable(BehaviorFindPosition.findAnyFirstPoi(worldserver.y(), VillagePlaceType.b, this::a, new BlockPosition(vec3d), 10, VillagePlace.Occupancy.IS_OCCUPIED)); // Tuinity - remove streams here
- 
-                         if (!optional.isPresent()) {
-                             return false;
 diff --git a/src/main/java/net/minecraft/server/RegionFileSection.java b/src/main/java/net/minecraft/server/RegionFileSection.java
 index 04256a95108b8182e8f808e856e0d2b62165e242..d9362b74fda2ea937281f897fbc2cb501775a275 100644
 --- a/src/main/java/net/minecraft/server/RegionFileSection.java
@@ -524,20 +245,10 @@ index 04256a95108b8182e8f808e856e0d2b62165e242..d9362b74fda2ea937281f897fbc2cb50
      }
  
 diff --git a/src/main/java/net/minecraft/server/SensorNearestBed.java b/src/main/java/net/minecraft/server/SensorNearestBed.java
-index ad3609f2b884f64f1a1a449036cece49a46e933e..d3d28f97f9d2f969a182aec5e0947b6969d2939c 100644
+index ad3609f2b884f64f1a1a449036cece49a46e933e..83025d69e8a0732f16581fcfeaef5c1a45d70b63 100644
 --- a/src/main/java/net/minecraft/server/SensorNearestBed.java
 +++ b/src/main/java/net/minecraft/server/SensorNearestBed.java
-@@ -40,15 +40,15 @@ public class SensorNearestBed extends Sensor<EntityInsentient> {
-                     return true;
-                 }
-             };
--            Stream<BlockPosition> stream = villageplace.a(VillagePlaceType.r.c(), predicate, entityinsentient.getChunkCoordinates(), 48, VillagePlace.Occupancy.ANY);
--            PathEntity pathentity = entityinsentient.getNavigation().a(stream, VillagePlaceType.r.d());
-+            Set<BlockPosition> set = BehaviorFindPosition.findPoi(villageplace, VillagePlaceType.r.c(), predicate, entityinsentient.getChunkCoordinates(), 48, VillagePlace.Occupancy.ANY, Integer.MAX_VALUE); // Tuinity - remove streams
-+            PathEntity pathentity = entityinsentient.getNavigation().a(set, 8, false, VillagePlaceType.r.d()); // this.a((Set) stream.collect(Collectors.toSet()), 8, false, i) // Tuinity - remove streams
- 
-             if (pathentity != null && pathentity.j()) {
-                 BlockPosition blockposition = pathentity.m();
+@@ -48,7 +48,7 @@ public class SensorNearestBed extends Sensor<EntityInsentient> {
                  Optional<VillagePlaceType> optional = villageplace.c(blockposition);
  
                  if (optional.isPresent()) {
