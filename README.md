@@ -1,21 +1,27 @@
-Tuinity ![Java CI](https://github.com/Spottedleaf/Tuinity/workflows/Java%20CI/badge.svg)
-==
-
-Fork of [Paper](https://github.com/PaperMC/Paper) aimed at improving server performance at high playercounts.
-
-## Contact
-[IRC](http://irc.spi.gt/iris/?channels=tuinity) | [Discord](https://discord.gg/tuinity)
+<div align=center>
+    <!-- ./blob/master/tuinity-logo.webp -->
+    <img src="./tuinity-logo.webp" width="512">
+    <br /><br />
+    <p>Fork of <a href="https://github.com/PaperMC/Paper">Paper</a> aimed at improving server performance at high playercounts.</p>
+    <img alt="Java CI" src="https://github.com/Spottedleaf/Tuinity/workflows/Java%20CI/badge.svg">
+    <a href="https://irc.spi.gt/iris/?channels=tuinity">
+        <img alt="IRC" src="https://img.shields.io/badge/irc-%23tuinity-%23DF8826">
+    </a>
+    <a href="https://discord.gg/tuinity">
+        <img alt="Discord" src="https://img.shields.io/badge/discord-discord.gg%2Ftuinity-%237289da">
+    </a>
+</div>
 
 ## How To (Server Admins)
 Tuinity uses the same paperclip jar system that Paper uses.
 
 You can download the latest build of Tuinity by going [here](https://ci.codemc.io/job/Spottedleaf/job/Tuinity/).
 
-You can also [build it yourself](https://github.com/Spottedleaf/Tuinity#building)
+You can also [build it yourself](https://github.com/Spottedleaf/Tuinity#building).
 
 ## How To (Plugin developers)
 In order to use Tuinity as a dependency you must [build it yourself](https://github.com/Spottedleaf/Tuinity#building).
-Each time you want to update your dependency you must re-build tuinity.
+Each time you want to update your dependency you must re-build Tuinity.
 
 Tuinity-API maven dependency:
 ```xml
@@ -38,18 +44,18 @@ Tuinity-Server maven dependency:
 ```
 
 There is no repository required since the artifacts should be locally installed
-via building tuinity.
+via building Tuinity.
 
 ## Building
 
 Requirements:
 - You need `git` installed, with a configured user name and email. 
-   On windows you need to run from git bash.
-- You need `maven` installed
-- You need `jdk` 8+ installed to compile (and `jre` 8+ to run)
-- Anything else that `paper` requires to build
+   On Windows you need to run from git bash.
+- You need `maven` installed.
+- You need `jdk` 8+ installed to compile (and `jre` 8+ to run).
+- Anything else that `paper` requires to build.
 
-If all you want is a paperclip server jar, just run `./tuinity jar`
+If all you want is a paperclip server jar, just run `./tuinity jar`.
 
 Otherwise, to setup the `Tuinity-API` and `Tuinity-Server` repo, just run the following command
 in your project root `./tuinity patch` additionally, after you run `./tuinity patch` you can run `./tuinity build` to build the 
@@ -75,4 +81,4 @@ for the license of material used/modified by this project.
 
 ### Note
 
-The fork is based off of aikar's EMC framework found [here](https://github.com/starlis/empirecraft)
+The fork is based off of aikar's EMC framework found [here](https://github.com/starlis/empirecraft).
