@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Fri, 19 Feb 2021 22:51:52 -0800
+Subject: [PATCH] Oprimise map impl for tracked players
+
+Reference2BooleanOpenHashMap is going to have
+better lookups than HashMap.
+
+diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+index 9129a720e4d85ffbeaa4c76473de6786ffd816fd..fd7d403b7aac37f5b97a8c73bc6f0c4c587ac546 100644
+--- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
+@@ -49,6 +49,7 @@ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
+ import javax.annotation.Nullable;
+ import it.unimi.dsi.fastutil.objects.ObjectRBTreeSet; // Paper
++import it.unimi.dsi.fastutil.objects.Reference2BooleanOpenHashMap; // Tuinity
+ import org.apache.commons.lang3.mutable.MutableBoolean;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+@@ -2489,7 +2490,7 @@ Sections go from 0..16. Now whenever a section is not empty, it can potentially
+         // Paper start
+         // Replace trackedPlayers Set with a Map. The value is true until the player receives
+         // their first update (which is forced to have absolute coordinates), false afterward.
+-        public java.util.Map<EntityPlayer, Boolean> trackedPlayerMap = new java.util.HashMap<>();
++        public java.util.Map<EntityPlayer, Boolean> trackedPlayerMap = new Reference2BooleanOpenHashMap<>(); // Tuinity - optimise map impl
+         public Set<EntityPlayer> trackedPlayers = trackedPlayerMap.keySet();
+ 
+         public EntityTracker(Entity entity, int i, int j, boolean flag) {
