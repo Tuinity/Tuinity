@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Fri, 19 Feb 2021 18:45:25 -0800
+Subject: [PATCH] Remove chunk lookup & lambda allocation from counting mobs
+
+The chunk lookup doesn't look cheap.
+
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index e26389d8d9ee4fedb32767fce3aed071af412304..cce750fd5725a232db16cd8ec4603d5cf09da3df 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -991,9 +991,9 @@ public class ChunkProviderServer extends IChunkProvider {
+                 for (EntityPlayer player : this.world.players) {
+                     Arrays.fill(player.mobCounts, 0);
+                 }
+-                spawnercreature_d = SpawnerCreature.countMobs(l, this.world.A(), this::a, true);
++                spawnercreature_d = SpawnerCreature.countMobs(l, this.world.A(), this::a, true, this); // Tuinity
+             } else {
+-                spawnercreature_d = SpawnerCreature.countMobs(l, this.world.A(), this::a, false);
++                spawnercreature_d = SpawnerCreature.countMobs(l, this.world.A(), this::a, false, this); // Tuinity
+             }
+             // Paper end
+             this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
+diff --git a/src/main/java/net/minecraft/server/SpawnerCreature.java b/src/main/java/net/minecraft/server/SpawnerCreature.java
+index a77b1d61b9dcb0a2a27d7e50357eaf44c99a661e..53fd0549c965b2252ad80648d61ff1f7cd2b837a 100644
+--- a/src/main/java/net/minecraft/server/SpawnerCreature.java
++++ b/src/main/java/net/minecraft/server/SpawnerCreature.java
+@@ -30,9 +30,9 @@ public final class SpawnerCreature {
+ 
+     public static SpawnerCreature.d a(int i, Iterable<Entity> iterable, SpawnerCreature.b spawnercreature_b) {
+         // Paper start - add countMobs parameter
+-        return countMobs(i, iterable, spawnercreature_b, false);
++        return countMobs(i, iterable, spawnercreature_b, false, null); // Tuinity - it'll still be broken no matter what
+     }
+-    public static SpawnerCreature.d countMobs(int i, Iterable<Entity> iterable, SpawnerCreature.b spawnercreature_b, boolean countMobs) {
++    public static SpawnerCreature.d countMobs(int i, Iterable<Entity> iterable, SpawnerCreature.b spawnercreature_b, boolean countMobs, ChunkProviderServer chunkProvider) { // Tuinity - add CPS param
+         // Paper end - add countMobs parameter
+         SpawnerCreatureProbabilities spawnercreatureprobabilities = new SpawnerCreatureProbabilities();
+         Object2IntOpenHashMap<EnumCreatureType> object2intopenhashmap = new Object2IntOpenHashMap();
+@@ -63,7 +63,16 @@ public final class SpawnerCreature {
+                 BlockPosition blockposition = entity.getChunkCoordinates();
+                 long j = ChunkCoordIntPair.pair(blockposition.getX() >> 4, blockposition.getZ() >> 4);
+ 
+-                spawnercreature_b.query(j, (chunk) -> {
++                // Tuinity start - remove chunk lookup and lambda
++                Chunk chunk = entity.getCurrentChunk();
++                if (chunk == null || j != chunk.coordinateKey) { // no chunk or coordinate doesn't match
++                    chunk = chunkProvider.getChunkAtIfLoadedMainThreadNoCache(blockposition.getX() >> 4, blockposition.getZ() >> 4);
++                    if (chunk == null) {
++                        // unloaded chunk! no longer FULL.
++                        continue;
++                    }
++                }
++                // Tuinity end - remove chunk lookup and lambda
+                     BiomeSettingsMobs.b biomesettingsmobs_b = b(blockposition, chunk).b().a(entity.getEntityType());
+ 
+                     if (biomesettingsmobs_b != null) {
+@@ -73,10 +82,10 @@ public final class SpawnerCreature {
+                     object2intopenhashmap.addTo(enumcreaturetype, 1);
+                     // Paper start
+                     if (countMobs) {
+-                        ((WorldServer)chunk.world).getChunkProvider().playerChunkMap.updatePlayerMobTypeMap(entity);
++                        chunkProvider.playerChunkMap.updatePlayerMobTypeMap(entity); // Tuinity - directly use chunk provider
+                     }
+                     // Paper end
+-                });
++                // Tuinity - remove chunk lookup and lambda
+             }
+         }
+ 
