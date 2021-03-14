@@ -185,7 +185,7 @@ index 48976b1f07aeb0d588d0856f18b6fd07b2d18e05..a22021766b3bffa4f96d1d4ee546b12e
      // Paper end - optimise isOutsideOfRange
      // Paper start - optimize chunk status progression without jumping through thread pool
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 94da0b4cb9a790f866bcd3b11a61ae0c0faa1dc5..2d15a4ea2958c4597269ba50bcd82282ee8e3bf0 100644
+index 8578cac6a19d9d1b5ac5f12fa369cc54a2436d4e..d04be5ae54ac543de144eb4ae87a255c467bc637 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
 @@ -196,6 +196,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -231,9 +231,9 @@ index 94da0b4cb9a790f866bcd3b11a61ae0c0faa1dc5..2d15a4ea2958c4597269ba50bcd82282
      }
      // Paper end
  
-@@ -463,6 +478,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-         // Tuinity start
-         this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<>(this.world, RegionData.class, 2, (1.0 / 3.0), "Data");
+@@ -479,6 +494,23 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager(this.world, 2, (1.0 / 3.0), 1, 6, "Data", DataRegionData::new, DataRegionSectionData::new);
+         this.regionManagers.add(this.dataRegionManager);
          // Tuinity end
 +        // Tuinity start - optimise checkDespawn
 +        this.playerGeneralAreaMap = new com.destroystokyo.paper.util.misc.PlayerAreaMap(this.pooledLinkedPlayerHashSets,
@@ -348,7 +348,7 @@ index 1d87e7461d28d8a639fafcfdfa5496014e9180f6..970c1be5477a01ab9c6d79e84c519e22
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig(((WorldDataServer) worlddatamutable).getName()); // Spigot
          this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(((WorldDataServer) worlddatamutable).getName(), this.spigotConfig); // Paper
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 1f7cb91cc4f8d77b2ed0ffbf3a6063fc127f3871..2eb9663a3c9cedad01cd810066d6fc06ee46290c 100644
+index 3e46e49aebee3c47447419eb784fcf2150f422f2..ac4b2d34824c00b655f9e5dbcc431b0ed8e4d765 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -301,6 +301,107 @@ public class WorldServer extends World implements GeneratorAccessSeed {

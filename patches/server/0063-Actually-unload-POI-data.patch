@@ -25,18 +25,18 @@ index 13d067f48647dea63ef1bf3a2a3e0868074ba75f..04afd7f285db2f281a038e0be6f557b8
          this.a(Long.MAX_VALUE, i, j, flag);
      }
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 3ef3c05be2241c43bbef096b00c4b68141af3924..36418fb2ede9e98c021c5e62150c46d91e5e3e01 100644
+index 58089180c730ce0bc423cdb20e86f11858543c25..6ac16c7252f5f9e7259eed2bae74a14d57a9bd37 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -842,6 +842,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                     playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.p, this);
-                     this.dataRegionManager.addChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
+@@ -928,6 +928,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     }
+                     // Tuinity end
                  }
 +                this.getVillagePlace().dequeueUnload(playerchunk.location.pair()); // Tuinity - unload POI data
  
                  this.updatingChunks.put(i, playerchunk);
                  this.updatingChunksModified = true;
-@@ -967,7 +968,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1053,7 +1054,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      }
  
@@ -45,23 +45,23 @@ index 3ef3c05be2241c43bbef096b00c4b68141af3924..36418fb2ede9e98c021c5e62150c46d9
  
      protected void unloadChunks(BooleanSupplier booleansupplier) {
          GameProfilerFiller gameprofilerfiller = this.world.getMethodProfiler();
-@@ -1095,6 +1096,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                 boolean removed;
-                 if ((removed = this.pendingUnload.remove(i, playerchunk)) && ichunkaccess != null) { // Tuinity end
-                     this.dataRegionManager.removeChunk(playerchunk.location.x, playerchunk.location.z); // Tuinity
+@@ -1185,6 +1186,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                         this.regionManagers.get(index).removeChunk(playerchunk.location.x, playerchunk.location.z);
+                     }
+                     // Tuinity end
 +                    this.getVillagePlace().queueUnload(playerchunk.location.pair(), MinecraftServer.currentTickLong + 1); // Tuinity - unload POI data
                      if (ichunkaccess instanceof Chunk) {
                          ((Chunk) ichunkaccess).setLoaded(false);
                      }
-@@ -1119,6 +1121,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                     this.worldLoadListener.a(ichunkaccess.getPos(), (ChunkStatus) null);
-                 } else if (removed) { // Tuinity start
-                     this.dataRegionManager.removeChunk(playerchunk.location.x, playerchunk.location.z);
+@@ -1213,6 +1215,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                         this.regionManagers.get(index).removeChunk(playerchunk.location.x, playerchunk.location.z);
+                     }
+                     // Tuinity end
 +                    this.getVillagePlace().queueUnload(playerchunk.location.pair(), MinecraftServer.currentTickLong + 1); // Tuinity - unload POI data
                  } // Tuinity end
                  } finally { this.unloadingPlayerChunk = unloadingBefore; } // Tuinity - do not allow ticket level changes while unloading chunks
  
-@@ -1212,6 +1215,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1306,6 +1309,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
                  this.getVillagePlace().loadInData(chunkcoordintpair, chunkHolder.poiData);
                  chunkHolder.tasks.forEach(Runnable::run);

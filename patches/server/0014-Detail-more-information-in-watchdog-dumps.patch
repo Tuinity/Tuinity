@@ -159,7 +159,7 @@ index 8c7080777b370f97e1291dfedde5b419290f39cc..8112b01f15c33f50fe5ec9aebf75d809
              });
              throw CancelledPacketHandleException.INSTANCE;
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index e285038154d83cbf0d7c0b6b8a247c11b9e20119..97a9a201a055520a7ab92b3ecc8987eb560bf263 100644
+index e285038154d83cbf0d7c0b6b8a247c11b9e20119..949ed1cbb19317844424975c9e976148cfa2614d 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -901,7 +901,26 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -167,14 +167,12 @@ index e285038154d83cbf0d7c0b6b8a247c11b9e20119..97a9a201a055520a7ab92b3ecc8987eb
      }
  
 +    // Tuinity start - log detailed entity tick information
-+    static final java.util.concurrent.ConcurrentLinkedDeque<Entity> currentlyTickingEntities = new java.util.concurrent.ConcurrentLinkedDeque<>();
++    // TODO replace with varhandle
++    static final java.util.concurrent.atomic.AtomicReference<Entity> currentlyTickingEntity = new java.util.concurrent.atomic.AtomicReference<>();
 +
 +    public static List<Entity> getCurrentlyTickingEntities() {
-+        List<Entity> ret = Lists.newArrayListWithCapacity(4);
-+
-+        for (Entity entity : currentlyTickingEntities) {
-+            ret.add(entity);
-+        }
++        Entity ticking = currentlyTickingEntity.get();
++        List<Entity> ret = java.util.Arrays.asList(ticking == null ? new Entity[0] : new Entity[] { ticking });
 +
 +        return ret;
 +    }
@@ -184,18 +182,22 @@ index e285038154d83cbf0d7c0b6b8a247c11b9e20119..97a9a201a055520a7ab92b3ecc8987eb
 +        // Tuinity start - log detailed entity tick information
 +        com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot tick an entity off-main");
 +        try {
-+            currentlyTickingEntities.push(entity);
++            if (currentlyTickingEntity.get() == null) {
++                currentlyTickingEntity.lazySet(entity);
++            }
 +            // Tuinity end - log detailed entity tick information
          if (!(entity instanceof EntityHuman) && !this.getChunkProvider().a(entity)) {
              this.chunkCheck(entity);
          } else {
-@@ -954,6 +973,11 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -954,6 +973,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              //} finally { timer.stopTiming(); } // Paper - timings - move up
  
          }
 +        // Tuinity start - log detailed entity tick information
 +        } finally {
-+            currentlyTickingEntities.pop();
++            if (currentlyTickingEntity.get() == entity) {
++                currentlyTickingEntity.lazySet(null);
++            }
 +        }
 +        // Tuinity end - log detailed entity tick information
      }

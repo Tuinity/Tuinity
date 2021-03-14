@@ -8,9 +8,18 @@ Instead, only iterate over navigators in the current region that are
 eligible for repathing.
 
 diff --git a/src/main/java/net/minecraft/server/NavigationAbstract.java b/src/main/java/net/minecraft/server/NavigationAbstract.java
-index 55fa3911703f96cf1f97c82b19d8e2d0d220016b..b92ca4a6de01f3f86367fb8dfe3591b08a3e9218 100644
+index 55fa3911703f96cf1f97c82b19d8e2d0d220016b..61d2186575e0e961b4a9a049f87858254a3fd5ba 100644
 --- a/src/main/java/net/minecraft/server/NavigationAbstract.java
 +++ b/src/main/java/net/minecraft/server/NavigationAbstract.java
+@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
+ 
+ public abstract class NavigationAbstract {
+ 
+-    protected final EntityInsentient a; public Entity getEntity() { return a; } // Paper - OBFHELPER
++    protected final EntityInsentient a; public final EntityInsentient getEntity() { return a; } // Paper - OBFHELPER // Tuinity - match types
+     protected final World b;
+     @Nullable
+     protected PathEntity c; protected final PathEntity getCurrentPath() { return this.c; } // Paper - OBFHELPER
 @@ -21,7 +21,7 @@ public abstract class NavigationAbstract {
      protected long j;
      protected double k;
@@ -44,28 +53,110 @@ index 55fa3911703f96cf1f97c82b19d8e2d0d220016b..b92ca4a6de01f3f86367fb8dfe3591b0
              Vec3D vec3d = new Vec3D(((double) pathpoint.a + this.a.locX()) / 2.0D, ((double) pathpoint.b + this.a.locY()) / 2.0D, ((double) pathpoint.c + this.a.locZ()) / 2.0D);
  
 diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 44c04a0a0c744402edb5f6054919a3c181818c27..3ef3c05be2241c43bbef096b00c4b68141af3924 100644
+index ff91f069e5f4a16c069c8a68d8cb55e9ad3627c8..58089180c730ce0bc423cdb20e86f11858543c25 100644
 --- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -295,7 +295,15 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -299,17 +299,82 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
-     // Tuinity start
-     public static enum RegionData implements com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionDataCreator<RegionData> {
--
+     public static final class DataRegionData implements com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionData {
+ 
 +        // Tuinity start - optimise notify()
-+        PATHING_NAVIGATORS() {
-+            @Override
-+            public Object createData(com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection<RegionData> section,
-+                    com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager<RegionData> regionManager) {
-+                return new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>(true);
++        private com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<EntityInsentient> navigators;
+ 
++        public com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<EntityInsentient> getNavigators() {
++            return this.navigators;
++        }
++
++        public boolean addToNavigators(final EntityInsentient navigator) {
++            if (this.navigators == null) {
++                this.navigators = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>();
 +            }
++            return this.navigators.add(navigator);
++        }
++
++        public boolean removeFromNavigators(final EntityInsentient navigator) {
++            if (this.navigators == null) {
++                return false;
++            }
++            return this.navigators.remove(navigator);
 +        }
 +        // Tuinity end - optimise notify()
-         ;
+ 
+     }
+ 
+     public static final class DataRegionSectionData implements com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSectionData {
+ 
++        // Tuinity start - optimise notify()
++        private com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<EntityInsentient> navigators;
++
++        public com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<EntityInsentient> getNavigators() {
++            return this.navigators;
++        }
++
++        public boolean addToNavigators(final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section, final EntityInsentient navigator) {
++            if (this.navigators == null) {
++                this.navigators = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>();
++            }
++            final boolean ret = this.navigators.add(navigator);
++            if (ret) {
++                final DataRegionData data = (DataRegionData)section.getRegion().regionData;
++                if (!data.addToNavigators(navigator)) {
++                    throw new IllegalStateException();
++                }
++            }
++            return ret;
++        }
++
++        public boolean removeFromNavigators(final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section, final EntityInsentient navigator) {
++            if (this.navigators == null) {
++                return false;
++            }
++            final boolean ret = this.navigators.remove(navigator);
++            if (ret) {
++                final DataRegionData data = (DataRegionData)section.getRegion().regionData;
++                if (!data.removeFromNavigators(navigator)) {
++                    throw new IllegalStateException();
++                }
++            }
++            return ret;
++        }
++        // Tuinity end - optimise notify()
++
+         @Override
+         public void removeFromRegion(final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section,
+                                      final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.Region from) {
+             final DataRegionSectionData sectionData = (DataRegionSectionData)section.sectionData;
+             final DataRegionData fromData = (DataRegionData)from.regionData;
++            // Tuinity start - optimise notify()
++            if (sectionData.navigators != null) {
++                for (final Iterator<EntityInsentient> iterator = sectionData.navigators.unsafeIterator(com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
++                    if (!fromData.removeFromNavigators(iterator.next())) {
++                        throw new IllegalStateException();
++                    }
++                }
++            }
++            // Tuinity end - optimise notify()
+         }
  
          @Override
+@@ -319,6 +384,15 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+             final DataRegionSectionData sectionData = (DataRegionSectionData)section.sectionData;
+             final DataRegionData oldRegionData = oldRegion == null ? null : (DataRegionData)oldRegion.regionData;
+             final DataRegionData newRegionData = (DataRegionData)newRegion.regionData;
++            // Tuinity start - optimise notify()
++            if (sectionData.navigators != null) {
++                for (final Iterator<EntityInsentient> iterator = sectionData.navigators.unsafeIterator(com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
++                    if (!newRegionData.addToNavigators(iterator.next())) {
++                        throw new IllegalStateException();
++                    }
++                }
++            }
++            // Tuinity end - optimise notify()
+         }
+     }
+     // Tuiniy end
 diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index fda23d89da29e6a6065fc4bb57a4809f8bdb8b46..d2b50cdc43c737d9fdfdcd7838de24cbca2017e4 100644
+index ff9cbb830779b54af3fd3964d559b0d88376681d..c6d2ab318d711072507ce3667d07a9cdeb0d0fbe 100644
 --- a/src/main/java/net/minecraft/server/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/WorldServer.java
 @@ -970,6 +970,15 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -99,20 +190,20 @@ index fda23d89da29e6a6065fc4bb57a4809f8bdb8b46..d2b50cdc43c737d9fdfdcd7838de24cb
  
                  gameprofilerfiller.exit();
              }
-@@ -1401,6 +1417,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1403,6 +1419,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              int i = MathHelper.floor(entity.locX() / 16.0D);
              int j =  Math.min(15, Math.max(0, MathHelper.floor(entity.locY() / 16.0D))); // Paper - stay consistent with chunk add/remove behavior
              int k = MathHelper.floor(entity.locZ() / 16.0D);
 +            // Tuinity start
-+            int oldRegionX = entity.chunkX >> com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.REGION_CHUNK_SIZE_SHIFT;
-+            int oldRegionZ = entity.chunkZ >> com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.REGION_CHUNK_SIZE_SHIFT;
-+            int newRegionX = i >> com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.REGION_CHUNK_SIZE_SHIFT;
-+            int newRegionZ = k >> com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.REGION_CHUNK_SIZE_SHIFT;
++            int oldRegionX = entity.chunkX >> this.getChunkProvider().playerChunkMap.dataRegionManager.regionChunkShift;
++            int oldRegionZ = entity.chunkZ >> this.getChunkProvider().playerChunkMap.dataRegionManager.regionChunkShift;
++            int newRegionX = i >> this.getChunkProvider().playerChunkMap.dataRegionManager.regionChunkShift;
++            int newRegionZ = k >> this.getChunkProvider().playerChunkMap.dataRegionManager.regionChunkShift;
 +            // Tuinity end
  
              if (!entity.inChunk || entity.chunkX != i || entity.chunkY != j || entity.chunkZ != k) {
                  // Paper start - remove entity if its in a chunk more correctly.
-@@ -1410,6 +1432,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1412,6 +1434,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                  }
                  // Paper end
  
@@ -125,7 +216,7 @@ index fda23d89da29e6a6065fc4bb57a4809f8bdb8b46..d2b50cdc43c737d9fdfdcd7838de24cb
                  if (entity.inChunk && this.isChunkLoaded(entity.chunkX, entity.chunkZ)) {
                      this.getChunkAt(entity.chunkX, entity.chunkZ).a(entity, entity.chunkY);
                  }
-@@ -1423,6 +1451,11 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1425,6 +1453,11 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                  } else {
                      this.getChunkAt(i, k).a(entity);
                  }
@@ -137,7 +228,7 @@ index fda23d89da29e6a6065fc4bb57a4809f8bdb8b46..d2b50cdc43c737d9fdfdcd7838de24cb
              }
  
              this.getMethodProfiler().exit();
-@@ -1885,9 +1918,96 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1887,9 +1920,64 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              // Tuinity end
          }
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
@@ -147,84 +238,52 @@ index fda23d89da29e6a6065fc4bb57a4809f8bdb8b46..d2b50cdc43c737d9fdfdcd7838de24cb
  
 +    // Tuinity start - optimise notify()
 +    void removeNavigatorsIfNotPathingFromRegion(Entity entity) {
-+        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection<PlayerChunkMap.RegionData> section =
++        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section =
 +                this.getChunkProvider().playerChunkMap.dataRegionManager.getRegionSection(entity.chunkX, entity.chunkZ);
 +        if (section != null) {
-+            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<NavigationAbstract> navigators = (com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet)section.getOrCreateData(PlayerChunkMap.RegionData.PATHING_NAVIGATORS);
-+            // Copied from above
-+            if (entity instanceof EntityDrowned) {
-+                if (!((EntityDrowned)entity).navigationWater.isViableForPathRecalculationChecking()) {
-+                    navigators.remove(((EntityDrowned)entity).navigationWater);
-+                }
-+                if (!((EntityDrowned)entity).navigationLand.isViableForPathRecalculationChecking()) {
-+                    navigators.remove(((EntityDrowned)entity).navigationLand);
-+                }
-+            } else if (entity instanceof EntityInsentient) {
++            PlayerChunkMap.DataRegionSectionData sectionData = (PlayerChunkMap.DataRegionSectionData)section.sectionData;
++            if (entity instanceof EntityInsentient) {
 +                if (!((EntityInsentient)entity).getNavigation().isViableForPathRecalculationChecking()) {
-+                    navigators.remove(((EntityInsentient)entity).getNavigation());
++                    sectionData.removeFromNavigators(section, (EntityInsentient)entity);
 +                }
 +            }
 +        }
 +    }
 +
 +    void removeNavigatorsFromData(Entity entity) {
-+        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection<PlayerChunkMap.RegionData> section =
++        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section =
 +                this.getChunkProvider().playerChunkMap.dataRegionManager.getRegionSection(entity.chunkX, entity.chunkZ);
 +        if (section != null) {
-+            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<NavigationAbstract> navigators = (com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet)section.getOrCreateData(PlayerChunkMap.RegionData.PATHING_NAVIGATORS);
-+            // Copied from above
-+            if (entity instanceof EntityDrowned) {
-+                navigators.remove(((EntityDrowned)entity).navigationWater);
-+                navigators.remove(((EntityDrowned)entity).navigationLand);
-+            } else if (entity instanceof EntityInsentient) {
-+                navigators.remove(((EntityInsentient)entity).getNavigation());
++            PlayerChunkMap.DataRegionSectionData sectionData = (PlayerChunkMap.DataRegionSectionData)section.sectionData;
++            if (entity instanceof EntityInsentient) {
++                sectionData.removeFromNavigators(section, ((EntityInsentient)entity));
 +            }
 +        }
 +    }
 +
 +    void addNavigatorsIfPathingToRegion(Entity entity) {
-+        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection<PlayerChunkMap.RegionData> section =
++        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section =
 +                this.getChunkProvider().playerChunkMap.dataRegionManager.getRegionSection(entity.chunkX, entity.chunkZ);
 +        if (section != null) {
-+            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<NavigationAbstract> navigators = (com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet)section.getOrCreateData(PlayerChunkMap.RegionData.PATHING_NAVIGATORS);
-+            // Copied from above
-+            if (entity instanceof EntityDrowned) {
-+                if (((EntityDrowned)entity).navigationWater.isViableForPathRecalculationChecking()) {
-+                    navigators.add(((EntityDrowned)entity).navigationWater);
-+                }
-+                if (((EntityDrowned)entity).navigationLand.isViableForPathRecalculationChecking()) {
-+                    navigators.add(((EntityDrowned)entity).navigationLand);
-+                }
-+            } else if (entity instanceof EntityInsentient) {
++            PlayerChunkMap.DataRegionSectionData sectionData = (PlayerChunkMap.DataRegionSectionData)section.sectionData;
++            if (entity instanceof EntityInsentient) {
 +                if (((EntityInsentient)entity).getNavigation().isViableForPathRecalculationChecking()) {
-+                    navigators.add(((EntityInsentient)entity).getNavigation());
++                    sectionData.addToNavigators(section, ((EntityInsentient)entity));
 +                }
 +            }
 +        }
 +    }
 +
 +    void updateNavigatorsInRegion(Entity entity) {
-+        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection<PlayerChunkMap.RegionData> section =
++        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section =
 +                this.getChunkProvider().playerChunkMap.dataRegionManager.getRegionSection(entity.chunkX, entity.chunkZ);
 +        if (section != null) {
-+            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<NavigationAbstract> navigators = (com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet)section.getOrCreateData(PlayerChunkMap.RegionData.PATHING_NAVIGATORS);
-+            // Copied from above
-+            if (entity instanceof EntityDrowned) {
-+                if (((EntityDrowned)entity).navigationWater.isViableForPathRecalculationChecking()) {
-+                    navigators.add(((EntityDrowned)entity).navigationWater);
-+                } else {
-+                    navigators.remove(((EntityDrowned)entity).navigationWater);
-+                }
-+                if (((EntityDrowned)entity).navigationLand.isViableForPathRecalculationChecking()) {
-+                    navigators.add(((EntityDrowned)entity).navigationLand);
-+                } else {
-+                    navigators.remove(((EntityDrowned)entity).navigationLand);
-+                }
-+            } else if (entity instanceof EntityInsentient) {
++            PlayerChunkMap.DataRegionSectionData sectionData = (PlayerChunkMap.DataRegionSectionData)section.sectionData;
++            if (entity instanceof EntityInsentient) {
 +                if (((EntityInsentient)entity).getNavigation().isViableForPathRecalculationChecking()) {
-+                    navigators.add(((EntityInsentient)entity).getNavigation());
++                    sectionData.addToNavigators(section, ((EntityInsentient)entity));
 +                } else {
-+                    navigators.remove(((EntityInsentient)entity).getNavigation());
++                    sectionData.removeFromNavigators(section, ((EntityInsentient)entity));
 +                }
 +            }
 +        }
@@ -234,52 +293,32 @@ index fda23d89da29e6a6065fc4bb57a4809f8bdb8b46..d2b50cdc43c737d9fdfdcd7838de24cb
      private void registerEntity(Entity entity) {
          org.spigotmc.AsyncCatcher.catchOp("entity register"); // Spigot
          // Paper start - don't double enqueue entity registration
-@@ -2068,9 +2188,25 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -2070,16 +2158,26 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          VoxelShape voxelshape1 = iblockdata1.getCollisionShape(this, blockposition);
  
          if (VoxelShapes.c(voxelshape, voxelshape1, OperatorBoolean.NOT_SAME)) {
 +            // Tuinity start - optimise notify()
-+            com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.Region<PlayerChunkMap.RegionData> region = this.getChunkProvider().playerChunkMap.dataRegionManager.getRegion(blockposition.getX() >> 4, blockposition.getZ() >> 4);
++            com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.Region region = this.getChunkProvider().playerChunkMap.dataRegionManager.getRegion(blockposition.getX() >> 4, blockposition.getZ() >> 4);
 +            if (region == null) {
 +                return;
 +            }
-+            // Tuinity end - optimise notify()
++            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<EntityInsentient> navigatorsFromRegion = ((PlayerChunkMap.DataRegionData)region.regionData).getNavigators();
++            if (navigatorsFromRegion == null) {
++                return;
++            }
              boolean wasTicking = this.tickingEntities; this.tickingEntities = true; // Paper
              // Tuinity start
 -            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.Iterator iterator = this.navigatorsForIteration.iterator();
-+            // Tuinity start - optimise notify()
-+            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.Iterator<com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection<PlayerChunkMap.RegionData>> sectionIterator = null;
-+            try {
-+            for (sectionIterator = region.getSections(); sectionIterator.hasNext();) {
-+            com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection<PlayerChunkMap.RegionData> section = sectionIterator.next();
-+            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<NavigationAbstract> navigators = (com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet)section.getData(PlayerChunkMap.RegionData.PATHING_NAVIGATORS);
-+            if (navigators == null) {
-+                    continue;
-+            }
-+            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.Iterator iterator = navigators.iterator();
++            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.Iterator<EntityInsentient> iterator = navigatorsFromRegion.iterator();
 +            // Tuinity end - optimise notify()
              try { // Tuinity end
  
              while (iterator.hasNext()) {
-@@ -2090,10 +2226,21 @@ public class WorldServer extends World implements GeneratorAccessSeed {
-                 if (!navigationabstract.i()) {
-                     navigationabstract.b(blockposition);
-                 }
-+                // Tuinity start - optimise notify()
-+                if (!navigationabstract.isViableForPathRecalculationChecking()) {
-+                    navigators.remove(navigationabstract);
-+                }
-+                // Tuinity end - optimise notify()
-             }
-             } finally { // Tuinity start
-                 iterator.finishedIterating();
-             } // Tuinity end
-+            } // Tuinity start - optimise notify()
-+            } finally {
-+                if (sectionIterator != null) {
-+                    sectionIterator.finishedIterating();
-+                }
-+            } // Tuinity end - optimise notify()
- 
-             this.tickingEntities = wasTicking; // Paper
-         }
+                 // CraftBukkit start - fix SPIGOT-6362
+                 NavigationAbstract navigationabstract;
+                 try {
+-                    navigationabstract = (NavigationAbstract) iterator.next();
++                    navigationabstract = (NavigationAbstract) iterator.next().getNavigation(); // Tuinity - optimise notify
+                 } catch (java.util.ConcurrentModificationException ex) {
+                     // This can happen because the pathfinder update below may trigger a chunk load, which in turn may cause more navigators to register
+                     // In this case we just run the update again across all the iterators as the chunk will then be loaded
