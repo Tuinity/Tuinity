@@ -7,11 +7,11 @@ Subject: [PATCH] Do not allow ticket level changes while unloading
 Sync loading the chunk at this stage would cause it to load
 older data, as well as screwing our region state.
 
-diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 0e5e7a321dc7066444d92387968a7c41cb3a8470..ce0bb4d228a73d8353d67828529879e1c99682f9 100644
---- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
-+++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -815,6 +815,7 @@ public class ChunkProviderServer extends IChunkProvider {
+diff --git a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+index a6185a17606785f1b4893d7d32e0cf1f32d00f4f..a2917fd52d9cde535ca3e6422b6742711584bb09 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+@@ -840,6 +840,7 @@ public class ChunkProviderServer extends IChunkProvider {
  
      public boolean tickDistanceManager() { // Paper - private -> public
          if (chunkMapDistance.delayDistanceManagerTick) return false; // Paper
@@ -19,11 +19,11 @@ index 0e5e7a321dc7066444d92387968a7c41cb3a8470..ce0bb4d228a73d8353d67828529879e1
          co.aikar.timings.MinecraftTimings.distanceManagerTick.startTiming(); try { // Tuinity - add timings for distance manager
          boolean flag = this.chunkMapDistance.a(this.playerChunkMap);
          boolean flag1 = this.playerChunkMap.b();
-diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index bd1abaa47109abaeafb728cbb9185804927ecbf2..8578cac6a19d9d1b5ac5f12fa369cc54a2436d4e 100644
---- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -792,6 +792,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+index d395a694335f2ffcdfae3abf3884f09fb69b59d7..3b727fcb05074dea7cc1689e8589d4f93d5ccceb 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+@@ -846,6 +846,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      @Nullable
      private PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k) {
          com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Chunk holder update"); // Tuinity
@@ -31,7 +31,7 @@ index bd1abaa47109abaeafb728cbb9185804927ecbf2..8578cac6a19d9d1b5ac5f12fa369cc54
          if (k > PlayerChunkMap.GOLDEN_TICKET && j > PlayerChunkMap.GOLDEN_TICKET) {
              return playerchunk;
          } else {
-@@ -1053,6 +1054,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1107,6 +1108,8 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
      // Paper end
  
@@ -40,7 +40,7 @@ index bd1abaa47109abaeafb728cbb9185804927ecbf2..8578cac6a19d9d1b5ac5f12fa369cc54
      private void a(long i, PlayerChunk playerchunk) {
          CompletableFuture<IChunkAccess> completablefuture = playerchunk.getChunkSave();
          Consumer<IChunkAccess> consumer = (ichunkaccess) -> { // CraftBukkit - decompile error
-@@ -1061,6 +1064,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1115,6 +1118,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              if (completablefuture1 != completablefuture) {
                  this.a(i, playerchunk);
              } else {
@@ -53,7 +53,7 @@ index bd1abaa47109abaeafb728cbb9185804927ecbf2..8578cac6a19d9d1b5ac5f12fa369cc54
                  // Tuinity start
                  boolean removed;
                  if ((removed = this.pendingUnload.remove(i, playerchunk)) && ichunkaccess != null) { // Tuinity end
-@@ -1098,6 +1107,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1152,6 +1161,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
                      }
                      // Tuinity end
                  } // Tuinity end

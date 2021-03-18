@@ -6,11 +6,11 @@ Subject: [PATCH] Change writes to use NORMAL priority rather than LOW
 Should limit build up of I/O tasks, or at least properly
 indicate to server owners that I/O is falling behind
 
-diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 4abd156556b40aa82e6ed5093b279c0f780b9c9c..bef3ff1e4527e4eb98fcb29910d8f2e39689a240 100644
---- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -1014,7 +1014,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+index e7cd6392d722d0e13b86b57d70946b18688f6621..31d5356b1498f55ef53f3c66b6629bc556b9508f 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+@@ -1068,7 +1068,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          }
  
          com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE.scheduleSave(this.world, chunkPos.x, chunkPos.z,
@@ -19,7 +19,7 @@ index 4abd156556b40aa82e6ed5093b279c0f780b9c9c..bef3ff1e4527e4eb98fcb29910d8f2e3
  
          if (!chunk.isNeedsSaving()) {
              return;
-@@ -1048,7 +1048,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1102,7 +1102,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              asyncSaveData = ChunkRegionLoader.getAsyncSaveData(this.world, chunk);
          }
  
@@ -28,7 +28,7 @@ index 4abd156556b40aa82e6ed5093b279c0f780b9c9c..bef3ff1e4527e4eb98fcb29910d8f2e3
              asyncSaveData, chunk);
  
          chunk.setLastSaved(this.world.getTime());
-@@ -1686,7 +1686,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1740,7 +1740,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          if (Thread.currentThread() != com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE) {
              com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE.scheduleSave(
                  this.world, chunkcoordintpair.x, chunkcoordintpair.z, null, nbttagcompound,
@@ -37,11 +37,11 @@ index 4abd156556b40aa82e6ed5093b279c0f780b9c9c..bef3ff1e4527e4eb98fcb29910d8f2e3
              return;
          }
          super.write(chunkcoordintpair, nbttagcompound);
-diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
-index 6a0f07b13eef5560dfc7c7b39618c0b825533aec..46c4e66566b7206d311653341987b9312dea3e68 100644
---- a/src/main/java/net/minecraft/server/VillagePlace.java
-+++ b/src/main/java/net/minecraft/server/VillagePlace.java
-@@ -167,7 +167,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java
+index ce165233739c7b92a76031b949f269bd0a11149c..dc36d714dfb360ddb203480079d1ab231da0ed45 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java
++++ b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java
+@@ -180,7 +180,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
                      data = this.getData(chunkcoordintpair);
                  }
                  com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE.scheduleSave(this.world,
@@ -50,7 +50,7 @@ index 6a0f07b13eef5560dfc7c7b39618c0b825533aec..46c4e66566b7206d311653341987b931
              }
          }
          // Paper end
-@@ -292,7 +292,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+@@ -305,7 +305,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
          if (this.world != null && Thread.currentThread() != com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE) {
              com.destroystokyo.paper.io.PaperFileIOThread.Holder.INSTANCE.scheduleSave(
                  this.world, chunkcoordintpair.x, chunkcoordintpair.z, nbttagcompound, null,

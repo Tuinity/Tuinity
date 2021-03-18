@@ -8,28 +8,11 @@ want to avoid close logic because it's possible to load the
 chunk through it. This should also be OK from a leak prevention/
 state desync POV because the TE is getting unloaded anyways.
 
-diff --git a/src/main/java/net/minecraft/server/EntityHuman.java b/src/main/java/net/minecraft/server/EntityHuman.java
-index cc2127b26e41182c14fa95afde878e9b5100a117..f034977f4666385d6e7c7288e453d058c270be01 100644
---- a/src/main/java/net/minecraft/server/EntityHuman.java
-+++ b/src/main/java/net/minecraft/server/EntityHuman.java
-@@ -356,6 +356,12 @@ public abstract class EntityHuman extends EntityLiving {
-         this.activeContainer = this.defaultContainer;
-     }
-     // Paper end
-+    // Tuinity start - special close for unloaded inventory
-+    public void closeUnloadedInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason reason) {
-+        closeInventory();
-+        this.activeContainer = this.defaultContainer;
-+    }
-+    // Tuinity end - special close for unloaded inventory
- 
-     public void closeInventory() {
-         this.activeContainer = this.defaultContainer;
-diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index cf14b83ec3c2b9a2812f50f3bca991e029bf7c67..f40c24b6e2f7bea21d1cb2b58ed3da45ffcfc866 100644
---- a/src/main/java/net/minecraft/server/EntityPlayer.java
-+++ b/src/main/java/net/minecraft/server/EntityPlayer.java
-@@ -1588,6 +1588,17 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+diff --git a/src/main/java/net/minecraft/server/level/EntityPlayer.java b/src/main/java/net/minecraft/server/level/EntityPlayer.java
+index b2cd13541bf3486a69e8f3e41e4c90cdc47180d1..553ad54e5d657a840d3dbd3b48a8b21f1855c18a 100644
+--- a/src/main/java/net/minecraft/server/level/EntityPlayer.java
++++ b/src/main/java/net/minecraft/server/level/EntityPlayer.java
+@@ -1718,6 +1718,17 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
          this.playerConnection.sendPacket(new PacketPlayOutCloseWindow(this.activeContainer.windowId));
          this.o();
      }
@@ -47,22 +30,40 @@ index cf14b83ec3c2b9a2812f50f3bca991e029bf7c67..f40c24b6e2f7bea21d1cb2b58ed3da45
  
      public void broadcastCarriedItem() {
          if (!this.e) {
-diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index c6d2ab318d711072507ce3667d07a9cdeb0d0fbe..658d74b8ab1698fa2832facc6d8e9678af958c85 100644
---- a/src/main/java/net/minecraft/server/WorldServer.java
-+++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -1794,9 +1794,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
+index 4ffe6c1e791f1a8531525bc053b30629fcc30e82..b4a22a1bb8001437d0eae48d7284eca0a1b30ad4 100644
+--- a/src/main/java/net/minecraft/server/level/WorldServer.java
++++ b/src/main/java/net/minecraft/server/level/WorldServer.java
+@@ -1907,10 +1907,14 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          // Spigot Start
          for (TileEntity tileentity : chunk.getTileEntities().values()) {
-             if (tileentity instanceof IInventory) {
+             if (tileentity instanceof net.minecraft.world.IInventory) {
 +                // Tuinity start - this area looks like it can load chunks, change the behavior
 +                // chests for example can apply physics to the world
 +                // so instead we just change the active container and call the event
-                 for (org.bukkit.entity.HumanEntity h : Lists.newArrayList(((IInventory) tileentity).getViewers())) {
+                 for (org.bukkit.entity.HumanEntity h : Lists.newArrayList(((net.minecraft.world.IInventory) tileentity).getViewers())) {
 -                    h.closeInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason.UNLOADED); // Paper
-+                    ((org.bukkit.craftbukkit.entity.CraftHumanEntity)h).getHandle().closeUnloadedInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason.UNLOADED); // Paper
++                    ((org.bukkit.craftbukkit.entity.CraftHumanEntity) h).getHandle().closeUnloadedInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason.UNLOADED); // Paper
                  }
-+                // Tuiniy end
              }
++            // Tuiniy end
          }
          // Spigot End
+         this.tileEntityListUnload.addAll(chunk.getTileEntities().values());
+diff --git a/src/main/java/net/minecraft/world/entity/player/EntityHuman.java b/src/main/java/net/minecraft/world/entity/player/EntityHuman.java
+index ec0956a98c133bcd3d4f92f696c667eab6ff98f1..44038dd278b988508047023107683e5370af54ad 100644
+--- a/src/main/java/net/minecraft/world/entity/player/EntityHuman.java
++++ b/src/main/java/net/minecraft/world/entity/player/EntityHuman.java
+@@ -453,6 +453,12 @@ public abstract class EntityHuman extends EntityLiving {
+         this.activeContainer = this.defaultContainer;
+     }
+     // Paper end
++    // Tuinity start - special close for unloaded inventory
++    public void closeUnloadedInventory(org.bukkit.event.inventory.InventoryCloseEvent.Reason reason) {
++        closeInventory();
++        this.activeContainer = this.defaultContainer;
++    }
++    // Tuinity end - special close for unloaded inventory
+ 
+     public void closeInventory() {
+         this.activeContainer = this.defaultContainer;

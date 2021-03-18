@@ -37,23 +37,23 @@ by 2x. According to cpu time, the light engine itself spent 10x less time
 lighting chunks for generation.
 
 diff --git a/src/main/java/com/destroystokyo/paper/PaperCommand.java b/src/main/java/com/destroystokyo/paper/PaperCommand.java
-index dcbee6ebfac34f793c18f21e07187ae7dcb37695..c891f7c247c81a865720237f316f352b2289c724 100644
+index 12313a37ceeb6a0b6a539c38fdba67e5e43d7413..848eb25ed0640db61a0f28bc26ddabd0444e9ed4 100644
 --- a/src/main/java/com/destroystokyo/paper/PaperCommand.java
 +++ b/src/main/java/com/destroystokyo/paper/PaperCommand.java
-@@ -186,6 +186,44 @@ public class PaperCommand extends Command {
+@@ -219,6 +219,44 @@ public class PaperCommand extends Command {
          }
      }
  
 +    private void starlightFixLight(EntityPlayer sender, WorldServer world, LightEngineThreaded lightengine, int radius) {
 +        long start = System.nanoTime();
-+        LinkedHashSet<ChunkCoordIntPair> chunks = new LinkedHashSet<>(MCUtil.getSpiralOutChunks(sender.getChunkCoordinates(), radius)); // getChunkCoordinates is actually just bad mappings, this function rets position as blockpos
++        java.util.LinkedHashSet<ChunkCoordIntPair> chunks = new java.util.LinkedHashSet<>(MCUtil.getSpiralOutChunks(sender.getChunkCoordinates(), radius)); // getChunkCoordinates is actually just bad mappings, this function rets position as blockpos
 +
 +        int[] pending = new int[1];
 +        for (java.util.Iterator<ChunkCoordIntPair> iterator = chunks.iterator(); iterator.hasNext();) {
 +            final ChunkCoordIntPair chunkPos = iterator.next();
 +
-+            final IChunkAccess chunk = world.getChunkProvider().getChunkAtImmediately(chunkPos.x, chunkPos.z);
-+            if (chunk == null || !chunk.isLit() || !chunk.getChunkStatus().isAtLeastStatus(ChunkStatus.LIGHT)) {
++            final net.minecraft.world.level.chunk.IChunkAccess chunk = world.getChunkProvider().getChunkAtImmediately(chunkPos.x, chunkPos.z);
++            if (chunk == null || !chunk.isLit() || !chunk.getChunkStatus().isAtLeastStatus(net.minecraft.world.level.chunk.ChunkStatus.LIGHT)) {
 +                // cannot relight this chunk
 +                iterator.remove();
 +                continue;
@@ -85,17 +85,17 @@ index dcbee6ebfac34f793c18f21e07187ae7dcb37695..c891f7c247c81a865720237f316f352b
      private void doFixLight(CommandSender sender, String[] args) {
          if (!(sender instanceof Player)) {
              sender.sendMessage("Only players can use this command");
-@@ -194,7 +232,7 @@ public class PaperCommand extends Command {
+@@ -227,7 +265,7 @@ public class PaperCommand extends Command {
          int radius = 2;
          if (args.length > 1) {
              try {
 -                radius = Math.min(5, Integer.parseInt(args[1]));
-+                radius = Math.min(15, Integer.parseInt(args[1])); // Tuinity - MOOOOOORE
++                radius = Math.min(32, Integer.parseInt(args[1])); // Tuinity - MOOOOOORE
              } catch (Exception e) {
                  sender.sendMessage("Not a number");
                  return;
-@@ -207,6 +245,13 @@ public class PaperCommand extends Command {
-         net.minecraft.server.WorldServer world = (WorldServer) handle.world;
+@@ -240,6 +278,13 @@ public class PaperCommand extends Command {
+         WorldServer world = (WorldServer) handle.world;
          LightEngineThreaded lightengine = world.getChunkProvider().getLightEngine();
  
 +        // Tuinity start - rewrite light engine
@@ -110,25 +110,25 @@ index dcbee6ebfac34f793c18f21e07187ae7dcb37695..c891f7c247c81a865720237f316f352b
          updateLight(sender, world, lightengine, queue);
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/light/BlockStarLightEngine.java b/src/main/java/com/tuinity/tuinity/chunk/light/BlockStarLightEngine.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..43de95779a5472aaf04da11c9f4c5feb7253c6c3
+index 0000000000000000000000000000000000000000..2b939fabcc4cc45d697bfa2f3cda7fc64a4de8ca
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/light/BlockStarLightEngine.java
 @@ -0,0 +1,277 @@
 +package com.tuinity.tuinity.chunk.light;
 +
-+import net.minecraft.server.BlockPosition;
-+import net.minecraft.server.Chunk;
-+import net.minecraft.server.ChunkSection;
-+import net.minecraft.server.ChunkStatus;
-+import net.minecraft.server.DataPaletteBlock;
-+import net.minecraft.server.IBlockData;
-+import net.minecraft.server.IChunkAccess;
-+import net.minecraft.server.ILightAccess;
-+import net.minecraft.server.ProtoChunkExtension;
-+import net.minecraft.server.VoxelShape;
-+import net.minecraft.server.VoxelShapes;
-+import net.minecraft.server.World;
-+import net.minecraft.server.WorldServer;
++import net.minecraft.core.BlockPosition;
++import net.minecraft.server.level.WorldServer;
++import net.minecraft.world.level.chunk.Chunk;
++import net.minecraft.world.level.chunk.ChunkSection;
++import net.minecraft.world.level.chunk.ChunkStatus;
++import net.minecraft.world.level.chunk.DataPaletteBlock;
++import net.minecraft.world.level.block.state.IBlockData;
++import net.minecraft.world.level.chunk.IChunkAccess;
++import net.minecraft.world.level.chunk.ILightAccess;
++import net.minecraft.world.level.chunk.ProtoChunkExtension;
++import net.minecraft.world.phys.shapes.VoxelShape;
++import net.minecraft.world.phys.shapes.VoxelShapes;
++import net.minecraft.world.level.World;
 +import java.util.ArrayList;
 +import java.util.HashSet;
 +import java.util.Iterator;
@@ -393,13 +393,13 @@ index 0000000000000000000000000000000000000000..43de95779a5472aaf04da11c9f4c5feb
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/light/SWMRNibbleArray.java b/src/main/java/com/tuinity/tuinity/chunk/light/SWMRNibbleArray.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..051e2db5349b6f20887841efad7fbc183b190f68
+index 0000000000000000000000000000000000000000..81963ada0eafea91947f4437b22bcad47e4709ed
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/light/SWMRNibbleArray.java
 @@ -0,0 +1,325 @@
 +package com.tuinity.tuinity.chunk.light;
 +
-+import net.minecraft.server.NibbleArray;
++import net.minecraft.world.level.chunk.NibbleArray;
 +import java.util.ArrayDeque;
 +import java.util.Arrays;
 +
@@ -724,7 +724,7 @@ index 0000000000000000000000000000000000000000..051e2db5349b6f20887841efad7fbc18
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/light/SkyStarLightEngine.java b/src/main/java/com/tuinity/tuinity/chunk/light/SkyStarLightEngine.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..26534e05ff5aac5a963906ba678411c843b132e3
+index 0000000000000000000000000000000000000000..86a880d0f13f0fee70b09626c394c9e25551e672
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/light/SkyStarLightEngine.java
 @@ -0,0 +1,706 @@
@@ -733,17 +733,17 @@ index 0000000000000000000000000000000000000000..26534e05ff5aac5a963906ba678411c8
 +import com.tuinity.tuinity.util.WorldUtil;
 +import it.unimi.dsi.fastutil.shorts.ShortCollection;
 +import it.unimi.dsi.fastutil.shorts.ShortIterator;
-+import net.minecraft.server.BlockPosition;
-+import net.minecraft.server.ChunkCoordIntPair;
-+import net.minecraft.server.ChunkSection;
-+import net.minecraft.server.ChunkStatus;
-+import net.minecraft.server.IBlockAccess;
-+import net.minecraft.server.IBlockData;
-+import net.minecraft.server.IChunkAccess;
-+import net.minecraft.server.ILightAccess;
-+import net.minecraft.server.VoxelShape;
-+import net.minecraft.server.VoxelShapes;
-+import net.minecraft.server.World;
++import net.minecraft.core.BlockPosition;
++import net.minecraft.world.level.ChunkCoordIntPair;
++import net.minecraft.world.level.chunk.ChunkSection;
++import net.minecraft.world.level.chunk.ChunkStatus;
++import net.minecraft.world.level.IBlockAccess;
++import net.minecraft.world.level.block.state.IBlockData;
++import net.minecraft.world.level.chunk.IChunkAccess;
++import net.minecraft.world.level.chunk.ILightAccess;
++import net.minecraft.world.phys.shapes.VoxelShape;
++import net.minecraft.world.phys.shapes.VoxelShapes;
++import net.minecraft.world.level.World;
 +import java.util.Arrays;
 +import java.util.Set;
 +
@@ -1436,7 +1436,7 @@ index 0000000000000000000000000000000000000000..26534e05ff5aac5a963906ba678411c8
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/light/StarLightEngine.java b/src/main/java/com/tuinity/tuinity/chunk/light/StarLightEngine.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..433c27813bbcddea09b21f7629a0bbce7a658082
+index 0000000000000000000000000000000000000000..e40cf190c945754bd8b5342f76cd7fe2efd127cb
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/light/StarLightEngine.java
 @@ -0,0 +1,1615 @@
@@ -1448,21 +1448,21 @@ index 0000000000000000000000000000000000000000..433c27813bbcddea09b21f7629a0bbce
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +import it.unimi.dsi.fastutil.shorts.ShortCollection;
 +import it.unimi.dsi.fastutil.shorts.ShortIterator;
-+import net.minecraft.server.BlockPosition;
-+import net.minecraft.server.Blocks;
-+import net.minecraft.server.ChunkCoordIntPair;
-+import net.minecraft.server.ChunkSection;
-+import net.minecraft.server.EnumDirection;
-+import net.minecraft.server.EnumSkyBlock;
-+import net.minecraft.server.IBlockAccess;
-+import net.minecraft.server.IBlockData;
-+import net.minecraft.server.IChunkAccess;
-+import net.minecraft.server.ILightAccess;
-+import net.minecraft.server.SectionPosition;
-+import net.minecraft.server.VoxelShape;
-+import net.minecraft.server.VoxelShapes;
-+import net.minecraft.server.World;
-+import net.minecraft.server.WorldServer;
++import net.minecraft.core.BlockPosition;
++import net.minecraft.server.level.WorldServer;
++import net.minecraft.world.level.ChunkCoordIntPair;
++import net.minecraft.world.level.block.Blocks;
++import net.minecraft.world.level.chunk.ChunkSection;
++import net.minecraft.core.EnumDirection;
++import net.minecraft.world.level.EnumSkyBlock;
++import net.minecraft.world.level.IBlockAccess;
++import net.minecraft.world.level.block.state.IBlockData;
++import net.minecraft.world.level.chunk.IChunkAccess;
++import net.minecraft.world.level.chunk.ILightAccess;
++import net.minecraft.core.SectionPosition;
++import net.minecraft.world.phys.shapes.VoxelShape;
++import net.minecraft.world.phys.shapes.VoxelShapes;
++import net.minecraft.world.level.World;
 +import java.util.ArrayList;
 +import java.util.Arrays;
 +import java.util.List;
@@ -3057,7 +3057,7 @@ index 0000000000000000000000000000000000000000..433c27813bbcddea09b21f7629a0bbce
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/light/StarLightInterface.java b/src/main/java/com/tuinity/tuinity/chunk/light/StarLightInterface.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..0fddb331bfcee762da38efea3a36dc6394718519
+index 0000000000000000000000000000000000000000..df686b97460796004cad1477760647a98741d751
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/light/StarLightInterface.java
 @@ -0,0 +1,490 @@
@@ -3068,15 +3068,15 @@ index 0000000000000000000000000000000000000000..0fddb331bfcee762da38efea3a36dc63
 +import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 +import it.unimi.dsi.fastutil.shorts.ShortCollection;
-+import net.minecraft.server.BlockPosition;
-+import net.minecraft.server.ChunkCoordIntPair;
-+import net.minecraft.server.ChunkStatus;
-+import net.minecraft.server.IChunkAccess;
-+import net.minecraft.server.ILightAccess;
-+import net.minecraft.server.LightEngineLayerEventListener;
-+import net.minecraft.server.NibbleArray;
-+import net.minecraft.server.SectionPosition;
-+import net.minecraft.server.WorldServer;
++import net.minecraft.core.BlockPosition;
++import net.minecraft.server.level.WorldServer;
++import net.minecraft.world.level.ChunkCoordIntPair;
++import net.minecraft.world.level.chunk.ChunkStatus;
++import net.minecraft.world.level.chunk.IChunkAccess;
++import net.minecraft.world.level.chunk.ILightAccess;
++import net.minecraft.world.level.lighting.LightEngineLayerEventListener;
++import net.minecraft.world.level.chunk.NibbleArray;
++import net.minecraft.core.SectionPosition;
 +import java.util.ArrayDeque;
 +import java.util.HashSet;
 +import java.util.Iterator;
@@ -3553,13 +3553,13 @@ index 0000000000000000000000000000000000000000..0fddb331bfcee762da38efea3a36dc63
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/light/VariableBlockLightHandler.java b/src/main/java/com/tuinity/tuinity/chunk/light/VariableBlockLightHandler.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..b8a6c59ee3c919e47e4be76fc4e1737d81a5810b
+index 0000000000000000000000000000000000000000..b8df658c09a6dc739ff3f4d6e18c9cef7caea6c9
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/light/VariableBlockLightHandler.java
 @@ -0,0 +1,30 @@
 +package com.tuinity.tuinity.chunk.light;
 +
-+import net.minecraft.server.BlockPosition;
++import net.minecraft.core.BlockPosition;
 +import java.util.Collection;
 +
 +/**
@@ -3589,7 +3589,7 @@ index 0000000000000000000000000000000000000000..b8a6c59ee3c919e47e4be76fc4e1737d
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/light/VariableBlockLightHandlerImpl.java b/src/main/java/com/tuinity/tuinity/chunk/light/VariableBlockLightHandlerImpl.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..125f59826a9b0174039139ed0715a4ed3df3724b
+index 0000000000000000000000000000000000000000..0e4442a94559346b19a536d35ce5def612074838
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/light/VariableBlockLightHandlerImpl.java
 @@ -0,0 +1,112 @@
@@ -3598,7 +3598,7 @@ index 0000000000000000000000000000000000000000..125f59826a9b0174039139ed0715a4ed
 +import com.tuinity.tuinity.util.CoordinateUtils;
 +import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-+import net.minecraft.server.BlockPosition;
++import net.minecraft.core.BlockPosition;
 +import java.util.Collection;
 +import java.util.Collections;
 +import java.util.HashSet;
@@ -3706,7 +3706,7 @@ index 0000000000000000000000000000000000000000..125f59826a9b0174039139ed0715a4ed
 +    }
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index 048139d13424a874364dece8053e248dbcfd4aff..42ce3b80217b574a1852e12f500b366a912e23e2 100644
+index 36b1e95c964288843e0dd3c92704265759f8afb9..e1ce8a5cec4c837fd2750480c92dc084cef6f4d9 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -223,6 +223,12 @@ public final class TuinityConfig {
@@ -3724,17 +3724,17 @@ index 048139d13424a874364dece8053e248dbcfd4aff..42ce3b80217b574a1852e12f500b366a
          public final String worldName;
 diff --git a/src/main/java/com/tuinity/tuinity/util/CoordinateUtils.java b/src/main/java/com/tuinity/tuinity/util/CoordinateUtils.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..81fe01c122529f1716a264263957500015476f5f
+index 0000000000000000000000000000000000000000..17cece8ee25ad6145bc0bdf7d15c2ea988c85f87
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/CoordinateUtils.java
 @@ -0,0 +1,128 @@
 +package com.tuinity.tuinity.util;
 +
-+import net.minecraft.server.BlockPosition;
-+import net.minecraft.server.ChunkCoordIntPair;
-+import net.minecraft.server.Entity;
-+import net.minecraft.server.MathHelper;
-+import net.minecraft.server.SectionPosition;
++import net.minecraft.core.BlockPosition;
++import net.minecraft.world.entity.Entity;
++import net.minecraft.util.MathHelper;
++import net.minecraft.core.SectionPosition;
++import net.minecraft.world.level.ChunkCoordIntPair;
 +
 +public final class CoordinateUtils {
 +
@@ -4090,13 +4090,13 @@ index 0000000000000000000000000000000000000000..695444a510e616180734f5fd284f1a00
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/util/WorldUtil.java b/src/main/java/com/tuinity/tuinity/util/WorldUtil.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..141748fe4915eb46671f1d532951f14d7080818d
+index 0000000000000000000000000000000000000000..6dca98c5c43126c7b2dea2987b757e3de822c17c
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/WorldUtil.java
 @@ -0,0 +1,48 @@
 +package com.tuinity.tuinity.util;
 +
-+import net.minecraft.server.World;
++import net.minecraft.world.level.World;
 +
 +public final class WorldUtil {
 +
@@ -4142,318 +4142,125 @@ index 0000000000000000000000000000000000000000..141748fe4915eb46671f1d532951f14d
 +    }
 +
 +}
-diff --git a/src/main/java/net/minecraft/server/BlockBase.java b/src/main/java/net/minecraft/server/BlockBase.java
-index 2760b377d1f68ac5f66e7274317379e2dda8288a..829d4a7508e1656dbdc912096b7eafcf30cbb5b2 100644
---- a/src/main/java/net/minecraft/server/BlockBase.java
-+++ b/src/main/java/net/minecraft/server/BlockBase.java
-@@ -330,6 +330,7 @@ public abstract class BlockBase {
-             this.n = blockbase_info.s;
-             this.o = blockbase_info.t;
-             this.p = blockbase_info.u;
-+            this.conditionallyFullOpaque = this.isOpaque() & this.isTransparentOnSomeFaces(); // Tuinity
-         }
-         // Paper start - impl cached craft block data, lazy load to fix issue with loading at the wrong time
-         private org.bukkit.craftbukkit.block.data.CraftBlockData cachedCraftBlockData;
-@@ -352,6 +353,19 @@ public abstract class BlockBase {
-         }
-         // Tuinity end
- 
-+        // Tuinity start
-+        protected int opacityIfCached = -1;
-+        // ret -1 if opacity is dynamic, or -1 if the block is conditionally full opaque, else return opacity in [0, 15]
-+        public final int getOpacityIfCached() {
-+            return this.opacityIfCached;
-+        }
-+
-+        protected final boolean conditionallyFullOpaque;
-+        public final boolean isConditionallyFullOpaque() {
-+            return this.conditionallyFullOpaque;
-+        }
-+        // Tuinity end
-+
-         public void a() {
-             this.fluid = this.getBlock().d(this.p()); // Paper - moved from getFluid()
-             this.isTicking = this.getBlock().isTicking(this.p()); // Paper - moved from isTicking()
-@@ -361,6 +375,33 @@ public abstract class BlockBase {
-             this.shapeExceedsCube = this.a == null || this.a.c; // Tuinity - moved from actual method to here
-             this.staticPathType = null; // Tuinity - cache static path type
-             this.neighbourOverridePathType = null; // Tuinity - cache static path types
-+            this.opacityIfCached = this.a == null || this.isConditionallyFullOpaque() ? -1 : this.a.getOpacity(); // Tuinity - cache opacity for light
-+            // Tuinity start - optimise culling shape cache for light
-+            if (this.a != null && this.a.getCullingShapeCache() != null) {
-+                for (int i = 0, len = this.a.getCullingShapeCache().length; i < len; ++i) {
-+                    VoxelShape face = this.a.getCullingShapeCache()[i].simplify();
-+                    if (face.isEmpty()) {
-+                        this.a.getCullingShapeCache()[i] = VoxelShapes.getEmptyShape();
-+                        continue;
-+                    }
-+                    List<AxisAlignedBB> boxes = face.getBoundingBoxesRepresentation();
-+                    if (boxes.size() == 1) {
-+                        AxisAlignedBB boundingBox = boxes.get(0);
-+                        if (boundingBox.equals(VoxelShapes.optimisedFullCube.aabb)) {
-+                            this.a.getCullingShapeCache()[i] = VoxelShapes.fullCube();
-+                        } else {
-+                            this.a.getCullingShapeCache()[i] = VoxelShapes.of(boundingBox);
-+                            if (!(this.a.getCullingShapeCache()[i] instanceof com.tuinity.tuinity.voxel.AABBVoxelShape) &&
-+                                this.a.getCullingShapeCache()[i].getBoundingBoxesRepresentation().size() == 1) {
-+                                this.a.getCullingShapeCache()[i] = new com.tuinity.tuinity.voxel.AABBVoxelShape(boundingBox);
-+                            }
-+                        }
-+                        continue;
-+                    }
-+                    this.a.getCullingShapeCache()[i] = face;
-+                }
-+            }
-+            // Tuinity end - optimise culling shape cache for light
- 
-         }
- 
-@@ -689,9 +730,9 @@ public abstract class BlockBase {
-             private static final int f = EnumBlockSupport.values().length;
-             protected final boolean a;
-             private final boolean g;
--            private final int h;
-+            private final int h; private final int getOpacity() { return this.h; } // Tuinity - OBFHELPER
-             @Nullable
--            private final VoxelShape[] i;
-+            private final VoxelShape[] i; private final VoxelShape[] getCullingShapeCache () { return this.i; } // Tuinity - OBFHELPER
-             protected final VoxelShape b;
-             protected final boolean c;
-             private final boolean[] j;
-diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
-index 936c392c9faa178b5645ea79b0130e0d3e3e1368..8fda4702764e80dae93ef9c0eb53abc198642ab1 100644
---- a/src/main/java/net/minecraft/server/Chunk.java
-+++ b/src/main/java/net/minecraft/server/Chunk.java
-@@ -98,6 +98,52 @@ public class Chunk implements IChunkAccess {
-         this.entitySlicesManager.getHardCollidingEntities(entity, axisalignedbb, into, predicate); // Tuinity
+diff --git a/src/main/java/net/minecraft/core/EnumDirection.java b/src/main/java/net/minecraft/core/EnumDirection.java
+index 703bdefeb615ef8d15b428a893b5e4939d726f13..7918d830a4aef09c9f517284e83a9376299116ad 100644
+--- a/src/main/java/net/minecraft/core/EnumDirection.java
++++ b/src/main/java/net/minecraft/core/EnumDirection.java
+@@ -174,8 +174,8 @@ public enum EnumDirection implements INamable {
+         return EnumDirection.q[MathHelper.a(i % EnumDirection.q.length)];
      }
-     // Tuinity end - optimise hard collision handling
-+    // Tuinity start - rewrite light engine
-+    protected volatile com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] blockNibbles = com.tuinity.tuinity.chunk.light.StarLightEngine.getFilledEmptyLight();
-+    protected volatile com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] skyNibbles = com.tuinity.tuinity.chunk.light.StarLightEngine.getFilledEmptyLight();
-+    protected volatile boolean[] skyEmptinessMap;
-+    protected volatile boolean[] blockEmptinessMap;
-+
-+    @Override
-+    public com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] getBlockNibbles() {
-+        return this.blockNibbles;
-+    }
-+
-+    @Override
-+    public void setBlockNibbles(com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] nibbles) {
-+        this.blockNibbles = nibbles;
-+    }
-+
-+    @Override
-+    public com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] getSkyNibbles() {
-+        return this.skyNibbles;
-+    }
-+
-+    @Override
-+    public void setSkyNibbles(com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] nibbles) {
-+        this.skyNibbles = nibbles;
-+    }
-+
-+    @Override
-+    public boolean[] getSkyEmptinessMap() {
-+        return this.skyEmptinessMap;
-+    }
-+
-+    @Override
-+    public void setSkyEmptinessMap(boolean[] emptinessMap) {
-+        this.skyEmptinessMap = emptinessMap;
-+    }
-+
-+    @Override
-+    public boolean[] getBlockEmptinessMap() {
-+        return this.blockEmptinessMap;
-+    }
-+
-+    @Override
-+    public void setBlockEmptinessMap(boolean[] emptinessMap) {
-+        this.blockEmptinessMap = emptinessMap;
-+    }
-+    // Tuinity end - rewrite light engine
  
-     // Tuinity start - optimised entity slices
-     protected final com.tuinity.tuinity.world.ChunkEntitySlices entitySlicesManager;
-@@ -405,6 +451,12 @@ public class Chunk implements IChunkAccess {
+-    @Nullable
+-    public static EnumDirection a(int i, int j, int k) {
++    @Nullable public static EnumDirection from(int i, int j, int k) { return a(i, j, k); } // Tuinity - OBFHELPER
++    @Nullable public static EnumDirection a(int i, int j, int k) {
+         return (EnumDirection) EnumDirection.r.get(BlockPosition.a(i, j, k));
+     }
  
-     public Chunk(World world, ProtoChunk protochunk) {
-         this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.getInhabitedTime(), protochunk.getSections(), (Consumer) null);
-+        // Tuinity start - copy over protochunk light
-+        this.setBlockNibbles(protochunk.getBlockNibbles());
-+        this.setSkyNibbles(protochunk.getSkyNibbles());
-+        this.setSkyEmptinessMap(protochunk.getSkyEmptinessMap());
-+        this.setBlockEmptinessMap(protochunk.getBlockEmptinessMap());
-+        // Tuinity end - copy over protochunk light
-         Iterator iterator = protochunk.y().iterator();
+diff --git a/src/main/java/net/minecraft/core/SectionPosition.java b/src/main/java/net/minecraft/core/SectionPosition.java
+index 7d9a16eb81288b74425319c60525f57c98ad3b69..427413c668865e1660f1d81daf6a3385f08a0e38 100644
+--- a/src/main/java/net/minecraft/core/SectionPosition.java
++++ b/src/main/java/net/minecraft/core/SectionPosition.java
+@@ -10,7 +10,7 @@ import net.minecraft.world.level.ChunkCoordIntPair;
  
-         while (iterator.hasNext()) {
-diff --git a/src/main/java/net/minecraft/server/ChunkRegionLoader.java b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-index 17a5b5b5bab4412242a18224b366674c25cdf286..076d6c1e1cc049dd312ecb30518e7b25fc2d7371 100644
---- a/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-+++ b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-@@ -64,6 +64,13 @@ public class ChunkRegionLoader {
-     private static final boolean JUST_CORRUPT_IT = Boolean.getBoolean("Paper.ignoreWorldDataVersion");
+ public class SectionPosition extends BaseBlockPosition {
+ 
+-    private SectionPosition(int i, int j, int k) {
++    public SectionPosition(int i, int j, int k) { // Tuinity - private -> public
+         super(i, j, k);
+     }
+ 
+diff --git a/src/main/java/net/minecraft/network/protocol/game/PacketPlayOutLightUpdate.java b/src/main/java/net/minecraft/network/protocol/game/PacketPlayOutLightUpdate.java
+index 9050ff7180f63c1f5756570446c4d0a8cc767779..9dd0f34aaede93ce4fdff9b41f76166edeb95e93 100644
+--- a/src/main/java/net/minecraft/network/protocol/game/PacketPlayOutLightUpdate.java
++++ b/src/main/java/net/minecraft/network/protocol/game/PacketPlayOutLightUpdate.java
+@@ -35,12 +35,12 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
+ 
+     @Override
+     public void onPacketDispatch(EntityPlayer player) {
+-        remainingSends.incrementAndGet();
++        if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) remainingSends.incrementAndGet();
+     }
+ 
+     @Override
+     public void onPacketDispatchFinish(EntityPlayer player, ChannelFuture future) {
+-        if (remainingSends.decrementAndGet() <= 0) {
++        if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && remainingSends.decrementAndGet() <= 0) {
+             // incase of any race conditions, schedule this delayed
+             MCUtil.scheduleTask(5, () -> {
+                 if (remainingSends.get() == 0) {
+@@ -53,7 +53,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
+ 
+     @Override
+     public boolean hasFinishListener() {
+-        return true;
++        return !com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine; // Tuinity - replace light impl
+     }
+ 
      // Paper end
+@@ -63,8 +63,8 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
+         this.a = chunkcoordintpair.x;
+         this.b = chunkcoordintpair.z;
+         this.i = flag;
+-        this.g = Lists.newArrayList();cleaner1 = MCUtil.registerListCleaner(this, this.g, NibbleArray::releaseBytes); // Paper
+-        this.h = Lists.newArrayList();cleaner2 = MCUtil.registerListCleaner(this, this.h, NibbleArray::releaseBytes); // Paper
++        this.g = Lists.newArrayList();if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) cleaner1 = MCUtil.registerListCleaner(this, this.g, NibbleArray::releaseBytes); // Paper // Tuinity - purge cleaner usage
++        this.h = Lists.newArrayList();if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) cleaner2 = MCUtil.registerListCleaner(this, this.h, NibbleArray::releaseBytes); // Paper // Tuinity - purge cleaner usage
  
-+    // Tuinity start - rewrite light engine
-+    private static final int STARLIGHT_LIGHT_VERSION = 4;
-+
-+    private static final String UNINITIALISED_SKYLIGHT_TAG = "starlight.skylight_uninit";
-+    private static final String STARLIGHT_VERSION_TAG = "starlight.light_version";
-+    // Tuinity end - rewrite light engine
-+
-     public static InProgressChunkHolder loadChunk(WorldServer worldserver, DefinedStructureManager definedstructuremanager, VillagePlace villageplace, ChunkCoordIntPair chunkcoordintpair, NBTTagCompound nbttagcompound, boolean distinguish) {
-         ArrayDeque<Runnable> tasksToExecuteOnMain = new ArrayDeque<>();
-         // Paper end
-@@ -93,13 +100,17 @@ public class ChunkRegionLoader {
-         ProtoChunkTickList<FluidType> protochunkticklist1 = new ProtoChunkTickList<>((fluidtype) -> {
-             return fluidtype == null || fluidtype == FluidTypes.EMPTY;
-         }, chunkcoordintpair, nbttagcompound1.getList("LiquidsToBeTicked", 9));
--        boolean flag = nbttagcompound1.getBoolean("isLightOn");
-+        boolean flag = (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nbttagcompound1.getInt(STARLIGHT_VERSION_TAG) == STARLIGHT_LIGHT_VERSION : nbttagcompound1.getBoolean("isLightOn")); boolean canUseSkyLight = flag && getStatus(nbttagcompound).isAtLeastStatus(ChunkStatus.LIGHT); boolean canUseBlockLight = canUseSkyLight; // Tuinity
-         NBTTagList nbttaglist = nbttagcompound1.getList("Sections", 10);
-         boolean flag1 = true;
-         ChunkSection[] achunksection = new ChunkSection[16];
-         boolean flag2 = worldserver.getDimensionManager().hasSkyLight();
-         ChunkProviderServer chunkproviderserver = worldserver.getChunkProvider();
-         LightEngine lightengine = chunkproviderserver.getLightEngine();
-+        com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] blockNibbles = com.tuinity.tuinity.chunk.light.StarLightEngine.getFilledEmptyLight(worldserver); // Tuinity - replace light impl
-+        com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] skyNibbles = com.tuinity.tuinity.chunk.light.StarLightEngine.getFilledEmptyLight(worldserver); // Tuinity - replace light impl
-+        final int minSection = com.tuinity.tuinity.util.WorldUtil.getMinLightSection(worldserver);
-+        final int maxSection = com.tuinity.tuinity.util.WorldUtil.getMaxLightSection(worldserver);
- 
-         if (flag) {
-             tasksToExecuteOnMain.add(() -> { // Paper - delay this task since we're executing off-main
-@@ -127,6 +138,7 @@ public class ChunkRegionLoader {
- 
-             if (flag) {
-                 if (nbttagcompound2.hasKeyOfType("BlockLight", 7)) {
-+                    if (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && canUseBlockLight) blockNibbles[b0 - minSection] = new com.tuinity.tuinity.chunk.light.SWMRNibbleArray(nbttagcompound2.getByteArray("BlockLight").clone()); // Tuinity - replace light impl
-                     // Paper start - delay this task since we're executing off-main
-                     NibbleArray blockLight = new NibbleArray(nbttagcompound2.getByteArray("BlockLight"));
-                     tasksToExecuteOnMain.add(() -> {
-@@ -136,13 +148,14 @@ public class ChunkRegionLoader {
+         for (int i = 0; i < 18; ++i) {
+             NibbleArray nibblearray = lightengine.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkcoordintpair, -1 + i));
+@@ -75,7 +75,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
+                     this.e |= 1 << i;
+                 } else {
+                     this.c |= 1 << i;
+-                    this.g.add(nibblearray.getCloneIfSet()); // Paper
++                    this.g.add(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray.asBytes() : nibblearray.getCloneIfSet()); // Paper // Tuinity - don't clone again
                  }
+             }
  
-                 if (flag2 && nbttagcompound2.hasKeyOfType("SkyLight", 7)) {
-+                    if (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && canUseSkyLight) skyNibbles[b0 - minSection] = new com.tuinity.tuinity.chunk.light.SWMRNibbleArray(nbttagcompound2.getByteArray("SkyLight").clone()); // Tuinity - replace light impl
-                     // Paper start - delay this task since we're executing off-main
-                     NibbleArray skyLight = new NibbleArray(nbttagcompound2.getByteArray("SkyLight"));
-                     tasksToExecuteOnMain.add(() -> {
-                         lightengine.a(EnumSkyBlock.SKY, SectionPosition.a(chunkcoordintpair, b0), skyLight, true);
-                     });
-                     // Paper end - delay this task since we're executing off-main
--                }
-+                } else if (flag2 && nbttagcompound2.getBoolean(UNINITIALISED_SKYLIGHT_TAG)) skyNibbles[b0 - minSection] = new com.tuinity.tuinity.chunk.light.SWMRNibbleArray(); // Tuinity - replace light impl
+@@ -84,7 +84,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
+                     this.f |= 1 << i;
+                 } else {
+                     this.d |= 1 << i;
+-                    this.h.add(nibblearray1.getCloneIfSet()); // Paper
++                    this.h.add(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray1.asBytes() : nibblearray1.getCloneIfSet()); // Paper // Tuinity - don't clone again
+                 }
              }
          }
+@@ -97,8 +97,8 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
+         this.i = flag;
+         this.c = i;
+         this.d = j;
+-        this.g = Lists.newArrayList();cleaner1 = MCUtil.registerListCleaner(this, this.g, NibbleArray::releaseBytes); // Paper
+-        this.h = Lists.newArrayList();cleaner2 = MCUtil.registerListCleaner(this, this.h, NibbleArray::releaseBytes); // Paper
++        this.g = Lists.newArrayList();if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) cleaner1 = MCUtil.registerListCleaner(this, this.g, NibbleArray::releaseBytes); // Paper // Tuinity - purge cleaner usage
++        this.h = Lists.newArrayList();if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) cleaner2 = MCUtil.registerListCleaner(this, this.h, NibbleArray::releaseBytes); // Paper // Tuinity - purge cleaner usage
  
-@@ -181,8 +194,12 @@ public class ChunkRegionLoader {
-             object = new Chunk(worldserver.getMinecraftWorld(), chunkcoordintpair, biomestorage, chunkconverter, (TickList) object1, (TickList) object2, j, achunksection, // Paper start - fix massive nbt memory leak due to lambda. move lambda into a container method to not leak scope. Only clone needed NBT keys.
-                 createLoadEntitiesConsumer(new SafeNBTCopy(nbttagcompound1, "TileEntities", "Entities", "ChunkBukkitValues")) // Paper - move CB Chunk PDC into here
-             );// Paper end
-+            ((Chunk)object).setBlockNibbles(blockNibbles); // Tuinity - replace light impl
-+            ((Chunk)object).setSkyNibbles(skyNibbles); // Tuinity - replace light impl
-         } else {
-             ProtoChunk protochunk = new ProtoChunk(chunkcoordintpair, chunkconverter, achunksection, protochunkticklist, protochunkticklist1, worldserver); // Paper - Anti-Xray - Add parameter
-+            protochunk.setBlockNibbles(blockNibbles); // Tuinity - replace light impl
-+            protochunk.setSkyNibbles(skyNibbles); // Tuinity - replace light impl
- 
-             protochunk.a(biomestorage);
-             object = protochunk;
-@@ -361,15 +378,20 @@ public class ChunkRegionLoader {
-         NibbleArray[] blockLight = new NibbleArray[17 - (-1)];
-         NibbleArray[] skyLight = new NibbleArray[17 - (-1)];
- 
-+        // Tuinity start - rewrite light impl
-+        final int minSection = com.tuinity.tuinity.util.WorldUtil.getMinLightSection(world);
-+        final int maxSection = com.tuinity.tuinity.util.WorldUtil.getMaxLightSection(world);
-+        // Tuinity end - rewrite light impl
-+
-         for (int i = -1; i < 17; ++i) {
--            NibbleArray blockArray = lightenginethreaded.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkPos, i));
--            NibbleArray skyArray = lightenginethreaded.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkPos, i));
-+            NibbleArray blockArray = com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? (!lightenginethreaded.hasBlockLight ? null : (chunk.getBlockNibbles()[i - minSection].isAllZero() ? new NibbleArray() : chunk.getBlockNibbles()[i - minSection].toVanillaNibble())) : lightenginethreaded.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkPos, i)); // Tuinity - chunk might not be loaded
-+            NibbleArray skyArray = com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? (!lightenginethreaded.hasSkyLight ? null : (chunk.getSkyNibbles()[i - minSection].isAllZero() ? new NibbleArray() : chunk.getSkyNibbles()[i - minSection].toVanillaNibble())) : lightenginethreaded.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkPos, i)); // Tuinity - chunk might not be loaded
- 
-             // copy data for safety
--            if (blockArray != null) {
-+            if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && blockArray != null) { // Tuinity - data already copied
-                 blockArray = blockArray.copy();
-             }
--            if (skyArray != null) {
-+            if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && skyArray != null) { // Tuinity - data already copied
-                 skyArray = skyArray.copy();
-             }
- 
-@@ -404,6 +426,10 @@ public class ChunkRegionLoader {
-     }
-     public static NBTTagCompound saveChunk(WorldServer worldserver, IChunkAccess ichunkaccess, AsyncSaveData asyncsavedata) {
-         // Paper end
-+        // Tuinity start - rewrite light impl
-+        final int minSection = com.tuinity.tuinity.util.WorldUtil.getMinLightSection(worldserver);
-+        final int maxSection = com.tuinity.tuinity.util.WorldUtil.getMaxLightSection(worldserver);
-+        // Tuinity end - rewrite light impl
-         ChunkCoordIntPair chunkcoordintpair = ichunkaccess.getPos();
-         NBTTagCompound nbttagcompound = new NBTTagCompound();
-         NBTTagCompound nbttagcompound1 = new NBTTagCompound();
-@@ -437,8 +463,8 @@ public class ChunkRegionLoader {
-             NibbleArray nibblearray; // block light
-             NibbleArray nibblearray1; // sky light
-             if (asyncsavedata == null) {
--                nibblearray = lightenginethreaded.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkcoordintpair, i)); /// Paper - diff on method change (see getAsyncSaveData)
--                nibblearray1 = lightenginethreaded.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkcoordintpair, i)); // Paper - diff on method change (see getAsyncSaveData)
-+                nibblearray = com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? (!lightenginethreaded.hasBlockLight ? null : (ichunkaccess.getBlockNibbles()[i - minSection].isAllZero() ? new NibbleArray() : ichunkaccess.getBlockNibbles()[i - minSection].toVanillaNibble())) : lightenginethreaded.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkcoordintpair, i)); // Tuinity - chunk might not be loaded
-+                nibblearray1 = com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? (!lightenginethreaded.hasSkyLight ? null : (ichunkaccess.getSkyNibbles()[i - minSection].isAllZero() ? new NibbleArray() : ichunkaccess.getSkyNibbles()[i - minSection].toVanillaNibble())) : lightenginethreaded.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkcoordintpair, i)); // Tuinity - chunk might not be loaded
-             } else {
-                 nibblearray = asyncsavedata.blockLight[i + 1]; // +1 to offset the -1 starting index
-                 nibblearray1 = asyncsavedata.skyLight[i + 1]; // +1 to offset the -1 starting index
-@@ -452,12 +478,12 @@ public class ChunkRegionLoader {
-                 }
- 
+         for (int k = 0; k < 18; ++k) {
+             NibbleArray nibblearray;
+@@ -106,7 +106,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
+             if ((this.c & 1 << k) != 0) {
+                 nibblearray = lightengine.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkcoordintpair, -1 + k));
                  if (nibblearray != null && !nibblearray.c()) {
--                    nbttagcompound2.setByteArray("BlockLight", nibblearray.asBytesPoolSafe().clone()); // Paper
-+                    nbttagcompound2.setByteArray("BlockLight", com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray.asBytes() : nibblearray.asBytesPoolSafe().clone()); // Paper // Tuinity - data is already cloned
-                 }
- 
-                 if (nibblearray1 != null && !nibblearray1.c()) {
--                    nbttagcompound2.setByteArray("SkyLight", nibblearray1.asBytesPoolSafe().clone()); // Paper
--                }
-+                    nbttagcompound2.setByteArray("SkyLight", com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray1.asBytes() : nibblearray1.asBytesPoolSafe().clone()); // Paper // Tuinity - data is already cloned
-+                } else if (nibblearray1 != null && com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) nbttagcompound2.setBoolean(UNINITIALISED_SKYLIGHT_TAG, true); // Tuinity - store uninitialised tags
- 
-                 nbttaglist.add(nbttagcompound2);
-             }
-@@ -465,7 +491,7 @@ public class ChunkRegionLoader {
- 
-         nbttagcompound1.set("Sections", nbttaglist);
-         if (flag) {
--            nbttagcompound1.setBoolean("isLightOn", true);
-+            nbttagcompound1.setBoolean("isLightOn", com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? false : true); if (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) nbttagcompound1.setInt(STARLIGHT_VERSION_TAG, STARLIGHT_LIGHT_VERSION); // Tuinity
-         }
- 
-         BiomeStorage biomestorage = ichunkaccess.getBiomeIndex();
-diff --git a/src/main/java/net/minecraft/server/ChunkSection.java b/src/main/java/net/minecraft/server/ChunkSection.java
-index cebd808e273dbdb88feb16920dd7a2f60390b34f..33b8f4e0f09fdc41c8ea48b6ed77af199136ab92 100644
---- a/src/main/java/net/minecraft/server/ChunkSection.java
-+++ b/src/main/java/net/minecraft/server/ChunkSection.java
-@@ -11,7 +11,7 @@ public class ChunkSection {
-     short nonEmptyBlockCount; // Paper - package-private
-     short tickingBlockCount; // Paper - private -> package-private
-     private short e;
--    final DataPaletteBlock<IBlockData> blockIds; // Paper - package-private
-+    public final DataPaletteBlock<IBlockData> blockIds; // Paper - package-private // Tuinity - public
- 
-     final com.destroystokyo.paper.util.maplist.IBlockDataList tickingList = new com.destroystokyo.paper.util.maplist.IBlockDataList(); // Paper
- 
-diff --git a/src/main/java/net/minecraft/server/EntityPlayer.java b/src/main/java/net/minecraft/server/EntityPlayer.java
-index d51925612bc3d37164a8e821833ef1721b6e6976..cf14b83ec3c2b9a2812f50f3bca991e029bf7c67 100644
---- a/src/main/java/net/minecraft/server/EntityPlayer.java
-+++ b/src/main/java/net/minecraft/server/EntityPlayer.java
-@@ -531,6 +531,185 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+-                    this.g.add(nibblearray.getCloneIfSet()); // Paper
++                    this.g.add(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray.asBytes() : nibblearray.getCloneIfSet()); // Paper // Tuinity - don't clone again
+                 } else {
+                     this.c &= ~(1 << k);
+                     if (nibblearray != null) {
+@@ -118,7 +118,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
+             if ((this.d & 1 << k) != 0) {
+                 nibblearray = lightengine.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkcoordintpair, -1 + k));
+                 if (nibblearray != null && !nibblearray.c()) {
+-                    this.h.add(nibblearray.getCloneIfSet()); // Paper
++                    this.h.add(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray.asBytes() : nibblearray.getCloneIfSet()); // Paper // Tuinity - don't clone again
+                 } else {
+                     this.d &= ~(1 << k);
+                     if (nibblearray != null) {
+diff --git a/src/main/java/net/minecraft/server/level/EntityPlayer.java b/src/main/java/net/minecraft/server/level/EntityPlayer.java
+index 37c9b5fd712e30a9a0faccc840f738f4b2cfc723..b2cd13541bf3486a69e8f3e41e4c90cdc47180d1 100644
+--- a/src/main/java/net/minecraft/server/level/EntityPlayer.java
++++ b/src/main/java/net/minecraft/server/level/EntityPlayer.java
+@@ -661,6 +661,185 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
                  }
              }
  
@@ -4639,102 +4446,11 @@ index d51925612bc3d37164a8e821833ef1721b6e6976..cf14b83ec3c2b9a2812f50f3bca991e0
              if (this.getHealth() != this.lastHealthSent || this.lastFoodSent != this.foodData.getFoodLevel() || this.foodData.getSaturationLevel() == 0.0F != this.lastSentSaturationZero) {
                  this.playerConnection.sendPacket(new PacketPlayOutUpdateHealth(this.getBukkitEntity().getScaledHealth(), this.foodData.getFoodLevel(), this.foodData.getSaturationLevel())); // CraftBukkit
                  this.lastHealthSent = this.getHealth();
-diff --git a/src/main/java/net/minecraft/server/EnumDirection.java b/src/main/java/net/minecraft/server/EnumDirection.java
-index 05b0090ae36cf61f67e26aad478df30c89f31941..30ba21ac1bced18a9d0946b7c3ed55971ada48bb 100644
---- a/src/main/java/net/minecraft/server/EnumDirection.java
-+++ b/src/main/java/net/minecraft/server/EnumDirection.java
-@@ -170,8 +170,8 @@ public enum EnumDirection implements INamable {
-         return EnumDirection.q[MathHelper.a(i % EnumDirection.q.length)];
-     }
- 
--    @Nullable
--    public static EnumDirection a(int i, int j, int k) {
-+    @Nullable public static EnumDirection from(int i, int j, int k) { return a(i, j, k); } // Tuinity - OBFHELPER
-+    @Nullable public static EnumDirection a(int i, int j, int k) {
-         return (EnumDirection) EnumDirection.r.get(BlockPosition.a(i, j, k));
-     }
- 
-diff --git a/src/main/java/net/minecraft/server/IChunkAccess.java b/src/main/java/net/minecraft/server/IChunkAccess.java
-index 180b6b58dc5663158db84b6f1257591439b48c31..eb0d794b7275af7f860e7c7b85a9e3b2aa4a863f 100644
---- a/src/main/java/net/minecraft/server/IChunkAccess.java
-+++ b/src/main/java/net/minecraft/server/IChunkAccess.java
-@@ -24,6 +24,36 @@ public interface IChunkAccess extends IBlockAccess, IStructureAccess {
-     }
-     // Paper end
- 
-+    // Tuinity start
-+    default com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] getBlockNibbles() {
-+        throw new UnsupportedOperationException(this.getClass().getName());
-+    }
-+    default void setBlockNibbles(com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] nibbles) {
-+        throw new UnsupportedOperationException(this.getClass().getName());
-+    }
-+
-+    default com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] getSkyNibbles() {
-+        throw new UnsupportedOperationException(this.getClass().getName());
-+    }
-+    default void setSkyNibbles(com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] nibbles) {
-+        throw new UnsupportedOperationException(this.getClass().getName());
-+    }
-+    public default boolean[] getSkyEmptinessMap() {
-+        throw new UnsupportedOperationException(this.getClass().getName());
-+    }
-+    public default void setSkyEmptinessMap(final boolean[] emptinessMap) {
-+        throw new UnsupportedOperationException(this.getClass().getName());
-+    }
-+
-+    public default boolean[] getBlockEmptinessMap() {
-+        throw new UnsupportedOperationException(this.getClass().getName());
-+    }
-+
-+    public default void setBlockEmptinessMap(final boolean[] emptinessMap) {
-+        throw new UnsupportedOperationException(this.getClass().getName());
-+    }
-+    // Tuinity end
-+
-     IBlockData getType(final int x, final int y, final int z); // Paper
-     @Nullable
-     IBlockData setType(BlockPosition blockposition, IBlockData iblockdata, boolean flag);
-@@ -122,6 +152,7 @@ public interface IChunkAccess extends IBlockAccess, IStructureAccess {
-     @Nullable
-     NBTTagCompound j(BlockPosition blockposition);
- 
-+    default Stream<BlockPosition> getLightSources() { return this.m(); } // Tuinity - OBFHELPER
-     Stream<BlockPosition> m();
- 
-     TickList<Block> n();
-@@ -142,7 +173,9 @@ public interface IChunkAccess extends IBlockAccess, IStructureAccess {
-         return ashortlist[i];
-     }
- 
-+    default boolean isLit() { return this.r(); } // Tuinity - OBFHELPER
-     boolean r();
- 
-+    default void setLit(boolean lit) { this.b(lit); } // Tuinity - OBFHELPER
-     void b(boolean flag);
- }
-diff --git a/src/main/java/net/minecraft/server/ILightAccess.java b/src/main/java/net/minecraft/server/ILightAccess.java
-index be5384ee41290b24b0c419c3e8f4553db34b2399..df28f7a6bf4c650a22ddf046eae4d5e8ca5879a9 100644
---- a/src/main/java/net/minecraft/server/ILightAccess.java
-+++ b/src/main/java/net/minecraft/server/ILightAccess.java
-@@ -4,9 +4,10 @@ import javax.annotation.Nullable;
- 
- public interface ILightAccess {
- 
--    @Nullable
--    IBlockAccess c(int i, int j);
-+    default @Nullable IBlockAccess getFeaturesReadyChunk(int i, int j) { return this.c(i, j); } // Tuinity - OBFHELPER
-+    @Nullable IBlockAccess c(int i, int j);
- 
-+    default void markLightSectionDirty(EnumSkyBlock enumskyblock, SectionPosition sectionposition) { this.a(enumskyblock, sectionposition); } // Tuinity - OBFHELPER
-     default void a(EnumSkyBlock enumskyblock, SectionPosition sectionposition) {}
- 
-     IBlockAccess getWorld();
-diff --git a/src/main/java/net/minecraft/server/LightEngineThreaded.java b/src/main/java/net/minecraft/server/LightEngineThreaded.java
-index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375b1a49bd6 100644
---- a/src/main/java/net/minecraft/server/LightEngineThreaded.java
-+++ b/src/main/java/net/minecraft/server/LightEngineThreaded.java
-@@ -2,6 +2,11 @@ package net.minecraft.server;
+diff --git a/src/main/java/net/minecraft/server/level/LightEngineThreaded.java b/src/main/java/net/minecraft/server/level/LightEngineThreaded.java
+index 0b80569648c1df01aab52d0b8d47028cda925d86..381bd11075599d44e4c705a8e754769d29883d75 100644
+--- a/src/main/java/net/minecraft/server/level/LightEngineThreaded.java
++++ b/src/main/java/net/minecraft/server/level/LightEngineThreaded.java
+@@ -2,6 +2,11 @@ package net.minecraft.server.level;
  
  import com.mojang.datafixers.util.Pair;
  import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap; // Paper
@@ -4746,7 +4462,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
  import it.unimi.dsi.fastutil.objects.ObjectArrayList;
  import it.unimi.dsi.fastutil.objects.ObjectList;
  import it.unimi.dsi.fastutil.objects.ObjectListIterator;
-@@ -15,11 +20,12 @@ import org.apache.logging.log4j.Logger;
+@@ -28,11 +33,12 @@ import org.apache.logging.log4j.Logger;
  public class LightEngineThreaded extends LightEngine implements AutoCloseable {
  
      private static final Logger LOGGER = LogManager.getLogger();
@@ -4760,7 +4476,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
          PlayerChunk playerChunk = playerChunkMap.getVisibleChunk(pair);
          if (playerChunk == null) {
              return false;
-@@ -156,13 +162,218 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -169,13 +175,218 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
      private volatile int f = 5;
      private final AtomicBoolean g = new AtomicBoolean();
  
@@ -4813,7 +4529,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +
 +            final Long id = Long.valueOf(this.relightCounter++);
 +
-+            this.theLightEngine.getWorld().getChunkProvider().addTicketAtLevel(TicketType.CHUNK_RELIGHT, chunkPos, MCUtil.getTicketLevelFor(ChunkStatus.LIGHT), id);
++            this.theLightEngine.getWorld().getChunkProvider().addTicketAtLevel(TicketType.CHUNK_RELIGHT, chunkPos, net.minecraft.server.MCUtil.getTicketLevelFor(ChunkStatus.LIGHT), id);
 +            ticketIds.put(chunkPos, id);
 +
 +            ++totalChunks;
@@ -4823,8 +4539,8 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +            this.theLightEngine.relightChunks(chunks, (ChunkCoordIntPair chunkPos) -> {
 +                chunkLightCallback.accept(chunkPos);
 +                ((java.util.concurrent.Executor)this.theLightEngine.getWorld().getChunkProvider().serverThreadQueue).execute(() -> {
-+                    this.theLightEngine.getWorld().getChunkProvider().playerChunkMap.getUpdatingChunk(chunkPos.pair()).sendPacketToTrackedPlayers(new PacketPlayOutLightUpdate(chunkPos, this, true), false);
-+                    this.theLightEngine.getWorld().getChunkProvider().removeTicketAtLevel(TicketType.CHUNK_RELIGHT, chunkPos, MCUtil.getTicketLevelFor(ChunkStatus.LIGHT), ticketIds.get(chunkPos));
++                    this.theLightEngine.getWorld().getChunkProvider().playerChunkMap.getUpdatingChunk(chunkPos.pair()).sendPacketToTrackedPlayers(new net.minecraft.network.protocol.game.PacketPlayOutLightUpdate(chunkPos, this, true), false);
++                    this.theLightEngine.getWorld().getChunkProvider().removeTicketAtLevel(TicketType.CHUNK_RELIGHT, chunkPos, net.minecraft.server.MCUtil.getTicketLevelFor(ChunkStatus.LIGHT), ticketIds.get(chunkPos));
 +                });
 +            }, onComplete);
 +        });
@@ -4837,12 +4553,12 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +    protected final LongArrayList postWorkTicketRelease = new LongArrayList();
 +
 +    private void addLightWorkTicket(int chunkX, int chunkZ) {
-+        final long coordinate = MCUtil.getCoordinateKey(chunkX, chunkZ);
++        final long coordinate = net.minecraft.server.MCUtil.getCoordinateKey(chunkX, chunkZ);
 +        final int current = this.holdingChunks.putIfAbsent(coordinate, 1);
 +        if (current == 0) {
 +            final ChunkCoordIntPair chunkPos = new ChunkCoordIntPair(coordinate);
 +            this.theLightEngine.getWorld().getChunkProvider().addTicketAtLevel(TicketType.LIGHT_UPDATE, chunkPos,
-+                    MCUtil.getTicketLevelFor(ChunkStatus.LIGHT), chunkPos);
++                    net.minecraft.server.MCUtil.getTicketLevelFor(ChunkStatus.LIGHT), chunkPos);
 +            this.theLightEngine.getWorld().getChunkProvider().tickDistanceManager();
 +        } else {
 +            this.holdingChunks.put(coordinate, current + 1);
@@ -4850,13 +4566,13 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +    }
 +
 +    protected final void releaseLightWorkChunk(int chunkX, int chunkZ) {
-+        final long coordinate = MCUtil.getCoordinateKey(chunkX, chunkZ);
++        final long coordinate = net.minecraft.server.MCUtil.getCoordinateKey(chunkX, chunkZ);
 +        final int current = this.holdingChunks.get(coordinate);
 +        if (current == 1) {
 +            this.holdingChunks.remove(coordinate);
 +            final ChunkCoordIntPair chunkPos = new ChunkCoordIntPair(coordinate);
 +            this.theLightEngine.getWorld().getChunkProvider().removeTicketAtLevel(TicketType.LIGHT_UPDATE, chunkPos,
-+                    MCUtil.getTicketLevelFor(ChunkStatus.LIGHT), chunkPos);
++                    net.minecraft.server.MCUtil.getTicketLevelFor(ChunkStatus.LIGHT), chunkPos);
 +        } else {
 +            this.holdingChunks.put(coordinate, current - 1);
 +        }
@@ -4865,17 +4581,17 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +    protected final CompletableFuture<IChunkAccess> acquireLightWorkChunk(int chunkX, int chunkZ) {
 +        ChunkProviderServer chunkProvider = this.theLightEngine.getWorld().getChunkProvider();
 +        PlayerChunkMap chunkMap = chunkProvider.playerChunkMap;
-+        int targetLevel = MCUtil.getTicketLevelFor(ChunkStatus.LIGHT);
++        int targetLevel = net.minecraft.server.MCUtil.getTicketLevelFor(ChunkStatus.LIGHT);
 +
 +        this.addLightWorkTicket(chunkX, chunkZ);
 +
 +        // light doesn't always load one radius neighbours...
 +        // i.e if they get unloaded
 +        boolean neighboursAtFeatures = true;
-+        int targetNeighbourLevel = MCUtil.getTicketLevelFor(ChunkStatus.LIGHT.getPreviousStatus());
++        int targetNeighbourLevel = net.minecraft.server.MCUtil.getTicketLevelFor(ChunkStatus.LIGHT.getPreviousStatus());
 +        for (int dx = -1; dx <= 1; ++dx) {
 +            for (int dz = -1; dz <= 1; ++dz) {
-+                PlayerChunk neighbour = chunkMap.getUpdatingChunk(MCUtil.getCoordinateKey(dx + chunkX, dz + chunkZ));
++                PlayerChunk neighbour = chunkMap.getUpdatingChunk(net.minecraft.server.MCUtil.getCoordinateKey(dx + chunkX, dz + chunkZ));
 +                ChunkStatus status;
 +                if (neighbour == null || neighbour.getTicketLevel() > targetNeighbourLevel ||
 +                        (status = neighbour.getChunkHolderStatus()) == null ||
@@ -4886,7 +4602,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +            }
 +        }
 +
-+        PlayerChunk playerChunk = chunkMap.getUpdatingChunk(MCUtil.getCoordinateKey(chunkX, chunkZ));
++        PlayerChunk playerChunk = chunkMap.getUpdatingChunk(net.minecraft.server.MCUtil.getCoordinateKey(chunkX, chunkZ));
 +        ChunkStatus holderStatus;
 +        if (!neighboursAtFeatures || playerChunk == null || playerChunk.getTicketLevel() > targetLevel ||
 +                (holderStatus = playerChunk.getChunkHolderStatus()) == null ||
@@ -4932,14 +4648,14 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +
 +        this.acquireLightWorkChunk(chunkX, chunkZ).whenCompleteAsync((chunk, throwable) -> {
 +            if (throwable != null) {
-+                MinecraftServer.LOGGER.fatal("Failed to load light chunk for light work", throwable);
++                LOGGER.fatal("Failed to load light chunk for light work", throwable);
 +                this.releaseLightWorkChunk(chunkX, chunkZ);
 +            } else {
 +                this.scheduleTask(chunkX, chunkZ, type, () -> {
 +                    try {
 +                        task.run();
 +                    } finally {
-+                        this.postWorkTicketRelease.add(MCUtil.getCoordinateKey(chunkX, chunkZ));
++                        this.postWorkTicketRelease.add(net.minecraft.server.MCUtil.getCoordinateKey(chunkX, chunkZ));
 +                    }
 +                });
 +            }
@@ -4954,7 +4670,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +    }
 +
 +    @Override
-+    public LightEngineLayerEventListener a(EnumSkyBlock var0) {
++    public net.minecraft.world.level.lighting.LightEngineLayerEventListener a(EnumSkyBlock var0) {
 +        if (this.theLightEngine == null) {
 +            return super.a(var0);
 +        }
@@ -4979,7 +4695,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
      public void close() {}
  
      @Override
-@@ -179,6 +390,15 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -192,6 +403,15 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
      public void a(BlockPosition blockposition) {
          BlockPosition blockposition1 = blockposition.immutableCopy();
  
@@ -4995,7 +4711,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
          this.a(blockposition.getX() >> 4, blockposition.getZ() >> 4, LightEngineThreaded.Update.POST_UPDATE, SystemUtils.a(() -> {
              super.a(blockposition1);
          }, () -> {
-@@ -187,6 +407,11 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -200,6 +420,11 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
      }
  
      protected void a(ChunkCoordIntPair chunkcoordintpair) {
@@ -5007,7 +4723,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
          this.a(chunkcoordintpair.x, chunkcoordintpair.z, () -> {
              return 0;
          }, LightEngineThreaded.Update.PRE_UPDATE, SystemUtils.a(() -> {
-@@ -211,6 +436,14 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -224,6 +449,14 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
  
      @Override
      public void a(SectionPosition sectionposition, boolean flag) {
@@ -5022,7 +4738,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
          this.a(sectionposition.a(), sectionposition.c(), () -> {
              return 0;
          }, LightEngineThreaded.Update.PRE_UPDATE, SystemUtils.a(() -> {
-@@ -222,6 +455,11 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -235,6 +468,11 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
  
      @Override
      public void a(ChunkCoordIntPair chunkcoordintpair, boolean flag) {
@@ -5034,7 +4750,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
          this.a(chunkcoordintpair.x, chunkcoordintpair.z, LightEngineThreaded.Update.PRE_UPDATE, SystemUtils.a(() -> {
              super.a(chunkcoordintpair, flag);
          }, () -> {
-@@ -231,6 +469,11 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -244,6 +482,11 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
  
      @Override
      public void a(EnumSkyBlock enumskyblock, SectionPosition sectionposition, @Nullable NibbleArray nibblearray, boolean flag) {
@@ -5046,7 +4762,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
          this.a(sectionposition.a(), sectionposition.c(), () -> {
              return 0;
          }, LightEngineThreaded.Update.PRE_UPDATE, SystemUtils.a(() -> {
-@@ -240,6 +483,7 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -253,6 +496,7 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
          }));
      }
  
@@ -5054,7 +4770,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
      private void a(int i, int j, LightEngineThreaded.Update lightenginethreaded_update, Runnable runnable) {
          this.a(i, j, this.d.c(ChunkCoordIntPair.pair(i, j)), lightenginethreaded_update, runnable);
      }
-@@ -252,6 +496,11 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -265,6 +509,11 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
  
      @Override
      public void b(ChunkCoordIntPair chunkcoordintpair, boolean flag) {
@@ -5066,7 +4782,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
          this.a(chunkcoordintpair.x, chunkcoordintpair.z, () -> {
              return 0;
          }, LightEngineThreaded.Update.PRE_UPDATE, SystemUtils.a(() -> {
-@@ -264,6 +513,35 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -277,6 +526,35 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
      public CompletableFuture<IChunkAccess> a(IChunkAccess ichunkaccess, boolean flag) {
          ChunkCoordIntPair chunkcoordintpair = ichunkaccess.getPos();
  
@@ -5093,7 +4809,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +                LightEngineThreaded.this.queueUpdate();
 +            }).whenComplete((IChunkAccess chunk, Throwable throwable) -> {
 +                if (throwable != null && !(throwable instanceof ThreadDeath)) {
-+                    MinecraftServer.LOGGER.fatal("Failed to light chunk " + ichunkaccess.getPos().toString() + " in world '" + this.theLightEngine.getWorld().getWorld().getName() + "'");
++                    LOGGER.fatal("Failed to light chunk " + ichunkaccess.getPos().toString() + " in world '" + this.theLightEngine.getWorld().getWorld().getName() + "'");
 +                }
 +            });
 +        }
@@ -5102,7 +4818,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
          // Paper start
          //ichunkaccess.b(false); // Don't need to disable this
          long pair = chunkcoordintpair.pair();
-@@ -311,7 +589,7 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -324,7 +602,7 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
      }
  
      public void queueUpdate() {
@@ -5111,7 +4827,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
              this.b.a((() -> { // Paper - decompile error
                  this.b();
                  this.g.set(false);
-@@ -325,17 +603,36 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
+@@ -338,17 +616,36 @@ public class LightEngineThreaded extends LightEngine implements AutoCloseable {
      private final java.util.List<Runnable> pre = new java.util.ArrayList<>();
      private final java.util.List<Runnable> post = new java.util.ArrayList<>();
      private void b() {
@@ -5138,7 +4854,7 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
 +                    LongIterator iterator = copy.iterator();
 +                    while (iterator.hasNext()) {
 +                        long coordinate = iterator.nextLong();
-+                        this.releaseLightWorkChunk(MCUtil.getCoordinateX(coordinate), MCUtil.getCoordinateZ(coordinate));
++                        this.releaseLightWorkChunk(net.minecraft.server.MCUtil.getCoordinateX(coordinate), net.minecraft.server.MCUtil.getCoordinateZ(coordinate));
 +                    }
 +                });
 +            }
@@ -5150,136 +4866,11 @@ index 2f9c97dd4e1d705a87772d18c7ab4883a876af08..b2f51a6786d4bb92c9cbbceeea812375
      }
  
      public void a(int i) {
-diff --git a/src/main/java/net/minecraft/server/NibbleArray.java b/src/main/java/net/minecraft/server/NibbleArray.java
-index 4085426af03f032cf405bdfd1e40a8e5dc27c1d1..348d16ddec3b4da0b6b4e4f49916b966005b5259 100644
---- a/src/main/java/net/minecraft/server/NibbleArray.java
-+++ b/src/main/java/net/minecraft/server/NibbleArray.java
-@@ -56,6 +56,7 @@ public class NibbleArray {
-     boolean poolSafe = false;
-     public java.lang.Runnable cleaner;
-     private void registerCleaner() {
-+        if (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) return; // Tuinity - purge cleaner usage
-         if (!poolSafe) {
-             cleaner = MCUtil.registerCleaner(this, this.a, NibbleArray::releaseBytes);
-         } else {
-@@ -63,7 +64,7 @@ public class NibbleArray {
-         }
-     }
-     // Paper end
--    @Nullable protected byte[] a;
-+    @Nullable protected byte[] a; public final byte[] justGiveMeTheFuckingByteArrayNoCleanerBullshitJesusFuckingChrist() { return this.a; }
- 
- 
-     public NibbleArray() {}
-@@ -74,7 +75,7 @@ public class NibbleArray {
-     }
-     public NibbleArray(byte[] abyte, boolean isSafe) {
-         this.a = abyte;
--        if (!isSafe) this.a = getCloneIfSet(); // Paper - clone for safety
-+        if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && !isSafe) this.a = getCloneIfSet(); // Paper - clone for safety // Tuinity - no need to clone
-         registerCleaner();
-         // Paper end
-         if (abyte.length != 2048) {
-@@ -162,7 +163,7 @@ public class NibbleArray {
- 
-     public NibbleArray copy() { return this.b(); } // Paper - OBFHELPER
-     public NibbleArray b() {
--        return this.a == null ? new NibbleArray() : new NibbleArray(this.a); // Paper - clone in ctor
-+        return this.a == null ? new NibbleArray() : new NibbleArray(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? this.a.clone() : this.a); // Paper - clone in ctor // Tuinity - no longer clone in constructor
-     }
- 
-     public String toString() {
-diff --git a/src/main/java/net/minecraft/server/PacketPlayOutLightUpdate.java b/src/main/java/net/minecraft/server/PacketPlayOutLightUpdate.java
-index a22f0cccecc85b4e4fe4603bcfa213f15c23db69..6cc4a035c8b1312b59685b20039d5e82bb1e1a3e 100644
---- a/src/main/java/net/minecraft/server/PacketPlayOutLightUpdate.java
-+++ b/src/main/java/net/minecraft/server/PacketPlayOutLightUpdate.java
-@@ -26,12 +26,12 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
- 
-     @Override
-     public void onPacketDispatch(EntityPlayer player) {
--        remainingSends.incrementAndGet();
-+        if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) remainingSends.incrementAndGet();
-     }
- 
-     @Override
-     public void onPacketDispatchFinish(EntityPlayer player, ChannelFuture future) {
--        if (remainingSends.decrementAndGet() <= 0) {
-+        if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && remainingSends.decrementAndGet() <= 0) {
-             // incase of any race conditions, schedule this delayed
-             MCUtil.scheduleTask(5, () -> {
-                 if (remainingSends.get() == 0) {
-@@ -44,7 +44,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
- 
-     @Override
-     public boolean hasFinishListener() {
--        return true;
-+        return !com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine; // Tuinity - replace light impl
-     }
- 
-     // Paper end
-@@ -54,8 +54,8 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
-         this.a = chunkcoordintpair.x;
-         this.b = chunkcoordintpair.z;
-         this.i = flag;
--        this.g = Lists.newArrayList();cleaner1 = MCUtil.registerListCleaner(this, this.g, NibbleArray::releaseBytes); // Paper
--        this.h = Lists.newArrayList();cleaner2 = MCUtil.registerListCleaner(this, this.h, NibbleArray::releaseBytes); // Paper
-+        this.g = Lists.newArrayList();if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) cleaner1 = MCUtil.registerListCleaner(this, this.g, NibbleArray::releaseBytes); // Paper // Tuinity - purge cleaner usage
-+        this.h = Lists.newArrayList();if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) cleaner2 = MCUtil.registerListCleaner(this, this.h, NibbleArray::releaseBytes); // Paper // Tuinity - purge cleaner usage
- 
-         for (int i = 0; i < 18; ++i) {
-             NibbleArray nibblearray = lightengine.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkcoordintpair, -1 + i));
-@@ -66,7 +66,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
-                     this.e |= 1 << i;
-                 } else {
-                     this.c |= 1 << i;
--                    this.g.add(nibblearray.getCloneIfSet()); // Paper
-+                    this.g.add(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray.asBytes() : nibblearray.getCloneIfSet()); // Paper // Tuinity - don't clone again
-                 }
-             }
- 
-@@ -75,7 +75,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
-                     this.f |= 1 << i;
-                 } else {
-                     this.d |= 1 << i;
--                    this.h.add(nibblearray1.getCloneIfSet()); // Paper
-+                    this.h.add(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray1.asBytes() : nibblearray1.getCloneIfSet()); // Paper // Tuinity - don't clone again
-                 }
-             }
-         }
-@@ -88,8 +88,8 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
-         this.i = flag;
-         this.c = i;
-         this.d = j;
--        this.g = Lists.newArrayList();cleaner1 = MCUtil.registerListCleaner(this, this.g, NibbleArray::releaseBytes); // Paper
--        this.h = Lists.newArrayList();cleaner2 = MCUtil.registerListCleaner(this, this.h, NibbleArray::releaseBytes); // Paper
-+        this.g = Lists.newArrayList();if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) cleaner1 = MCUtil.registerListCleaner(this, this.g, NibbleArray::releaseBytes); // Paper // Tuinity - purge cleaner usage
-+        this.h = Lists.newArrayList();if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) cleaner2 = MCUtil.registerListCleaner(this, this.h, NibbleArray::releaseBytes); // Paper // Tuinity - purge cleaner usage
- 
-         for (int k = 0; k < 18; ++k) {
-             NibbleArray nibblearray;
-@@ -97,7 +97,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
-             if ((this.c & 1 << k) != 0) {
-                 nibblearray = lightengine.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkcoordintpair, -1 + k));
-                 if (nibblearray != null && !nibblearray.c()) {
--                    this.g.add(nibblearray.getCloneIfSet()); // Paper
-+                    this.g.add(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray.asBytes() : nibblearray.getCloneIfSet()); // Paper // Tuinity - don't clone again
-                 } else {
-                     this.c &= ~(1 << k);
-                     if (nibblearray != null) {
-@@ -109,7 +109,7 @@ public class PacketPlayOutLightUpdate implements Packet<PacketListenerPlayOut> {
-             if ((this.d & 1 << k) != 0) {
-                 nibblearray = lightengine.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkcoordintpair, -1 + k));
-                 if (nibblearray != null && !nibblearray.c()) {
--                    this.h.add(nibblearray.getCloneIfSet()); // Paper
-+                    this.h.add(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray.asBytes() : nibblearray.getCloneIfSet()); // Paper // Tuinity - don't clone again
-                 } else {
-                     this.d &= ~(1 << k);
-                     if (nibblearray != null) {
-diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index a22021766b3bffa4f96d1d4ee546b12e96b5ca58..3127fc9dd87e82243e167862cae83ac87b7f4fa0 100644
---- a/src/main/java/net/minecraft/server/PlayerChunk.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -387,13 +387,14 @@ public class PlayerChunk {
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunk.java b/src/main/java/net/minecraft/server/level/PlayerChunk.java
+index e3dc57282a559f783c027780740e8089e022c838..41a9202fac9fce3bf8cf08682d0545484d46c41d 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunk.java
+@@ -413,13 +413,14 @@ public class PlayerChunk {
  
      public void a(EnumSkyBlock enumskyblock, int i) {
          Chunk chunk = this.getSendingChunk(); // Paper - no-tick view distance
@@ -5296,11 +4887,20 @@ index a22021766b3bffa4f96d1d4ee546b12e96b5ca58..3127fc9dd87e82243e167862cae83ac8
              }
  
          }
-diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index c7897e1a3655301d848313c26b244c325766253e..ff91f069e5f4a16c069c8a68d8cb55e9ad3627c8 100644
---- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -1350,6 +1350,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+index 82e28afc75d93c39d6b6517faf6430183cb675fb..e30995df572df6135e159d34cd7646fd08db4a5a 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+@@ -1256,7 +1256,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                     if (ichunkaccess.getChunkStatus().b(chunkstatus)) {
+                         CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture1; // Paper
+ 
+-                        if (chunkstatus == ChunkStatus.LIGHT) {
++                        if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && chunkstatus == ChunkStatus.LIGHT) { // Tuinity - we use edge checks, so loading 1 radius neighbours isn't necessary
+                             completablefuture1 = this.b(playerchunk, chunkstatus);
+                         } else {
+                             completablefuture1 = chunkstatus.a(this.world, this.definedStructureManager, this.lightEngine, (ichunkaccess1) -> {
+@@ -1404,6 +1404,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
          // Tuinity end - force competion on the main thread
      }
  
@@ -5308,11 +4908,327 @@ index c7897e1a3655301d848313c26b244c325766253e..ff91f069e5f4a16c069c8a68d8cb55e9
      protected void c(ChunkCoordIntPair chunkcoordintpair) {
          this.executor.a(SystemUtils.a(() -> {
              this.chunkDistanceManager.b(TicketType.LIGHT, chunkcoordintpair, 33 + ChunkStatus.a(ChunkStatus.FEATURES), chunkcoordintpair);
-diff --git a/src/main/java/net/minecraft/server/ProtoChunk.java b/src/main/java/net/minecraft/server/ProtoChunk.java
-index a3ac883500eaebb353ad3108a17b5c740e384b03..d8b759874545293764690b2ba08a4bd7605c76ae 100644
---- a/src/main/java/net/minecraft/server/ProtoChunk.java
-+++ b/src/main/java/net/minecraft/server/ProtoChunk.java
-@@ -48,6 +48,54 @@ public class ProtoChunk implements IChunkAccess {
+diff --git a/src/main/java/net/minecraft/server/level/TicketType.java b/src/main/java/net/minecraft/server/level/TicketType.java
+index 1122df50a7f9cbc489e8da7a91e9af73476eb148..3738c51b5e673c439d88a7ef7f4614f338a61c2a 100644
+--- a/src/main/java/net/minecraft/server/level/TicketType.java
++++ b/src/main/java/net/minecraft/server/level/TicketType.java
+@@ -32,6 +32,8 @@ public class TicketType<T> {
+     public static final TicketType<ChunkCoordIntPair> URGENT = a("urgent", Comparator.comparingLong(ChunkCoordIntPair::pair), 300); // Paper
+     public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo); // Tuinity - delay chunk unloads
+     public static final TicketType<Long> REQUIRED_LOAD = a("required_load", Long::compareTo); // Tuinity - make sure getChunkAt does not fail
++    public static final TicketType<ChunkCoordIntPair> LIGHT_UPDATE = a("light_update", Comparator.comparingLong(ChunkCoordIntPair::pair)); // Tuinity - ensure chunks stay loaded for lighting
++    public static final TicketType<Long> CHUNK_RELIGHT = a("chunk_relight", Long::compareTo); // Tuinity - ensure chunk stays loaded for relighting
+ 
+     // Tuinity start - delay chunk unloads
+     boolean delayUnloadViable = true;
+@@ -41,6 +43,7 @@ public class TicketType<T> {
+         TicketType.PRIORITY.delayUnloadViable = false;
+         TicketType.URGENT.delayUnloadViable = false;
+         TicketType.DELAYED_UNLOAD.delayUnloadViable = false;
++        TicketType.LIGHT_UPDATE.delayUnloadViable = false; // Tuinity - ensure chunks stay loaded for lighting
+     }
+     // Tuinity end - delay chunk unloads
+     public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
+diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
+index 6b5aa91ddc657443580f2cb82c5aff3ee0180fa6..6ce29205ba4480b19912a7acd393c4198d6a9e35 100644
+--- a/src/main/java/net/minecraft/server/level/WorldServer.java
++++ b/src/main/java/net/minecraft/server/level/WorldServer.java
+@@ -515,6 +515,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+     }
+     // Tuinity end - optimise get nearest players for entity AI
+ 
++    // Tuinity start - rewrite light engine
++    /**
++     * Cannot be modified during light updates.
++     */
++    public com.tuinity.tuinity.chunk.light.VariableBlockLightHandler customBlockLightHandlers;
++    // Tuinity end - rewrite light engine
++
+     // Add env and gen to constructor, WorldData -> WorldDataServer
+     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
+         super(iworlddataserver, resourcekey, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
+diff --git a/src/main/java/net/minecraft/world/level/block/state/BlockBase.java b/src/main/java/net/minecraft/world/level/block/state/BlockBase.java
+index a96069c86ef5f5af4820436dd1f24e297bcca73f..0b852fa247c65cb1e889ad4e55886e256f89a763 100644
+--- a/src/main/java/net/minecraft/world/level/block/state/BlockBase.java
++++ b/src/main/java/net/minecraft/world/level/block/state/BlockBase.java
+@@ -382,6 +382,7 @@ public abstract class BlockBase {
+             this.n = blockbase_info.s;
+             this.o = blockbase_info.t;
+             this.p = blockbase_info.u;
++            this.conditionallyFullOpaque = this.isOpaque() & this.isTransparentOnSomeFaces(); // Tuinity
+         }
+         // Paper start - impl cached craft block data, lazy load to fix issue with loading at the wrong time
+         private org.bukkit.craftbukkit.block.data.CraftBlockData cachedCraftBlockData;
+@@ -404,6 +405,19 @@ public abstract class BlockBase {
+         }
+         // Tuinity end
+ 
++        // Tuinity start
++        protected int opacityIfCached = -1;
++        // ret -1 if opacity is dynamic, or -1 if the block is conditionally full opaque, else return opacity in [0, 15]
++        public final int getOpacityIfCached() {
++            return this.opacityIfCached;
++        }
++
++        protected final boolean conditionallyFullOpaque;
++        public final boolean isConditionallyFullOpaque() {
++            return this.conditionallyFullOpaque;
++        }
++        // Tuinity end
++
+         public void a() {
+             this.fluid = this.getBlock().d(this.p()); // Paper - moved from getFluid()
+             this.isTicking = this.getBlock().isTicking(this.p()); // Paper - moved from isTicking()
+@@ -413,6 +427,34 @@ public abstract class BlockBase {
+             this.shapeExceedsCube = this.a == null || this.a.c; // Tuinity - moved from actual method to here
+             this.staticPathType = null; // Tuinity - cache static path type
+             this.neighbourOverridePathType = null; // Tuinity - cache static path types
++            this.opacityIfCached = this.a == null || this.isConditionallyFullOpaque() ? -1 : this.a.getOpacity(); // Tuinity - cache opacity for light
++            // Tuinity start - optimise culling shape cache for light
++            if (this.a != null && this.a.getCullingShapeCache() != null) {
++                for (int i = 0, len = this.a.getCullingShapeCache().length; i < len; ++i) {
++                    VoxelShape face = this.a.getCullingShapeCache()[i].simplify();
++                    if (face.isEmpty()) {
++                        this.a.getCullingShapeCache()[i] = VoxelShapes.getEmptyShape();
++                        continue;
++                    }
++                    List<net.minecraft.world.phys.AxisAlignedBB> boxes = face.getBoundingBoxesRepresentation();
++
++                    if (boxes.size() == 1) {
++                        net.minecraft.world.phys.AxisAlignedBB boundingBox = boxes.get(0);
++                        if (boundingBox.equals(VoxelShapes.optimisedFullCube.aabb)) {
++                            this.a.getCullingShapeCache()[i] = VoxelShapes.fullCube();
++                        } else {
++                            this.a.getCullingShapeCache()[i] = VoxelShapes.of(boundingBox);
++                            if (!(this.a.getCullingShapeCache()[i] instanceof com.tuinity.tuinity.voxel.AABBVoxelShape) &&
++                                this.a.getCullingShapeCache()[i].getBoundingBoxesRepresentation().size() == 1) {
++                                this.a.getCullingShapeCache()[i] = new com.tuinity.tuinity.voxel.AABBVoxelShape(boundingBox);
++                            }
++                        }
++                        continue;
++                    }
++                    this.a.getCullingShapeCache()[i] = face;
++                }
++            }
++            // Tuinity end - optimise culling shape cache for light
+ 
+         }
+ 
+@@ -741,9 +783,9 @@ public abstract class BlockBase {
+             private static final int f = EnumBlockSupport.values().length;
+             protected final boolean a;
+             private final boolean g;
+-            private final int h;
++            private final int h; private final int getOpacity() { return this.h; } // Tuinity - OBFHELPER
+             @Nullable
+-            private final VoxelShape[] i;
++            private final VoxelShape[] i; private final VoxelShape[] getCullingShapeCache () { return this.i; } // Tuinity - OBFHELPER
+             protected final VoxelShape b;
+             protected final boolean c;
+             private final boolean[] j;
+diff --git a/src/main/java/net/minecraft/world/level/chunk/Chunk.java b/src/main/java/net/minecraft/world/level/chunk/Chunk.java
+index ec5770453f2c795f09345f2f89209a66625392f3..8b73ba51dde43e3ddf40ed863cf286042f139a34 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/Chunk.java
++++ b/src/main/java/net/minecraft/world/level/chunk/Chunk.java
+@@ -144,6 +144,52 @@ public class Chunk implements IChunkAccess {
+         this.entitySlicesManager.getHardCollidingEntities(entity, axisalignedbb, into, predicate); // Tuinity
+     }
+     // Tuinity end - optimise hard collision handling
++    // Tuinity start - rewrite light engine
++    protected volatile com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] blockNibbles = com.tuinity.tuinity.chunk.light.StarLightEngine.getFilledEmptyLight();
++    protected volatile com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] skyNibbles = com.tuinity.tuinity.chunk.light.StarLightEngine.getFilledEmptyLight();
++    protected volatile boolean[] skyEmptinessMap;
++    protected volatile boolean[] blockEmptinessMap;
++
++    @Override
++    public com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] getBlockNibbles() {
++        return this.blockNibbles;
++    }
++
++    @Override
++    public void setBlockNibbles(com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] nibbles) {
++        this.blockNibbles = nibbles;
++    }
++
++    @Override
++    public com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] getSkyNibbles() {
++        return this.skyNibbles;
++    }
++
++    @Override
++    public void setSkyNibbles(com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] nibbles) {
++        this.skyNibbles = nibbles;
++    }
++
++    @Override
++    public boolean[] getSkyEmptinessMap() {
++        return this.skyEmptinessMap;
++    }
++
++    @Override
++    public void setSkyEmptinessMap(boolean[] emptinessMap) {
++        this.skyEmptinessMap = emptinessMap;
++    }
++
++    @Override
++    public boolean[] getBlockEmptinessMap() {
++        return this.blockEmptinessMap;
++    }
++
++    @Override
++    public void setBlockEmptinessMap(boolean[] emptinessMap) {
++        this.blockEmptinessMap = emptinessMap;
++    }
++    // Tuinity end - rewrite light engine
+ 
+     // Tuinity start - optimised entity slices
+     protected final com.tuinity.tuinity.world.ChunkEntitySlices entitySlicesManager;
+@@ -451,6 +497,12 @@ public class Chunk implements IChunkAccess {
+ 
+     public Chunk(World world, ProtoChunk protochunk) {
+         this(world, protochunk.getPos(), protochunk.getBiomeIndex(), protochunk.p(), protochunk.n(), protochunk.o(), protochunk.getInhabitedTime(), protochunk.getSections(), (Consumer) null);
++        // Tuinity start - copy over protochunk light
++        this.setBlockNibbles(protochunk.getBlockNibbles());
++        this.setSkyNibbles(protochunk.getSkyNibbles());
++        this.setSkyEmptinessMap(protochunk.getSkyEmptinessMap());
++        this.setBlockEmptinessMap(protochunk.getBlockEmptinessMap());
++        // Tuinity end - copy over protochunk light
+         Iterator iterator = protochunk.y().iterator();
+ 
+         while (iterator.hasNext()) {
+diff --git a/src/main/java/net/minecraft/world/level/chunk/ChunkSection.java b/src/main/java/net/minecraft/world/level/chunk/ChunkSection.java
+index b17bedec0fa10d81273119b04f05f1cb4d908111..b5eb43174d2c2f34bb17bbcdb803aafe58989678 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/ChunkSection.java
++++ b/src/main/java/net/minecraft/world/level/chunk/ChunkSection.java
+@@ -18,7 +18,7 @@ public class ChunkSection {
+     short nonEmptyBlockCount; // Paper - package-private
+     short tickingBlockCount; // Paper - private -> package-private
+     private short e;
+-    final DataPaletteBlock<IBlockData> blockIds; // Paper - package-private
++    public final DataPaletteBlock<IBlockData> blockIds; // Paper - package-private // Tuinity - public
+ 
+     public final com.destroystokyo.paper.util.maplist.IBlockDataList tickingList = new com.destroystokyo.paper.util.maplist.IBlockDataList(); // Paper
+ 
+diff --git a/src/main/java/net/minecraft/world/level/chunk/IChunkAccess.java b/src/main/java/net/minecraft/world/level/chunk/IChunkAccess.java
+index cdf612d7553a8f4aaebb5e0e66bd2a47a280457a..3a7039ceb770e3bb97bf77c9c57e6479ef8224e0 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/IChunkAccess.java
++++ b/src/main/java/net/minecraft/world/level/chunk/IChunkAccess.java
+@@ -37,6 +37,36 @@ public interface IChunkAccess extends IBlockAccess, IStructureAccess {
+     }
+     // Paper end
+ 
++    // Tuinity start
++    default com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] getBlockNibbles() {
++        throw new UnsupportedOperationException(this.getClass().getName());
++    }
++    default void setBlockNibbles(com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] nibbles) {
++        throw new UnsupportedOperationException(this.getClass().getName());
++    }
++
++    default com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] getSkyNibbles() {
++        throw new UnsupportedOperationException(this.getClass().getName());
++    }
++    default void setSkyNibbles(com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] nibbles) {
++        throw new UnsupportedOperationException(this.getClass().getName());
++    }
++    public default boolean[] getSkyEmptinessMap() {
++        throw new UnsupportedOperationException(this.getClass().getName());
++    }
++    public default void setSkyEmptinessMap(final boolean[] emptinessMap) {
++        throw new UnsupportedOperationException(this.getClass().getName());
++    }
++
++    public default boolean[] getBlockEmptinessMap() {
++        throw new UnsupportedOperationException(this.getClass().getName());
++    }
++
++    public default void setBlockEmptinessMap(final boolean[] emptinessMap) {
++        throw new UnsupportedOperationException(this.getClass().getName());
++    }
++    // Tuinity end
++
+     IBlockData getType(final int x, final int y, final int z); // Paper
+     @Nullable
+     IBlockData setType(BlockPosition blockposition, IBlockData iblockdata, boolean flag);
+@@ -135,6 +165,7 @@ public interface IChunkAccess extends IBlockAccess, IStructureAccess {
+     @Nullable
+     NBTTagCompound j(BlockPosition blockposition);
+ 
++    default Stream<BlockPosition> getLightSources() { return this.m(); } // Tuinity - OBFHELPER
+     Stream<BlockPosition> m();
+ 
+     TickList<Block> n();
+@@ -155,7 +186,9 @@ public interface IChunkAccess extends IBlockAccess, IStructureAccess {
+         return ashortlist[i];
+     }
+ 
++    default boolean isLit() { return this.r(); } // Tuinity - OBFHELPER
+     boolean r();
+ 
++    default void setLit(boolean lit) { this.b(lit); } // Tuinity - OBFHELPER
+     void b(boolean flag);
+ }
+diff --git a/src/main/java/net/minecraft/world/level/chunk/ILightAccess.java b/src/main/java/net/minecraft/world/level/chunk/ILightAccess.java
+index 43b8361e8ad0a8c429406cb6ff538020f670bdbd..bb63ed58e1eaeb474e99992e39d811b2589f88d9 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/ILightAccess.java
++++ b/src/main/java/net/minecraft/world/level/chunk/ILightAccess.java
+@@ -7,9 +7,10 @@ import net.minecraft.world.level.IBlockAccess;
+ 
+ public interface ILightAccess {
+ 
+-    @Nullable
+-    IBlockAccess c(int i, int j);
++    default @Nullable IBlockAccess getFeaturesReadyChunk(int i, int j) { return this.c(i, j); } // Tuinity - OBFHELPER
++    @Nullable IBlockAccess c(int i, int j);
+ 
++    default void markLightSectionDirty(EnumSkyBlock enumskyblock, SectionPosition sectionposition) { this.a(enumskyblock, sectionposition); } // Tuinity - OBFHELPER
+     default void a(EnumSkyBlock enumskyblock, SectionPosition sectionposition) {}
+ 
+     IBlockAccess getWorld();
+diff --git a/src/main/java/net/minecraft/world/level/chunk/NibbleArray.java b/src/main/java/net/minecraft/world/level/chunk/NibbleArray.java
+index 3a85a89be2a736e5b6b7f08032f4becd6bb39ed1..d32369d9a555fd7595df175e56f853ce8b012522 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/NibbleArray.java
++++ b/src/main/java/net/minecraft/world/level/chunk/NibbleArray.java
+@@ -58,6 +58,7 @@ public class NibbleArray {
+     boolean poolSafe = false;
+     public java.lang.Runnable cleaner;
+     private void registerCleaner() {
++        if (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) return; // Tuinity - purge cleaner usage
+         if (!poolSafe) {
+             cleaner = MCUtil.registerCleaner(this, this.a, NibbleArray::releaseBytes);
+         } else {
+@@ -65,7 +66,7 @@ public class NibbleArray {
+         }
+     }
+     // Paper end
+-    @Nullable protected byte[] a;
++    @Nullable protected byte[] a; public final byte[] justGiveMeTheFuckingByteArrayNoCleanerBullshitJesusFuckingChrist() { return this.a; }
+ 
+ 
+     public NibbleArray() {}
+@@ -76,7 +77,7 @@ public class NibbleArray {
+     }
+     public NibbleArray(byte[] abyte, boolean isSafe) {
+         this.a = abyte;
+-        if (!isSafe) this.a = getCloneIfSet(); // Paper - clone for safety
++        if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && !isSafe) this.a = getCloneIfSet(); // Paper - clone for safety // Tuinity - no need to clone
+         registerCleaner();
+         // Paper end
+         if (abyte.length != 2048) {
+@@ -164,7 +165,7 @@ public class NibbleArray {
+ 
+     public NibbleArray copy() { return this.b(); } // Paper - OBFHELPER
+     public NibbleArray b() {
+-        return this.a == null ? new NibbleArray() : new NibbleArray(this.a); // Paper - clone in ctor
++        return this.a == null ? new NibbleArray() : new NibbleArray(com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? this.a.clone() : this.a); // Paper - clone in ctor // Tuinity - no longer clone in constructor
+     }
+ 
+     public String toString() {
+diff --git a/src/main/java/net/minecraft/world/level/chunk/ProtoChunk.java b/src/main/java/net/minecraft/world/level/chunk/ProtoChunk.java
+index 72c258ae5c3cc93e42b86af9426b5e9715dc1599..692658893f9d33938fc4fed854ad31c14c920e95 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/ProtoChunk.java
++++ b/src/main/java/net/minecraft/world/level/chunk/ProtoChunk.java
+@@ -66,6 +66,54 @@ public class ProtoChunk implements IChunkAccess {
      private volatile boolean u;
      final World world; // Paper - Anti-Xray - Add world // Paper - private -> default
  
@@ -5367,7 +5283,7 @@ index a3ac883500eaebb353ad3108a17b5c740e384b03..d8b759874545293764690b2ba08a4bd7
      // Paper start - Anti-Xray - Add world
      @Deprecated public ProtoChunk(ChunkCoordIntPair chunkcoordintpair, ChunkConverter chunkconverter) { this(chunkcoordintpair, chunkconverter, null); } // Notice for updates: Please make sure this constructor isn't used anywhere
      public ProtoChunk(ChunkCoordIntPair chunkcoordintpair, ChunkConverter chunkconverter, World world) {
-@@ -173,7 +221,7 @@ public class ProtoChunk implements IChunkAccess {
+@@ -191,7 +239,7 @@ public class ProtoChunk implements IChunkAccess {
                  ChunkSection chunksection = this.a(j >> 4);
                  IBlockData iblockdata1 = chunksection.setType(i & 15, j & 15, k & 15, iblockdata);
  
@@ -5376,11 +5292,11 @@ index a3ac883500eaebb353ad3108a17b5c740e384b03..d8b759874545293764690b2ba08a4bd7
                      LightEngine lightengine = this.e();
  
                      lightengine.a(blockposition);
-diff --git a/src/main/java/net/minecraft/server/ProtoChunkExtension.java b/src/main/java/net/minecraft/server/ProtoChunkExtension.java
-index 300cbb8b01d94e7eb0cded0c8e118103c416d4b6..2d7c86c9a323fb7294607ee5685cef8f9ef52794 100644
---- a/src/main/java/net/minecraft/server/ProtoChunkExtension.java
-+++ b/src/main/java/net/minecraft/server/ProtoChunkExtension.java
-@@ -8,7 +8,50 @@ import javax.annotation.Nullable;
+diff --git a/src/main/java/net/minecraft/world/level/chunk/ProtoChunkExtension.java b/src/main/java/net/minecraft/world/level/chunk/ProtoChunkExtension.java
+index 7a82d43d51d80a3054e0871bf4b9aa7635920efc..980727261b328dc69f133f33906e957aa75f8600 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/ProtoChunkExtension.java
++++ b/src/main/java/net/minecraft/world/level/chunk/ProtoChunkExtension.java
+@@ -24,7 +24,50 @@ import net.minecraft.world.level.material.FluidTypes;
  
  public class ProtoChunkExtension extends ProtoChunk {
  
@@ -5432,45 +5348,157 @@ index 300cbb8b01d94e7eb0cded0c8e118103c416d4b6..2d7c86c9a323fb7294607ee5685cef8f
  
      public ProtoChunkExtension(Chunk chunk) {
          super(chunk.getPos(), ChunkConverter.a, chunk.world); // Paper - Anti-Xray - Add parameter
-diff --git a/src/main/java/net/minecraft/server/SectionPosition.java b/src/main/java/net/minecraft/server/SectionPosition.java
-index f95925f1c5d091f1a129d0437bb6e175c6ac080f..0bb3ad0bffc04eba38cd827eaf5c63e8bf2aee93 100644
---- a/src/main/java/net/minecraft/server/SectionPosition.java
-+++ b/src/main/java/net/minecraft/server/SectionPosition.java
-@@ -7,7 +7,7 @@ import java.util.stream.StreamSupport;
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkRegionLoader.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkRegionLoader.java
+index 2d6b14345d4fcc803b011235e9798d5db613502a..ec2b238480413ba9c123d9ddeaa787d9520e1b74 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkRegionLoader.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkRegionLoader.java
+@@ -108,6 +108,13 @@ public class ChunkRegionLoader {
+     private static final boolean JUST_CORRUPT_IT = Boolean.getBoolean("Paper.ignoreWorldDataVersion");
+     // Paper end
  
- public class SectionPosition extends BaseBlockPosition {
++    // Tuinity start - rewrite light engine
++    private static final int STARLIGHT_LIGHT_VERSION = 4;
++
++    private static final String UNINITIALISED_SKYLIGHT_TAG = "starlight.skylight_uninit";
++    private static final String STARLIGHT_VERSION_TAG = "starlight.light_version";
++    // Tuinity end - rewrite light engine
++
+     public static InProgressChunkHolder loadChunk(WorldServer worldserver, DefinedStructureManager definedstructuremanager, VillagePlace villageplace, ChunkCoordIntPair chunkcoordintpair, NBTTagCompound nbttagcompound, boolean distinguish) {
+         ArrayDeque<Runnable> tasksToExecuteOnMain = new ArrayDeque<>();
+         // Paper end
+@@ -137,13 +144,17 @@ public class ChunkRegionLoader {
+         ProtoChunkTickList<FluidType> protochunkticklist1 = new ProtoChunkTickList<>((fluidtype) -> {
+             return fluidtype == null || fluidtype == FluidTypes.EMPTY;
+         }, chunkcoordintpair, nbttagcompound1.getList("LiquidsToBeTicked", 9));
+-        boolean flag = nbttagcompound1.getBoolean("isLightOn");
++        boolean flag = (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nbttagcompound1.getInt(STARLIGHT_VERSION_TAG) == STARLIGHT_LIGHT_VERSION : nbttagcompound1.getBoolean("isLightOn")); boolean canUseSkyLight = flag && getStatus(nbttagcompound).isAtLeastStatus(ChunkStatus.LIGHT); boolean canUseBlockLight = canUseSkyLight; // Tuinity
+         NBTTagList nbttaglist = nbttagcompound1.getList("Sections", 10);
+         boolean flag1 = true;
+         ChunkSection[] achunksection = new ChunkSection[16];
+         boolean flag2 = worldserver.getDimensionManager().hasSkyLight();
+         ChunkProviderServer chunkproviderserver = worldserver.getChunkProvider();
+         LightEngine lightengine = chunkproviderserver.getLightEngine();
++        com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] blockNibbles = com.tuinity.tuinity.chunk.light.StarLightEngine.getFilledEmptyLight(worldserver); // Tuinity - replace light impl
++        com.tuinity.tuinity.chunk.light.SWMRNibbleArray[] skyNibbles = com.tuinity.tuinity.chunk.light.StarLightEngine.getFilledEmptyLight(worldserver); // Tuinity - replace light impl
++        final int minSection = com.tuinity.tuinity.util.WorldUtil.getMinLightSection(worldserver);
++        final int maxSection = com.tuinity.tuinity.util.WorldUtil.getMaxLightSection(worldserver);
  
--    private SectionPosition(int i, int j, int k) {
-+    public SectionPosition(int i, int j, int k) { // Tuinity - private -> public
-         super(i, j, k);
+         if (flag) {
+             tasksToExecuteOnMain.add(() -> { // Paper - delay this task since we're executing off-main
+@@ -171,6 +182,7 @@ public class ChunkRegionLoader {
+ 
+             if (flag) {
+                 if (nbttagcompound2.hasKeyOfType("BlockLight", 7)) {
++                    if (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && canUseBlockLight) blockNibbles[b0 - minSection] = new com.tuinity.tuinity.chunk.light.SWMRNibbleArray(nbttagcompound2.getByteArray("BlockLight").clone()); // Tuinity - replace light impl
+                     // Paper start - delay this task since we're executing off-main
+                     NibbleArray blockLight = new NibbleArray(nbttagcompound2.getByteArray("BlockLight"));
+                     tasksToExecuteOnMain.add(() -> {
+@@ -180,13 +192,14 @@ public class ChunkRegionLoader {
+                 }
+ 
+                 if (flag2 && nbttagcompound2.hasKeyOfType("SkyLight", 7)) {
++                    if (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && canUseSkyLight) skyNibbles[b0 - minSection] = new com.tuinity.tuinity.chunk.light.SWMRNibbleArray(nbttagcompound2.getByteArray("SkyLight").clone()); // Tuinity - replace light impl
+                     // Paper start - delay this task since we're executing off-main
+                     NibbleArray skyLight = new NibbleArray(nbttagcompound2.getByteArray("SkyLight"));
+                     tasksToExecuteOnMain.add(() -> {
+                         lightengine.a(EnumSkyBlock.SKY, SectionPosition.a(chunkcoordintpair, b0), skyLight, true);
+                     });
+                     // Paper end - delay this task since we're executing off-main
+-                }
++                } else if (flag2 && nbttagcompound2.getBoolean(UNINITIALISED_SKYLIGHT_TAG)) skyNibbles[b0 - minSection] = new com.tuinity.tuinity.chunk.light.SWMRNibbleArray(); // Tuinity - replace light impl
+             }
+         }
+ 
+@@ -225,8 +238,12 @@ public class ChunkRegionLoader {
+             object = new Chunk(worldserver.getMinecraftWorld(), chunkcoordintpair, biomestorage, chunkconverter, (TickList) object1, (TickList) object2, j, achunksection, // Paper start - fix massive nbt memory leak due to lambda. move lambda into a container method to not leak scope. Only clone needed NBT keys.
+                 createLoadEntitiesConsumer(new SafeNBTCopy(nbttagcompound1, "TileEntities", "Entities", "ChunkBukkitValues")) // Paper - move CB Chunk PDC into here
+             );// Paper end
++            ((Chunk)object).setBlockNibbles(blockNibbles); // Tuinity - replace light impl
++            ((Chunk)object).setSkyNibbles(skyNibbles); // Tuinity - replace light impl
+         } else {
+             ProtoChunk protochunk = new ProtoChunk(chunkcoordintpair, chunkconverter, achunksection, protochunkticklist, protochunkticklist1, worldserver); // Paper - Anti-Xray - Add parameter
++            protochunk.setBlockNibbles(blockNibbles); // Tuinity - replace light impl
++            protochunk.setSkyNibbles(skyNibbles); // Tuinity - replace light impl
+ 
+             protochunk.a(biomestorage);
+             object = protochunk;
+@@ -405,15 +422,20 @@ public class ChunkRegionLoader {
+         NibbleArray[] blockLight = new NibbleArray[17 - (-1)];
+         NibbleArray[] skyLight = new NibbleArray[17 - (-1)];
+ 
++        // Tuinity start - rewrite light impl
++        final int minSection = com.tuinity.tuinity.util.WorldUtil.getMinLightSection(world);
++        final int maxSection = com.tuinity.tuinity.util.WorldUtil.getMaxLightSection(world);
++        // Tuinity end - rewrite light impl
++
+         for (int i = -1; i < 17; ++i) {
+-            NibbleArray blockArray = lightenginethreaded.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkPos, i));
+-            NibbleArray skyArray = lightenginethreaded.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkPos, i));
++            NibbleArray blockArray = com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? (!lightenginethreaded.hasBlockLight ? null : (chunk.getBlockNibbles()[i - minSection].isAllZero() ? new NibbleArray() : chunk.getBlockNibbles()[i - minSection].toVanillaNibble())) : lightenginethreaded.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkPos, i)); // Tuinity - chunk might not be loaded
++            NibbleArray skyArray = com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? (!lightenginethreaded.hasSkyLight ? null : (chunk.getSkyNibbles()[i - minSection].isAllZero() ? new NibbleArray() : chunk.getSkyNibbles()[i - minSection].toVanillaNibble())) : lightenginethreaded.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkPos, i)); // Tuinity - chunk might not be loaded
+ 
+             // copy data for safety
+-            if (blockArray != null) {
++            if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && blockArray != null) { // Tuinity - data already copied
+                 blockArray = blockArray.copy();
+             }
+-            if (skyArray != null) {
++            if (!com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine && skyArray != null) { // Tuinity - data already copied
+                 skyArray = skyArray.copy();
+             }
+ 
+@@ -448,6 +470,10 @@ public class ChunkRegionLoader {
      }
+     public static NBTTagCompound saveChunk(WorldServer worldserver, IChunkAccess ichunkaccess, AsyncSaveData asyncsavedata) {
+         // Paper end
++        // Tuinity start - rewrite light impl
++        final int minSection = com.tuinity.tuinity.util.WorldUtil.getMinLightSection(worldserver);
++        final int maxSection = com.tuinity.tuinity.util.WorldUtil.getMaxLightSection(worldserver);
++        // Tuinity end - rewrite light impl
+         ChunkCoordIntPair chunkcoordintpair = ichunkaccess.getPos();
+         NBTTagCompound nbttagcompound = new NBTTagCompound();
+         NBTTagCompound nbttagcompound1 = new NBTTagCompound();
+@@ -481,8 +507,8 @@ public class ChunkRegionLoader {
+             NibbleArray nibblearray; // block light
+             NibbleArray nibblearray1; // sky light
+             if (asyncsavedata == null) {
+-                nibblearray = lightenginethreaded.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkcoordintpair, i)); /// Paper - diff on method change (see getAsyncSaveData)
+-                nibblearray1 = lightenginethreaded.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkcoordintpair, i)); // Paper - diff on method change (see getAsyncSaveData)
++                nibblearray = com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? (!lightenginethreaded.hasBlockLight ? null : (ichunkaccess.getBlockNibbles()[i - minSection].isAllZero() ? new NibbleArray() : ichunkaccess.getBlockNibbles()[i - minSection].toVanillaNibble())) : lightenginethreaded.a(EnumSkyBlock.BLOCK).a(SectionPosition.a(chunkcoordintpair, i)); // Tuinity - chunk might not be loaded
++                nibblearray1 = com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? (!lightenginethreaded.hasSkyLight ? null : (ichunkaccess.getSkyNibbles()[i - minSection].isAllZero() ? new NibbleArray() : ichunkaccess.getSkyNibbles()[i - minSection].toVanillaNibble())) : lightenginethreaded.a(EnumSkyBlock.SKY).a(SectionPosition.a(chunkcoordintpair, i)); // Tuinity - chunk might not be loaded
+             } else {
+                 nibblearray = asyncsavedata.blockLight[i + 1]; // +1 to offset the -1 starting index
+                 nibblearray1 = asyncsavedata.skyLight[i + 1]; // +1 to offset the -1 starting index
+@@ -496,12 +522,12 @@ public class ChunkRegionLoader {
+                 }
  
-diff --git a/src/main/java/net/minecraft/server/TicketType.java b/src/main/java/net/minecraft/server/TicketType.java
-index 25cff70b45aa2c92a9ffb2cd968ffef5bb1a6c2f..3c964f26592fc84bb5fc11c60808d11c65d93b16 100644
---- a/src/main/java/net/minecraft/server/TicketType.java
-+++ b/src/main/java/net/minecraft/server/TicketType.java
-@@ -28,6 +28,8 @@ public class TicketType<T> {
-     public static final TicketType<ChunkCoordIntPair> URGENT = a("urgent", Comparator.comparingLong(ChunkCoordIntPair::pair), 300); // Paper
-     public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo); // Tuinity - delay chunk unloads
-     public static final TicketType<Long> REQUIRED_LOAD = a("required_load", Long::compareTo); // Tuinity - make sure getChunkAt does not fail
-+    public static final TicketType<ChunkCoordIntPair> LIGHT_UPDATE = a("light_update", Comparator.comparingLong(ChunkCoordIntPair::pair)); // Tuinity - ensure chunks stay loaded for lighting
-+    public static final TicketType<Long> CHUNK_RELIGHT = a("chunk_relight", Long::compareTo); // Tuinity - ensure chunk stays loaded for relighting
+                 if (nibblearray != null && !nibblearray.c()) {
+-                    nbttagcompound2.setByteArray("BlockLight", nibblearray.asBytesPoolSafe().clone()); // Paper
++                    nbttagcompound2.setByteArray("BlockLight", com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray.asBytes() : nibblearray.asBytesPoolSafe().clone()); // Paper // Tuinity - data is already cloned
+                 }
  
-     // Tuinity start - delay chunk unloads
-     boolean delayUnloadViable = true;
-@@ -37,6 +39,7 @@ public class TicketType<T> {
-         TicketType.PRIORITY.delayUnloadViable = false;
-         TicketType.URGENT.delayUnloadViable = false;
-         TicketType.DELAYED_UNLOAD.delayUnloadViable = false;
-+        TicketType.LIGHT_UPDATE.delayUnloadViable = false; // Tuinity - ensure chunks stay loaded for lighting
-     }
-     // Tuinity end - delay chunk unloads
-     public static <T> TicketType<T> a(String s, Comparator<T> comparator) {
-diff --git a/src/main/java/net/minecraft/server/VoxelShape.java b/src/main/java/net/minecraft/server/VoxelShape.java
-index 700660dd93b3090334bb3033d5f5fdd6ab684744..e3b72922e2dfad07f3452ec5ee2af379d968c52d 100644
---- a/src/main/java/net/minecraft/server/VoxelShape.java
-+++ b/src/main/java/net/minecraft/server/VoxelShape.java
-@@ -57,6 +57,7 @@ public abstract class VoxelShape {
+                 if (nibblearray1 != null && !nibblearray1.c()) {
+-                    nbttagcompound2.setByteArray("SkyLight", nibblearray1.asBytesPoolSafe().clone()); // Paper
+-                }
++                    nbttagcompound2.setByteArray("SkyLight", com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? nibblearray1.asBytes() : nibblearray1.asBytesPoolSafe().clone()); // Paper // Tuinity - data is already cloned
++                } else if (nibblearray1 != null && com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) nbttagcompound2.setBoolean(UNINITIALISED_SKYLIGHT_TAG, true); // Tuinity - store uninitialised tags
+ 
+                 nbttaglist.add(nbttagcompound2);
+             }
+@@ -509,7 +535,7 @@ public class ChunkRegionLoader {
+ 
+         nbttagcompound1.set("Sections", nbttaglist);
+         if (flag) {
+-            nbttagcompound1.setBoolean("isLightOn", true);
++            nbttagcompound1.setBoolean("isLightOn", com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine ? false : true); if (com.tuinity.tuinity.config.TuinityConfig.useNewLightEngine) nbttagcompound1.setInt(STARLIGHT_VERSION_TAG, STARLIGHT_LIGHT_VERSION); // Tuinity
+         }
+ 
+         BiomeStorage biomestorage = ichunkaccess.getBiomeIndex();
+diff --git a/src/main/java/net/minecraft/world/phys/shapes/VoxelShape.java b/src/main/java/net/minecraft/world/phys/shapes/VoxelShape.java
+index 8ecd4d38334872da8d7d05cdef1fb08cf0ff17d9..9567630593da7c77a0173b93c9a57ceb7887a59b 100644
+--- a/src/main/java/net/minecraft/world/phys/shapes/VoxelShape.java
++++ b/src/main/java/net/minecraft/world/phys/shapes/VoxelShape.java
+@@ -65,6 +65,7 @@ public abstract class VoxelShape {
      }
      // Tuinity end - optimise multi-aabb shapes
  
@@ -5478,21 +5506,3 @@ index 700660dd93b3090334bb3033d5f5fdd6ab684744..e3b72922e2dfad07f3452ec5ee2af379
      public VoxelShape c() {
          VoxelShape[] avoxelshape = new VoxelShape[]{VoxelShapes.a()};
  
-diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index d1832cd24667f62026f6f0b8d9d1cec8139aa057..ff9cbb830779b54af3fd3964d559b0d88376681d 100644
---- a/src/main/java/net/minecraft/server/WorldServer.java
-+++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -402,6 +402,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
-     }
-     // Tuinity end - optimise get nearest players for entity AI
- 
-+    // Tuinity start - rewrite light engine
-+    /**
-+     * Cannot be modified during light updates.
-+     */
-+    public com.tuinity.tuinity.chunk.light.VariableBlockLightHandler customBlockLightHandlers;
-+    // Tuinity end - rewrite light engine
-+
-     // Add env and gen to constructor, WorldData -> WorldDataServer
-     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
-         super(iworlddataserver, resourcekey, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor

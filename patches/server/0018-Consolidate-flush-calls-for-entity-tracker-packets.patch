@@ -21,18 +21,18 @@ With this change I could get all 200 on at 0ms ping.
 
 So in general this patch should reduce Netty I/O thread load.
 
-diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 7bb23731b548d5344013429a7d7df13686cb2249..c8c4d4f3d5a0ca6255473f3f256eeb32f18a9984 100644
---- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
-+++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -1022,7 +1022,25 @@ public class ChunkProviderServer extends IChunkProvider {
+diff --git a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+index 75d2c33e27d6f0a8308aa2c1eabc3acc69e90695..187a49998d83c6a7c2005480c4ae405f26b11018 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+@@ -1047,7 +1047,25 @@ public class ChunkProviderServer extends IChunkProvider {
              this.world.getMethodProfiler().exit();
          }
  
 +        // Tuinity start - controlled flush for entity tracker packets
-+        List<NetworkManager> disabledFlushes = new java.util.ArrayList<>(this.world.getPlayers().size());
++        List<net.minecraft.network.NetworkManager> disabledFlushes = new java.util.ArrayList<>(this.world.getPlayers().size());
 +        for (EntityPlayer player : this.world.getPlayers()) {
-+            PlayerConnection connection = player.playerConnection;
++            net.minecraft.server.network.PlayerConnection connection = player.playerConnection;
 +            if (connection != null) {
 +                connection.networkManager.disableAutomaticFlush();
 +                disabledFlushes.add(connection.networkManager);
@@ -43,7 +43,7 @@ index 7bb23731b548d5344013429a7d7df13686cb2249..c8c4d4f3d5a0ca6255473f3f256eeb32
          this.playerChunkMap.g();
 +            // Tuinity start - controlled flush for entity tracker packets
 +        } finally {
-+            for (NetworkManager networkManager : disabledFlushes) {
++            for (net.minecraft.network.NetworkManager networkManager : disabledFlushes) {
 +                networkManager.enableAutomaticFlush();
 +            }
 +        }

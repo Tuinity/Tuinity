@@ -5,11 +5,11 @@ Subject: [PATCH] Remove chunk lookup & lambda allocation from counting mobs
 
 The chunk lookup doesn't look cheap.
 
-diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index e26389d8d9ee4fedb32767fce3aed071af412304..cce750fd5725a232db16cd8ec4603d5cf09da3df 100644
---- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
-+++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -991,9 +991,9 @@ public class ChunkProviderServer extends IChunkProvider {
+diff --git a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+index 94c47f26ad5f521c46cf29c5b7271598a0dfc075..118b21b15e12de491a9cfc2b68c6da7bb10b1fee 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+@@ -1016,9 +1016,9 @@ public class ChunkProviderServer extends IChunkProvider {
                  for (EntityPlayer player : this.world.players) {
                      Arrays.fill(player.mobCounts, 0);
                  }
@@ -21,11 +21,11 @@ index e26389d8d9ee4fedb32767fce3aed071af412304..cce750fd5725a232db16cd8ec4603d5c
              }
              // Paper end
              this.world.timings.countNaturalMobs.stopTiming(); // Paper - timings
-diff --git a/src/main/java/net/minecraft/server/SpawnerCreature.java b/src/main/java/net/minecraft/server/SpawnerCreature.java
-index a77b1d61b9dcb0a2a27d7e50357eaf44c99a661e..53fd0549c965b2252ad80648d61ff1f7cd2b837a 100644
---- a/src/main/java/net/minecraft/server/SpawnerCreature.java
-+++ b/src/main/java/net/minecraft/server/SpawnerCreature.java
-@@ -30,9 +30,9 @@ public final class SpawnerCreature {
+diff --git a/src/main/java/net/minecraft/world/level/SpawnerCreature.java b/src/main/java/net/minecraft/world/level/SpawnerCreature.java
+index b3c73c6b4cffa20813355c5f2132fe3eaa134007..d497006f05f79015cd791849888832bb53f4a414 100644
+--- a/src/main/java/net/minecraft/world/level/SpawnerCreature.java
++++ b/src/main/java/net/minecraft/world/level/SpawnerCreature.java
+@@ -64,9 +64,9 @@ public final class SpawnerCreature {
  
      public static SpawnerCreature.d a(int i, Iterable<Entity> iterable, SpawnerCreature.b spawnercreature_b) {
          // Paper start - add countMobs parameter
@@ -33,11 +33,11 @@ index a77b1d61b9dcb0a2a27d7e50357eaf44c99a661e..53fd0549c965b2252ad80648d61ff1f7
 +        return countMobs(i, iterable, spawnercreature_b, false, null); // Tuinity - it'll still be broken no matter what
      }
 -    public static SpawnerCreature.d countMobs(int i, Iterable<Entity> iterable, SpawnerCreature.b spawnercreature_b, boolean countMobs) {
-+    public static SpawnerCreature.d countMobs(int i, Iterable<Entity> iterable, SpawnerCreature.b spawnercreature_b, boolean countMobs, ChunkProviderServer chunkProvider) { // Tuinity - add CPS param
++    public static SpawnerCreature.d countMobs(int i, Iterable<Entity> iterable, SpawnerCreature.b spawnercreature_b, boolean countMobs, net.minecraft.server.level.ChunkProviderServer chunkProvider) { // Tuinity - add CPS param
          // Paper end - add countMobs parameter
          SpawnerCreatureProbabilities spawnercreatureprobabilities = new SpawnerCreatureProbabilities();
          Object2IntOpenHashMap<EnumCreatureType> object2intopenhashmap = new Object2IntOpenHashMap();
-@@ -63,7 +63,16 @@ public final class SpawnerCreature {
+@@ -97,7 +97,16 @@ public final class SpawnerCreature {
                  BlockPosition blockposition = entity.getChunkCoordinates();
                  long j = ChunkCoordIntPair.pair(blockposition.getX() >> 4, blockposition.getZ() >> 4);
  
@@ -55,7 +55,7 @@ index a77b1d61b9dcb0a2a27d7e50357eaf44c99a661e..53fd0549c965b2252ad80648d61ff1f7
                      BiomeSettingsMobs.b biomesettingsmobs_b = b(blockposition, chunk).b().a(entity.getEntityType());
  
                      if (biomesettingsmobs_b != null) {
-@@ -73,10 +82,10 @@ public final class SpawnerCreature {
+@@ -107,10 +116,10 @@ public final class SpawnerCreature {
                      object2intopenhashmap.addTo(enumcreaturetype, 1);
                      // Paper start
                      if (countMobs) {

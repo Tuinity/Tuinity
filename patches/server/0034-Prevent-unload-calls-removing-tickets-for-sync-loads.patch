@@ -4,11 +4,11 @@ Date: Thu, 18 Jun 2020 18:23:20 -0700
 Subject: [PATCH] Prevent unload() calls removing tickets for sync loads
 
 
-diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 8c0aed61400a89799592d3d457c1d78f0217d066..99f618cc9fbde5bd96cd7e6a7601d0f65d2d842f 100644
---- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
-+++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -709,6 +709,8 @@ public class ChunkProviderServer extends IChunkProvider {
+diff --git a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+index b44b1b79a38ac2c15666e5b04e16f1bed67d3d89..a68803eaf773be992b5fb9facba7add84c5b41ad 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+@@ -734,6 +734,8 @@ public class ChunkProviderServer extends IChunkProvider {
          Arrays.fill(this.cacheChunk, (Object) null);
      }
  
@@ -17,7 +17,7 @@ index 8c0aed61400a89799592d3d457c1d78f0217d066..99f618cc9fbde5bd96cd7e6a7601d0f6
      private CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getChunkFutureMainThread(int i, int j, ChunkStatus chunkstatus, boolean flag) {
          // Paper start - add isUrgent - old sig left in place for dirty nms plugins
          return getChunkFutureMainThread(i, j, chunkstatus, flag, false);
-@@ -727,9 +729,12 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -752,9 +754,12 @@ public class ChunkProviderServer extends IChunkProvider {
              PlayerChunk.State currentChunkState = PlayerChunk.getChunkState(playerchunk.getTicketLevel());
              currentlyUnloading = (oldChunkState.isAtLeast(PlayerChunk.State.BORDER) && !currentChunkState.isAtLeast(PlayerChunk.State.BORDER));
          }
@@ -30,7 +30,7 @@ index 8c0aed61400a89799592d3d457c1d78f0217d066..99f618cc9fbde5bd96cd7e6a7601d0f6
              if (isUrgent) this.chunkMapDistance.markUrgent(chunkcoordintpair); // Paper
              if (this.a(playerchunk, l)) {
                  GameProfilerFiller gameprofilerfiller = this.world.getMethodProfiler();
-@@ -740,12 +745,20 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -765,12 +770,20 @@ public class ChunkProviderServer extends IChunkProvider {
                  playerchunk = this.getChunk(k);
                  gameprofilerfiller.exit();
                  if (this.a(playerchunk, l)) {
@@ -52,11 +52,11 @@ index 8c0aed61400a89799592d3d457c1d78f0217d066..99f618cc9fbde5bd96cd7e6a7601d0f6
          if (isUrgent) {
              future.thenAccept(either -> this.chunkMapDistance.clearUrgent(chunkcoordintpair));
          }
-diff --git a/src/main/java/net/minecraft/server/TicketType.java b/src/main/java/net/minecraft/server/TicketType.java
-index ab0417b3897911ba29602d696f4842bfb77cee16..25cff70b45aa2c92a9ffb2cd968ffef5bb1a6c2f 100644
---- a/src/main/java/net/minecraft/server/TicketType.java
-+++ b/src/main/java/net/minecraft/server/TicketType.java
-@@ -27,6 +27,7 @@ public class TicketType<T> {
+diff --git a/src/main/java/net/minecraft/server/level/TicketType.java b/src/main/java/net/minecraft/server/level/TicketType.java
+index 47da7efffde2e6d63c1a064b950abf8135705622..1122df50a7f9cbc489e8da7a91e9af73476eb148 100644
+--- a/src/main/java/net/minecraft/server/level/TicketType.java
++++ b/src/main/java/net/minecraft/server/level/TicketType.java
+@@ -31,6 +31,7 @@ public class TicketType<T> {
      public static final TicketType<ChunkCoordIntPair> PRIORITY = a("priority", Comparator.comparingLong(ChunkCoordIntPair::pair), 300); // Paper
      public static final TicketType<ChunkCoordIntPair> URGENT = a("urgent", Comparator.comparingLong(ChunkCoordIntPair::pair), 300); // Paper
      public static final TicketType<Long> DELAYED_UNLOAD = a("delayed_unload", Long::compareTo); // Tuinity - delay chunk unloads

@@ -5,11 +5,11 @@ Subject: [PATCH] Optimise collision checking in player move packet handling
 
 Move collision logic to just the hasNewCollision call instead of getCubes + hasNewCollision
 
-diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
-index 8871e9dbbfe7e815012b914d930aeeed4c602d67..9146b60cff0aa06e2f6b6003bfe9e2be9d2f0d56 100644
---- a/src/main/java/net/minecraft/server/PlayerConnection.java
-+++ b/src/main/java/net/minecraft/server/PlayerConnection.java
-@@ -438,12 +438,14 @@ public class PlayerConnection implements PacketListenerPlayIn {
+diff --git a/src/main/java/net/minecraft/server/network/PlayerConnection.java b/src/main/java/net/minecraft/server/network/PlayerConnection.java
+index bcdd256c09135b72e6ed951992d9d3f26cb1633f..b7e72fe1cd04219391c75beb7d67a1e32e393a16 100644
+--- a/src/main/java/net/minecraft/server/network/PlayerConnection.java
++++ b/src/main/java/net/minecraft/server/network/PlayerConnection.java
+@@ -583,12 +583,14 @@ public class PlayerConnection implements PacketListenerPlayIn {
                      return;
                  }
  
@@ -25,7 +25,7 @@ index 8871e9dbbfe7e815012b914d930aeeed4c602d67..9146b60cff0aa06e2f6b6003bfe9e2be
                  double d11 = d7;
  
                  d6 = d3 - entity.locX();
-@@ -457,16 +459,25 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -602,16 +604,25 @@ public class PlayerConnection implements PacketListenerPlayIn {
                  boolean flag1 = false;
  
                  if (d10 > org.spigotmc.SpigotConfig.movedWronglyThreshold) { // Spigot
@@ -55,7 +55,7 @@ index 8871e9dbbfe7e815012b914d930aeeed4c602d67..9146b60cff0aa06e2f6b6003bfe9e2be
                      entity.setLocation(d0, d1, d2, f, f1);
                      player.setLocation(d0, d1, d2, this.player.yaw, this.player.pitch); // CraftBukkit
                      this.networkManager.sendPacket(new PacketPlayOutVehicleMove(entity));
-@@ -552,7 +563,32 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -697,7 +708,32 @@ public class PlayerConnection implements PacketListenerPlayIn {
      }
  
      private boolean a(Entity entity) {
@@ -89,7 +89,7 @@ index 8871e9dbbfe7e815012b914d930aeeed4c602d67..9146b60cff0aa06e2f6b6003bfe9e2be
      }
  
      @Override
-@@ -1074,7 +1110,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1219,7 +1255,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                  }
  
                  if (this.teleportPos != null) {
@@ -98,7 +98,7 @@ index 8871e9dbbfe7e815012b914d930aeeed4c602d67..9146b60cff0aa06e2f6b6003bfe9e2be
                          this.A = this.e;
                          this.a(this.teleportPos.x, this.teleportPos.y, this.teleportPos.z, this.player.yaw, this.player.pitch);
                      }
-@@ -1161,7 +1197,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1306,7 +1342,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                                  }
                              }
  
@@ -107,7 +107,7 @@ index 8871e9dbbfe7e815012b914d930aeeed4c602d67..9146b60cff0aa06e2f6b6003bfe9e2be
  
                              d7 = d4 - this.o;
                              d8 = d5 - this.p;
-@@ -1200,6 +1236,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1345,6 +1381,7 @@ public class PlayerConnection implements PacketListenerPlayIn {
                              }
  
                              this.player.move(EnumMoveType.PLAYER, new Vec3D(d7, d8, d9));
@@ -115,7 +115,7 @@ index 8871e9dbbfe7e815012b914d930aeeed4c602d67..9146b60cff0aa06e2f6b6003bfe9e2be
                              this.player.setOnGround(packetplayinflying.b()); // CraftBukkit - SPIGOT-5810, SPIGOT-5835: reset by this.player.move
                              // Paper start - prevent position desync
                              if (this.teleportPos != null) {
-@@ -1219,12 +1256,23 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1364,12 +1401,23 @@ public class PlayerConnection implements PacketListenerPlayIn {
                              boolean flag1 = false;
  
                              if (!this.player.H() && d11 > org.spigotmc.SpigotConfig.movedWronglyThreshold && !this.player.isSleeping() && !this.player.playerInteractManager.isCreative() && this.player.playerInteractManager.getGameMode() != EnumGamemode.SPECTATOR) { // Spigot
@@ -141,7 +141,7 @@ index 8871e9dbbfe7e815012b914d930aeeed4c602d67..9146b60cff0aa06e2f6b6003bfe9e2be
                                  this.a(d0, d1, d2, f, f1);
                              } else {
                                  // CraftBukkit start - fire PlayerMoveEvent
-@@ -1311,6 +1359,26 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1456,6 +1504,26 @@ public class PlayerConnection implements PacketListenerPlayIn {
          }
      }
  

@@ -24,7 +24,7 @@ and an action can be defined: DROP or KICK
 If interval or rate are less-than 0, the limit is ignored
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index 3b20b9d64187f95e9244349085aa5a1a890eea62..048139d13424a874364dece8053e248dbcfd4aff 100644
+index fdc56a5080ab2f7331431ee1f5976ba669b725ac..36b1e95c964288843e0dd3c92704265759f8afb9 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -1,6 +1,7 @@
@@ -32,7 +32,7 @@ index 3b20b9d64187f95e9244349085aa5a1a890eea62..048139d13424a874364dece8053e248d
  
  import com.destroystokyo.paper.util.SneakyThrow;
 +import net.minecraft.server.MinecraftServer;
- import net.minecraft.server.TicketType;
+ import net.minecraft.server.level.TicketType;
  import org.bukkit.Bukkit;
  import org.bukkit.configuration.ConfigurationSection;
 @@ -139,6 +140,89 @@ public final class TuinityConfig {
@@ -57,7 +57,7 @@ index 3b20b9d64187f95e9244349085aa5a1a890eea62..048139d13424a874364dece8053e248d
 +
 +    public static String kickMessage;
 +    public static PacketLimit allPacketsLimit;
-+    public static java.util.Map<Class<? extends net.minecraft.server.Packet<?>>, PacketLimit> packetSpecificLimits = new java.util.HashMap<>();
++    public static java.util.Map<Class<? extends net.minecraft.network.protocol.Packet<?>>, PacketLimit> packetSpecificLimits = new java.util.HashMap<>();
 +
 +    private static void packetLimiter() {
 +        packetSpecificLimits.clear();
@@ -76,11 +76,11 @@ index 3b20b9d64187f95e9244349085aa5a1a890eea62..048139d13424a874364dece8053e248d
 +
 +        // auto recipe limiting
 +        TuinityConfig.getDouble("packet-limiter.limits." +
-+                net.minecraft.server.PacketPlayInAutoRecipe.class.getSimpleName() + ".interval", 4.0);
++                net.minecraft.network.protocol.game.PacketPlayInAutoRecipe.class.getSimpleName() + ".interval", 4.0);
 +        TuinityConfig.getDouble("packet-limiter.limits." +
-+                net.minecraft.server.PacketPlayInAutoRecipe.class.getSimpleName() + ".max-packet-rate", 5.0);
++                net.minecraft.network.protocol.game.PacketPlayInAutoRecipe.class.getSimpleName() + ".max-packet-rate", 5.0);
 +        TuinityConfig.getString("packet-limiter.limits." +
-+                net.minecraft.server.PacketPlayInAutoRecipe.class.getSimpleName() + ".action", PacketLimit.ViolateAction.DROP.name());
++                net.minecraft.network.protocol.game.PacketPlayInAutoRecipe.class.getSimpleName() + ".action", PacketLimit.ViolateAction.DROP.name());
 +
 +        for (final String packetClassName : section.getKeys(false)) {
 +            if (packetClassName.equals("all")) {
@@ -95,7 +95,7 @@ index 3b20b9d64187f95e9244349085aa5a1a890eea62..048139d13424a874364dece8053e248d
 +                continue;
 +            }
 +
-+            if (!net.minecraft.server.Packet.class.isAssignableFrom(packetClazz)) {
++            if (!net.minecraft.network.protocol.Packet.class.isAssignableFrom(packetClazz)) {
 +                MinecraftServer.LOGGER.warn("Packet '" + packetClassName + "' does not exist, cannot limit it! Please update tuinity.yml");
 +                continue;
 +            }
@@ -125,12 +125,12 @@ index 3b20b9d64187f95e9244349085aa5a1a890eea62..048139d13424a874364dece8053e248d
      public static final class WorldConfig {
  
          public final String worldName;
-diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index a7530cfe7055017e8a98ee5422b48437c2dd18d1..f9aa04f2980aa5e952d64ae8c9f3629f7e76e2a0 100644
---- a/src/main/java/net/minecraft/server/NetworkManager.java
-+++ b/src/main/java/net/minecraft/server/NetworkManager.java
-@@ -178,8 +178,63 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
-         if (MinecraftServer.getServer().isDebugging()) throwable.printStackTrace(); // Spigot
+diff --git a/src/main/java/net/minecraft/network/NetworkManager.java b/src/main/java/net/minecraft/network/NetworkManager.java
+index a9637772ead360ee476d59104b50a505e6d0ef4c..2abf64fda6e504a89b2e443af48894023d446cef 100644
+--- a/src/main/java/net/minecraft/network/NetworkManager.java
++++ b/src/main/java/net/minecraft/network/NetworkManager.java
+@@ -196,8 +196,64 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+         if (net.minecraft.server.MinecraftServer.getServer().isDebugging()) throwable.printStackTrace(); // Spigot
      }
  
 +    // Tuinity start - packet limiter
@@ -138,7 +138,7 @@ index a7530cfe7055017e8a98ee5422b48437c2dd18d1..f9aa04f2980aa5e952d64ae8c9f3629f
 +    protected final com.tuinity.tuinity.util.IntervalledCounter allPacketCounts = com.tuinity.tuinity.config.TuinityConfig.allPacketsLimit != null ? new com.tuinity.tuinity.util.IntervalledCounter(
 +            (long)(com.tuinity.tuinity.config.TuinityConfig.allPacketsLimit.packetLimitInterval * 1.0e9)
 +    ) : null;
-+    protected final java.util.Map<Class<? extends net.minecraft.server.Packet<?>>, com.tuinity.tuinity.util.IntervalledCounter> packetSpecificLimits = new java.util.HashMap<>();
++    protected final java.util.Map<Class<? extends net.minecraft.network.protocol.Packet<?>>, com.tuinity.tuinity.util.IntervalledCounter> packetSpecificLimits = new java.util.HashMap<>();
 +
 +    private boolean stopReadingPackets;
 +    private void killForPacketSpam() {
@@ -149,6 +149,7 @@ index a7530cfe7055017e8a98ee5422b48437c2dd18d1..f9aa04f2980aa5e952d64ae8c9f3629f
 +        this.stopReadingPackets = true;
 +    }
 +    // Tuinity end - packet limiter
++
      protected void channelRead0(ChannelHandlerContext channelhandlercontext, Packet<?> packet) throws Exception {
          if (this.channel.isOpen()) {
 +            // Tuinity start - packet limiter

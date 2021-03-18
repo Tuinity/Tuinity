@@ -6,7 +6,7 @@ Subject: [PATCH] Add soft async catcher
 Must be enabled via -Dtuinity.strict-thread-checks=true
 
 diff --git a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
-index e7624948ea4aa1a07d84ed3d295cfe2dd354fd14..a263cd7a0680e0cc3517f84308118eb32c487732 100644
+index 8918bad880d6eeed30db39b6326b2f65e24edf45..4666d6582535d6e49c5bd40d4fcdcdfe07590aa9 100644
 --- a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
 +++ b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
 @@ -186,6 +186,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
@@ -20,7 +20,7 @@ index e7624948ea4aa1a07d84ed3d295cfe2dd354fd14..a263cd7a0680e0cc3517f84308118eb3
 @@ -268,6 +269,7 @@ public final class PaperTickList<T> extends TickListServer<T> { // extend to avo
  
      @Override
-     protected void nextTick() {
+     public void nextTick() {
 +        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("async tick list tick"); // Tuinity - soft async catcher
          ++this.currentTick;
          if (this.currentTick != this.world.getTime()) {
@@ -119,11 +119,11 @@ index 033548a58d27f64d3954206d267783c0437d4019..08ed243259f052165c6f75aed1d1d65a
      public final int id; /* We don't override getId as the spec requires that it be unique (with respect to all other threads) */
  
      public TickThread(final Runnable run, final String name, final int id) {
-diff --git a/src/main/java/net/minecraft/server/ChunkMapDistance.java b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-index 76f9bb728def91744910d0b680b73e753f1a2b26..84ff9cfe89defad2e907708f837d33f620a84ef3 100644
---- a/src/main/java/net/minecraft/server/ChunkMapDistance.java
-+++ b/src/main/java/net/minecraft/server/ChunkMapDistance.java
-@@ -65,6 +65,7 @@ public abstract class ChunkMapDistance {
+diff --git a/src/main/java/net/minecraft/server/level/ChunkMapDistance.java b/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
+index 2f8bca35508640f6b8c312fff17d55f129431599..aac3f74af760e8d7dbb1e9d4031ce1aabe45ca21 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
++++ b/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
+@@ -74,6 +74,7 @@ public abstract class ChunkMapDistance {
      }
  
      protected void purgeTickets() {
@@ -131,7 +131,7 @@ index 76f9bb728def91744910d0b680b73e753f1a2b26..84ff9cfe89defad2e907708f837d33f6
          ++this.currentTick;
          ObjectIterator objectiterator = this.tickets.long2ObjectEntrySet().fastIterator();
  
-@@ -98,6 +99,7 @@ public abstract class ChunkMapDistance {
+@@ -107,6 +108,7 @@ public abstract class ChunkMapDistance {
      protected abstract PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k);
  
      public boolean a(PlayerChunkMap playerchunkmap) {
@@ -139,7 +139,7 @@ index 76f9bb728def91744910d0b680b73e753f1a2b26..84ff9cfe89defad2e907708f837d33f6
          //this.f.a(); // Paper - no longer used
          AsyncCatcher.catchOp("DistanceManagerTick"); // Paper
          this.g.a();
-@@ -370,6 +372,7 @@ public abstract class ChunkMapDistance {
+@@ -379,6 +381,7 @@ public abstract class ChunkMapDistance {
      }
  
      private ArraySetSorted<Ticket<?>> e(long i) {
@@ -147,7 +147,7 @@ index 76f9bb728def91744910d0b680b73e753f1a2b26..84ff9cfe89defad2e907708f837d33f6
          return (ArraySetSorted) this.tickets.computeIfAbsent(i, (j) -> {
              return ArraySetSorted.a(4);
          });
-@@ -387,6 +390,7 @@ public abstract class ChunkMapDistance {
+@@ -396,6 +399,7 @@ public abstract class ChunkMapDistance {
      }
  
      public void a(SectionPosition sectionposition, EntityPlayer entityplayer) {
@@ -155,7 +155,7 @@ index 76f9bb728def91744910d0b680b73e753f1a2b26..84ff9cfe89defad2e907708f837d33f6
          long i = sectionposition.r().pair();
  
          ((ObjectSet) this.c.computeIfAbsent(i, (j) -> {
-@@ -397,6 +401,7 @@ public abstract class ChunkMapDistance {
+@@ -406,6 +410,7 @@ public abstract class ChunkMapDistance {
      }
  
      public void b(SectionPosition sectionposition, EntityPlayer entityplayer) {
@@ -163,7 +163,7 @@ index 76f9bb728def91744910d0b680b73e753f1a2b26..84ff9cfe89defad2e907708f837d33f6
          long i = sectionposition.r().pair();
          ObjectSet<EntityPlayer> objectset = (ObjectSet) this.c.get(i);
          if (objectset == null) return; // CraftBukkit - SPIGOT-6208
-@@ -447,6 +452,7 @@ public abstract class ChunkMapDistance {
+@@ -456,6 +461,7 @@ public abstract class ChunkMapDistance {
  
      // CraftBukkit start
      public <T> void removeAllTicketsFor(TicketType<T> ticketType, int ticketLevel, T ticketIdentifier) {
@@ -171,11 +171,11 @@ index 76f9bb728def91744910d0b680b73e753f1a2b26..84ff9cfe89defad2e907708f837d33f6
          Ticket<T> target = new Ticket<>(ticketType, ticketLevel, ticketIdentifier);
  
          for (java.util.Iterator<Entry<ArraySetSorted<Ticket<?>>>> iterator = this.tickets.long2ObjectEntrySet().fastIterator(); iterator.hasNext();) {
-diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index c8c0748628e83b6396c13afe896acc16c85109b0..4082c4f366bce1784759bda773d3d35472403ade 100644
---- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
-+++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -1198,6 +1198,7 @@ public class ChunkProviderServer extends IChunkProvider {
+diff --git a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+index a755ef31627ad398c152c2bd3340855da4fa3a93..e9f66fbde9a70779600ff6d15b43a93347b9f1e8 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
+@@ -1223,6 +1223,7 @@ public class ChunkProviderServer extends IChunkProvider {
  
          @Override
          protected boolean executeNext() {
@@ -183,11 +183,11 @@ index c8c0748628e83b6396c13afe896acc16c85109b0..4082c4f366bce1784759bda773d3d354
          // CraftBukkit start - process pending Chunk loadCallback() and unloadCallback() after each run task
          try {
              boolean execChunkTask = com.destroystokyo.paper.io.chunk.ChunkTaskManager.pollChunkWaitQueue() || ChunkProviderServer.this.world.asyncChunkTaskManager.pollNextChunkTask(); // Paper
-diff --git a/src/main/java/net/minecraft/server/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
-index f2a9396c2ec64c79391782249db7507f12a69a9e..798ebfdcd8e06ffb576964da006e77bd188ad274 100644
---- a/src/main/java/net/minecraft/server/EntityTrackerEntry.java
-+++ b/src/main/java/net/minecraft/server/EntityTrackerEntry.java
-@@ -74,6 +74,7 @@ public class EntityTrackerEntry {
+diff --git a/src/main/java/net/minecraft/server/level/EntityTrackerEntry.java b/src/main/java/net/minecraft/server/level/EntityTrackerEntry.java
+index f65eb0168ed365e5c1b490c56ec84e3b7ff87c1d..8d792f96ca655c7f5d66d19af9c37efbf40fa556 100644
+--- a/src/main/java/net/minecraft/server/level/EntityTrackerEntry.java
++++ b/src/main/java/net/minecraft/server/level/EntityTrackerEntry.java
+@@ -103,6 +103,7 @@ public class EntityTrackerEntry {
  
      public final void tick() { this.a(); } // Paper - OBFHELPER
      public void a() {
@@ -195,11 +195,11 @@ index f2a9396c2ec64c79391782249db7507f12a69a9e..798ebfdcd8e06ffb576964da006e77bd
          List<Entity> list = this.tracker.passengers; // Paper - do not copy list
  
          if (!list.equals(this.p)) {
-diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index a470e8fb8df29f611c13039b7a4f58a114564705..4abd156556b40aa82e6ed5093b279c0f780b9c9c 100644
---- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -201,6 +201,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+index f3d6811156e68040106f1d027a10ea33b5646b05..e7cd6392d722d0e13b86b57d70946b18688f6621 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+@@ -255,6 +255,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      // Paper end - no-tick view distance
  
      void addPlayerToDistanceMaps(EntityPlayer player) {
@@ -207,7 +207,7 @@ index a470e8fb8df29f611c13039b7a4f58a114564705..4abd156556b40aa82e6ed5093b279c0f
          int chunkX = MCUtil.getChunkCoordinate(player.locX());
          int chunkZ = MCUtil.getChunkCoordinate(player.locZ());
          // Note: players need to be explicitly added to distance maps before they can be updated
-@@ -231,6 +232,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -285,6 +286,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      void removePlayerFromDistanceMaps(EntityPlayer player) {
@@ -215,7 +215,7 @@ index a470e8fb8df29f611c13039b7a4f58a114564705..4abd156556b40aa82e6ed5093b279c0f
          // Paper start - use distance map to optimise tracker
          for (int i = 0, len = TRACKING_RANGE_TYPES.length; i < len; ++i) {
              this.playerEntityTrackerTrackMaps[i].remove(player);
-@@ -248,6 +250,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -302,6 +304,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      void updateMaps(EntityPlayer player) {
@@ -223,7 +223,7 @@ index a470e8fb8df29f611c13039b7a4f58a114564705..4abd156556b40aa82e6ed5093b279c0f
          int chunkX = MCUtil.getChunkCoordinate(player.locX());
          int chunkZ = MCUtil.getChunkCoordinate(player.locZ());
          // Note: players need to be explicitly added to distance maps before they can be updated
-@@ -791,6 +794,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -845,6 +848,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      @Nullable
      private PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k) {
@@ -231,7 +231,7 @@ index a470e8fb8df29f611c13039b7a4f58a114564705..4abd156556b40aa82e6ed5093b279c0f
          if (k > PlayerChunkMap.GOLDEN_TICKET && j > PlayerChunkMap.GOLDEN_TICKET) {
              return playerchunk;
          } else {
-@@ -1112,6 +1116,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1166,6 +1170,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      protected boolean b() {
@@ -239,7 +239,7 @@ index a470e8fb8df29f611c13039b7a4f58a114564705..4abd156556b40aa82e6ed5093b279c0f
          if (!this.updatingChunksModified) {
              return false;
          } else {
-@@ -1551,6 +1556,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1605,6 +1610,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
      }
  
      public void setViewDistance(int i) { // Paper - public
@@ -247,7 +247,7 @@ index a470e8fb8df29f611c13039b7a4f58a114564705..4abd156556b40aa82e6ed5093b279c0f
          int j = MathHelper.clamp(i + 1, 3, 33); // Paper - diff on change, these make the lower view distance limit 2 and the upper 32
  
          if (j != this.viewDistance) {
-@@ -1564,6 +1570,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -1618,6 +1624,7 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      // Paper start - no-tick view distance
      public final void setNoTickViewDistance(int viewDistance) {
@@ -255,31 +255,11 @@ index a470e8fb8df29f611c13039b7a4f58a114564705..4abd156556b40aa82e6ed5093b279c0f
          viewDistance = viewDistance == -1 ? -1 : MathHelper.clamp(viewDistance, 2, 32);
  
          this.noTickViewDistance = viewDistance;
-diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
-index 8efdd9bd0827d1f6a31d5f943f986dabe7d05137..43b5fa67a6b6e778a059063390fb47d6a599a948 100644
---- a/src/main/java/net/minecraft/server/World.java
-+++ b/src/main/java/net/minecraft/server/World.java
-@@ -363,6 +363,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
- 
-     @Override
-     public boolean a(BlockPosition blockposition, IBlockData iblockdata, int i, int j) {
-+        org.spigotmc.AsyncCatcher.catchOp("set type call"); // Tuinity
-         // CraftBukkit start - tree generation
-         if (this.captureTreeGeneration) {
-             // Paper start
-@@ -464,6 +465,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
- 
-     // CraftBukkit start - Split off from above in order to directly send client and physic updates
-     public void notifyAndUpdatePhysics(BlockPosition blockposition, Chunk chunk, IBlockData oldBlock, IBlockData newBlock, IBlockData actualBlock, int i, int j) {
-+        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async notify and update"); // Tuinity
-         IBlockData iblockdata = newBlock;
-         IBlockData iblockdata1 = oldBlock;
-         IBlockData iblockdata2 = actualBlock;
-diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 4183117fe3977e4f0c927b4262a4804bcb8738f6..e285038154d83cbf0d7c0b6b8a247c11b9e20119 100644
---- a/src/main/java/net/minecraft/server/WorldServer.java
-+++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -1661,6 +1661,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
+index e67c57573ea3be869fecb7a00de8157e3f5437d1..d7399bc4a4c8ec0712dbe8b909bf5ef1fafa75db 100644
+--- a/src/main/java/net/minecraft/server/level/WorldServer.java
++++ b/src/main/java/net/minecraft/server/level/WorldServer.java
+@@ -1774,6 +1774,7 @@ public class WorldServer extends World implements GeneratorAccessSeed {
  
      @Override
      public void notify(BlockPosition blockposition, IBlockData iblockdata, IBlockData iblockdata1, int i) {
@@ -287,6 +267,26 @@ index 4183117fe3977e4f0c927b4262a4804bcb8738f6..e285038154d83cbf0d7c0b6b8a247c11
          this.getChunkProvider().flagDirty(blockposition);
          if(this.paperConfig.updatePathfindingOnBlockUpdate) { // Paper - option to disable pathfinding updates
          VoxelShape voxelshape = iblockdata.getCollisionShape(this, blockposition);
+diff --git a/src/main/java/net/minecraft/world/level/World.java b/src/main/java/net/minecraft/world/level/World.java
+index 983e61051b7a8a8f5094cee8de9b8ca8c072fc68..6ec5d99dffa26b9a94f59340ba9498baf8bc2015 100644
+--- a/src/main/java/net/minecraft/world/level/World.java
++++ b/src/main/java/net/minecraft/world/level/World.java
+@@ -423,6 +423,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+ 
+     @Override
+     public boolean a(BlockPosition blockposition, IBlockData iblockdata, int i, int j) {
++        org.spigotmc.AsyncCatcher.catchOp("set type call"); // Tuinity
+         // CraftBukkit start - tree generation
+         if (this.captureTreeGeneration) {
+             // Paper start
+@@ -524,6 +525,7 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+ 
+     // CraftBukkit start - Split off from above in order to directly send client and physic updates
+     public void notifyAndUpdatePhysics(BlockPosition blockposition, Chunk chunk, IBlockData oldBlock, IBlockData newBlock, IBlockData actualBlock, int i, int j) {
++        com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Async notify and update"); // Tuinity
+         IBlockData iblockdata = newBlock;
+         IBlockData iblockdata1 = oldBlock;
+         IBlockData iblockdata2 = actualBlock;
 diff --git a/src/main/java/org/spigotmc/AsyncCatcher.java b/src/main/java/org/spigotmc/AsyncCatcher.java
 index 10606ed03e88e4e467de2d5424df12466c4e7873..51e9c54cddf4b28ba3d3d892322c487774bdab70 100644
 --- a/src/main/java/org/spigotmc/AsyncCatcher.java

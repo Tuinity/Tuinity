@@ -11,11 +11,11 @@ For example, thanks to this patch incorrect future
 completion (completion of the world gen future,
 PlayerChunkMap#b(PlayerChunk, ChunkStatus)) was detected and fixed.
 
-diff --git a/src/main/java/net/minecraft/server/PlayerChunk.java b/src/main/java/net/minecraft/server/PlayerChunk.java
-index b03865a932d341ae2fdad6c9447979fa9e95fc14..9a321c8a0a357ca1fd47d0c7fe4fe7af17204389 100644
---- a/src/main/java/net/minecraft/server/PlayerChunk.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunk.java
-@@ -564,6 +564,7 @@ public class PlayerChunk {
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunk.java b/src/main/java/net/minecraft/server/level/PlayerChunk.java
+index f7deb4fe98ef9900acb276c7680d5a2da9661e8f..6b939d35e13fdc84fd3767e74eaf78c9d9b90c69 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunk.java
+@@ -590,6 +590,7 @@ public class PlayerChunk {
      }
  
      protected void a(PlayerChunkMap playerchunkmap) {
@@ -23,7 +23,7 @@ index b03865a932d341ae2fdad6c9447979fa9e95fc14..9a321c8a0a357ca1fd47d0c7fe4fe7af
          ChunkStatus chunkstatus = getChunkStatus(this.oldTicketLevel);
          ChunkStatus chunkstatus1 = getChunkStatus(this.ticketLevel);
          boolean flag = this.oldTicketLevel <= PlayerChunkMap.GOLDEN_TICKET;
-@@ -573,7 +574,8 @@ public class PlayerChunk {
+@@ -599,7 +600,8 @@ public class PlayerChunk {
          // CraftBukkit start
          // ChunkUnloadEvent: Called before the chunk is unloaded: isChunkLoaded is still true and chunk can still be modified by plugins.
          if (playerchunk_state.isAtLeast(PlayerChunk.State.BORDER) && !playerchunk_state1.isAtLeast(PlayerChunk.State.BORDER)) {
@@ -33,7 +33,7 @@ index b03865a932d341ae2fdad6c9447979fa9e95fc14..9a321c8a0a357ca1fd47d0c7fe4fe7af
                  Chunk chunk = (Chunk)either.left().orElse(null);
                  if (chunk != null) {
                      playerchunkmap.callbackExecutor.execute(() -> {
-@@ -638,7 +640,8 @@ public class PlayerChunk {
+@@ -664,7 +666,8 @@ public class PlayerChunk {
          if (!flag2 && flag3) {
              // Paper start - cache ticking ready status
              int expectCreateCount = ++this.fullChunkCreateCount;
@@ -43,7 +43,7 @@ index b03865a932d341ae2fdad6c9447979fa9e95fc14..9a321c8a0a357ca1fd47d0c7fe4fe7af
                  if (either.left().isPresent() && PlayerChunk.this.fullChunkCreateCount == expectCreateCount) {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      Chunk fullChunk = either.left().get();
-@@ -669,7 +672,8 @@ public class PlayerChunk {
+@@ -695,7 +698,8 @@ public class PlayerChunk {
  
          if (!flag4 && flag5) {
              // Paper start - cache ticking ready status
@@ -53,7 +53,7 @@ index b03865a932d341ae2fdad6c9447979fa9e95fc14..9a321c8a0a357ca1fd47d0c7fe4fe7af
                  if (either.left().isPresent()) {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      Chunk tickingChunk = either.left().get();
-@@ -709,7 +713,8 @@ public class PlayerChunk {
+@@ -735,7 +739,8 @@ public class PlayerChunk {
              }
  
              // Paper start - cache ticking ready status
@@ -63,7 +63,7 @@ index b03865a932d341ae2fdad6c9447979fa9e95fc14..9a321c8a0a357ca1fd47d0c7fe4fe7af
                  if (either.left().isPresent()) {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      Chunk entityTickingChunk = either.left().get();
-@@ -760,7 +765,8 @@ public class PlayerChunk {
+@@ -786,7 +791,8 @@ public class PlayerChunk {
          // CraftBukkit start
          // ChunkLoadEvent: Called after the chunk is loaded: isChunkLoaded returns true and chunk is ready to be modified by plugins.
          if (!playerchunk_state.isAtLeast(PlayerChunk.State.BORDER) && playerchunk_state1.isAtLeast(PlayerChunk.State.BORDER)) {
@@ -73,11 +73,11 @@ index b03865a932d341ae2fdad6c9447979fa9e95fc14..9a321c8a0a357ca1fd47d0c7fe4fe7af
                  Chunk chunk = (Chunk)either.left().orElse(null);
                  if (chunk != null) {
                      playerchunkmap.callbackExecutor.execute(() -> {
-diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index 1a25a8ebd88d49ac16b58abc6d366367671e1ee7..bd1abaa47109abaeafb728cbb9185804927ecbf2 100644
---- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -1301,7 +1301,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+index db271a5a1f09f8c11ac2498f8975cf7b025dd5e3..d395a694335f2ffcdfae3abf3884f09fb69b59d7 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+@@ -1355,7 +1355,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              }
              // Paper end
              this.mailboxWorldGen.a(ChunkTaskQueueSorter.a(playerchunk, runnable));

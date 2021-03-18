@@ -5,11 +5,11 @@ Subject: [PATCH] Separate lookup locking from state access in UserCache
 
 Prevent lookups from stalling simple state access/write calls
 
-diff --git a/src/main/java/net/minecraft/server/UserCache.java b/src/main/java/net/minecraft/server/UserCache.java
-index 8c3aa47a28914fd69a7f2e55a8c8f91d8e02371e..afc2ddf519cf4930663f1859b8ce89a7b825f332 100644
---- a/src/main/java/net/minecraft/server/UserCache.java
-+++ b/src/main/java/net/minecraft/server/UserCache.java
-@@ -49,6 +49,11 @@ public class UserCache {
+diff --git a/src/main/java/net/minecraft/server/players/UserCache.java b/src/main/java/net/minecraft/server/players/UserCache.java
+index 74b024a51f6c3ee88db730cbf97a24af66fa332b..66eee0998be2210042db8e6b537fa10a016a9c8a 100644
+--- a/src/main/java/net/minecraft/server/players/UserCache.java
++++ b/src/main/java/net/minecraft/server/players/UserCache.java
+@@ -51,6 +51,11 @@ public class UserCache {
      private final File g;
      private final AtomicLong h = new AtomicLong();
  
@@ -21,7 +21,7 @@ index 8c3aa47a28914fd69a7f2e55a8c8f91d8e02371e..afc2ddf519cf4930663f1859b8ce89a7
      public UserCache(GameProfileRepository gameprofilerepository, File file) {
          this.e = gameprofilerepository;
          this.g = file;
-@@ -56,6 +61,7 @@ public class UserCache {
+@@ -58,6 +63,7 @@ public class UserCache {
      }
  
      private void a(UserCache.UserCacheEntry usercache_usercacheentry) {
@@ -29,7 +29,7 @@ index 8c3aa47a28914fd69a7f2e55a8c8f91d8e02371e..afc2ddf519cf4930663f1859b8ce89a7
          GameProfile gameprofile = usercache_usercacheentry.a();
  
          usercache_usercacheentry.a(this.d());
-@@ -70,6 +76,7 @@ public class UserCache {
+@@ -72,6 +78,7 @@ public class UserCache {
          if (uuid != null) {
              this.d.put(uuid, usercache_usercacheentry);
          }
@@ -37,7 +37,7 @@ index 8c3aa47a28914fd69a7f2e55a8c8f91d8e02371e..afc2ddf519cf4930663f1859b8ce89a7
  
      }
  
-@@ -107,7 +114,7 @@ public class UserCache {
+@@ -109,7 +116,7 @@ public class UserCache {
      }
  
      public void saveProfile(GameProfile gameprofile) { a(gameprofile); } // Paper - OBFHELPER
@@ -46,7 +46,7 @@ index 8c3aa47a28914fd69a7f2e55a8c8f91d8e02371e..afc2ddf519cf4930663f1859b8ce89a7
          Calendar calendar = Calendar.getInstance();
  
          calendar.setTime(new Date());
-@@ -124,8 +131,9 @@ public class UserCache {
+@@ -126,8 +133,9 @@ public class UserCache {
      }
  
      @Nullable
@@ -57,7 +57,7 @@ index 8c3aa47a28914fd69a7f2e55a8c8f91d8e02371e..afc2ddf519cf4930663f1859b8ce89a7
          UserCache.UserCacheEntry usercache_usercacheentry = (UserCache.UserCacheEntry) this.c.get(s1);
          boolean flag = false;
  
-@@ -139,10 +147,14 @@ public class UserCache {
+@@ -141,10 +149,14 @@ public class UserCache {
          GameProfile gameprofile;
  
          if (usercache_usercacheentry != null) {
@@ -72,7 +72,7 @@ index 8c3aa47a28914fd69a7f2e55a8c8f91d8e02371e..afc2ddf519cf4930663f1859b8ce89a7
              if (gameprofile != null) {
                  this.a(gameprofile);
                  flag = false;
-@@ -154,6 +166,7 @@ public class UserCache {
+@@ -156,6 +168,7 @@ public class UserCache {
          }
  
          return gameprofile;
@@ -80,7 +80,7 @@ index 8c3aa47a28914fd69a7f2e55a8c8f91d8e02371e..afc2ddf519cf4930663f1859b8ce89a7
      }
  
      // Paper start
-@@ -288,7 +301,9 @@ public class UserCache {
+@@ -290,7 +303,9 @@ public class UserCache {
      }
  
      private Stream<UserCache.UserCacheEntry> a(int i) {

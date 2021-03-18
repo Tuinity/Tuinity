@@ -32,7 +32,7 @@ had to be specifically modified.
 
 diff --git a/src/main/java/com/tuinity/tuinity/util/PoiAccess.java b/src/main/java/com/tuinity/tuinity/util/PoiAccess.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..ef0b766709fd9369b5ae458148259291583fe565
+index 0000000000000000000000000000000000000000..5018a3378680d98605e0e4a79bf112e032c98925
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/PoiAccess.java
 @@ -0,0 +1,812 @@
@@ -41,13 +41,13 @@ index 0000000000000000000000000000000000000000..ef0b766709fd9369b5ae458148259291
 +import it.unimi.dsi.fastutil.doubles.Double2ObjectMap;
 +import it.unimi.dsi.fastutil.doubles.Double2ObjectRBTreeMap;
 +import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-+import net.minecraft.server.BlockPosition;
-+import net.minecraft.server.MathHelper;
-+import net.minecraft.server.SectionPosition;
-+import net.minecraft.server.VillagePlace;
-+import net.minecraft.server.VillagePlaceRecord;
-+import net.minecraft.server.VillagePlaceSection;
-+import net.minecraft.server.VillagePlaceType;
++import net.minecraft.core.BlockPosition;
++import net.minecraft.util.MathHelper;
++import net.minecraft.core.SectionPosition;
++import net.minecraft.world.entity.ai.village.poi.VillagePlace;
++import net.minecraft.world.entity.ai.village.poi.VillagePlaceRecord;
++import net.minecraft.world.entity.ai.village.poi.VillagePlaceSection;
++import net.minecraft.world.entity.ai.village.poi.VillagePlaceType;
 +import java.util.ArrayList;
 +import java.util.HashSet;
 +import java.util.Iterator;
@@ -848,11 +848,11 @@ index 0000000000000000000000000000000000000000..ef0b766709fd9369b5ae458148259291
 +        throw new RuntimeException();
 +    }
 +}
-diff --git a/src/main/java/net/minecraft/server/BehaviorFindPosition.java b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-index 275d4cad8ff0dd64b74ef8f8056cdef093523f97..83702e07dff72b639af32c8ba9e831e58da92a10 100644
---- a/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-+++ b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-@@ -74,7 +74,11 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorFindPosition.java b/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorFindPosition.java
+index 5fe71380b04600d6cd0bb068d239ff8fdfe2afbb..bc8786e2aaeab4dbae4e9c7666ad816bc5bfac3f 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorFindPosition.java
++++ b/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorFindPosition.java
+@@ -84,7 +84,11 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
                  return true;
              }
          };
@@ -865,78 +865,11 @@ index 275d4cad8ff0dd64b74ef8f8056cdef093523f97..83702e07dff72b639af32c8ba9e831e5
          PathEntity pathentity = entitycreature.getNavigation().a(set, this.b.d());
  
          if (pathentity != null && pathentity.j()) {
-diff --git a/src/main/java/net/minecraft/server/PortalTravelAgent.java b/src/main/java/net/minecraft/server/PortalTravelAgent.java
-index e10995ec30dd9a10d781b3c1709fd2db5a9becdd..77aa805267497f91231d63067d62ad3f10508216 100644
---- a/src/main/java/net/minecraft/server/PortalTravelAgent.java
-+++ b/src/main/java/net/minecraft/server/PortalTravelAgent.java
-@@ -22,16 +22,34 @@ public class PortalTravelAgent {
-         // int i = flag ? 16 : 128;
-         // CraftBukkit end
- 
--        villageplace.a(this.world, blockposition, i);
--        Optional<VillagePlaceRecord> optional = villageplace.b((villageplacetype) -> {
--            return villageplacetype == VillagePlaceType.v;
--        }, blockposition, i, VillagePlace.Occupancy.ANY).sorted(Comparator.comparingDouble((VillagePlaceRecord villageplacerecord) -> { // CraftBukkit - decompile error
--            return villageplacerecord.f().j(blockposition);
--        }).thenComparingInt((villageplacerecord) -> {
--            return villageplacerecord.f().getY();
--        })).filter((villageplacerecord) -> {
--            return this.world.getType(villageplacerecord.f()).b(BlockProperties.E);
--        }).findFirst();
-+        // Tuinity start - optimise portals
-+        //villageplace.a(this.world, blockposition, i);
-+        Optional<VillagePlaceRecord> optional;
-+        java.util.List<VillagePlaceRecord> records = new java.util.ArrayList<>();
-+        com.tuinity.tuinity.util.PoiAccess.findClosestPoiDataRecords(villageplace,
-+                (VillagePlaceType villageplacetype) -> {
-+                    return villageplacetype == VillagePlaceType.v; // this should break this entire diff on update if it changes, so TODO check that on diff break
-+                },
-+                (BlockPosition pos) -> {
-+                    IChunkAccess lowest = this.world.getChunkAt(pos.getX() >> 4, pos.getZ() >> 4, ChunkStatus.EMPTY);
-+                    if (!lowest.getChunkStatus().isAtLeastStatus(ChunkStatus.FULL)) {
-+                        // why would we generate the chunk?
-+                        return false;
-+                    }
-+                    return lowest.getType(pos).contains(BlockProperties.E); // this should break this entire diff on update if it changes, so TODO check that on diff break
-+                }, blockposition, i, Double.MAX_VALUE, VillagePlace.Occupancy.ANY, true, records);
-+        // this gets us most of the way there, but we bias towards lower y values.
-+        VillagePlaceRecord lowestYRecord = null;
-+        for (VillagePlaceRecord record : records) {
-+            if (lowestYRecord == null) {
-+                lowestYRecord = record;
-+            } else if (lowestYRecord.getPosition().getY() > record.getPosition().getY()) {
-+                lowestYRecord = record;
-+            }
-+        }
-+        // now we're done
-+        optional = Optional.ofNullable(lowestYRecord);
-+        // Tuinity end - optimise portals
- 
-         return optional.map((villageplacerecord) -> {
-             BlockPosition blockposition1 = villageplacerecord.f();
-diff --git a/src/main/java/net/minecraft/server/RegionFileSection.java b/src/main/java/net/minecraft/server/RegionFileSection.java
-index 79a11d17a2822b192dec5981d0344ae689c3d385..d1ea47654db190e7cb7fa4ec1ac002f64277cb47 100644
---- a/src/main/java/net/minecraft/server/RegionFileSection.java
-+++ b/src/main/java/net/minecraft/server/RegionFileSection.java
-@@ -84,11 +84,12 @@ public class RegionFileSection<R> extends RegionFileCache implements AutoCloseab
-     }
-     // Tuinity end - actually unload POI data
- 
--    @Nullable protected Optional<R> getIfLoaded(long value) { return this.c(value); } // Tuinity - OBFHELPER
-+    @Nullable public final Optional<R> getIfLoaded(long value) { return this.c(value); } // Tuinity - OBFHELPER // Tuinity - OBFHELPER
-     @Nullable protected Optional<R> c(long i) { // Tuinity - OBFHELPER
-         return (Optional) this.c.get(i);
-     }
- 
-+    public final Optional<R> getOrLoad(long coordinate) { return this.d(coordinate); } // Tuinity - OBFHELPER
-     protected Optional<R> d(long i) {
-         SectionPosition sectionposition = SectionPosition.a(i);
- 
-diff --git a/src/main/java/net/minecraft/server/SensorNearestBed.java b/src/main/java/net/minecraft/server/SensorNearestBed.java
-index 83025d69e8a0732f16581fcfeaef5c1a45d70b63..89f8ce32225bc560b9927273f5984c6206360ac7 100644
---- a/src/main/java/net/minecraft/server/SensorNearestBed.java
-+++ b/src/main/java/net/minecraft/server/SensorNearestBed.java
-@@ -40,8 +40,12 @@ public class SensorNearestBed extends Sensor<EntityInsentient> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestBed.java b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestBed.java
+index 5e4c022bcbf4456bc9020f56fb26fee0c627d722..9427072575df9c0f1b9dfb065b6bef43df1f8fc5 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestBed.java
++++ b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestBed.java
+@@ -47,8 +47,12 @@ public class SensorNearestBed extends Sensor<EntityInsentient> {
                      return true;
                  }
              };
@@ -951,11 +884,11 @@ index 83025d69e8a0732f16581fcfeaef5c1a45d70b63..89f8ce32225bc560b9927273f5984c62
  
              if (pathentity != null && pathentity.j()) {
                  BlockPosition blockposition = pathentity.m();
-diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
-index fce9967912628c232fe41ccc17fe2296f001ec61..245bdedd17b844dcd13aa0b60dffb1cac6a5bdb8 100644
---- a/src/main/java/net/minecraft/server/VillagePlace.java
-+++ b/src/main/java/net/minecraft/server/VillagePlace.java
-@@ -227,31 +227,47 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java
+index a5edfaa41156fc03181f38a8813eb5bcc8c08e48..13d94ecd703b3cd0412e138532d2dd74e5bf250d 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java
++++ b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java
+@@ -240,31 +240,47 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
      }
  
      public Optional<BlockPosition> c(Predicate<VillagePlaceType> predicate, Predicate<BlockPosition> predicate1, BlockPosition blockposition, int i, VillagePlace.Occupancy villageplace_occupancy) {
@@ -1019,3 +952,70 @@ index fce9967912628c232fe41ccc17fe2296f001ec61..245bdedd17b844dcd13aa0b60dffb1ca
      }
  
      public boolean b(BlockPosition blockposition) {
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileSection.java b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileSection.java
+index 3628b62b8021bbb9b03b3236830b6dccef2d8419..f70c14385c95763b5f270a6e2ce372cf047ba7bb 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileSection.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileSection.java
+@@ -93,11 +93,12 @@ public class RegionFileSection<R> extends RegionFileCache implements AutoCloseab
+     }
+     // Tuinity end - actually unload POI data
+ 
+-    @Nullable protected Optional<R> getIfLoaded(long value) { return this.c(value); } // Tuinity - OBFHELPER
++    @Nullable public final Optional<R> getIfLoaded(long value) { return this.c(value); } // Tuinity - OBFHELPER // Tuinity - OBFHELPER
+     @Nullable protected Optional<R> c(long i) { // Tuinity - OBFHELPER
+         return (Optional) this.c.get(i);
+     }
+ 
++    public final Optional<R> getOrLoad(long coordinate) { return this.d(coordinate); } // Tuinity - OBFHELPER
+     protected Optional<R> d(long i) {
+         SectionPosition sectionposition = SectionPosition.a(i);
+ 
+diff --git a/src/main/java/net/minecraft/world/level/portal/PortalTravelAgent.java b/src/main/java/net/minecraft/world/level/portal/PortalTravelAgent.java
+index 77dfa7eaf178baa55041a829c9dec4851efeedfc..0de6225e11b98cc3d22c002d5f27748cde42a5a0 100644
+--- a/src/main/java/net/minecraft/world/level/portal/PortalTravelAgent.java
++++ b/src/main/java/net/minecraft/world/level/portal/PortalTravelAgent.java
+@@ -39,16 +39,34 @@ public class PortalTravelAgent {
+         // int i = flag ? 16 : 128;
+         // CraftBukkit end
+ 
+-        villageplace.a(this.world, blockposition, i);
+-        Optional<VillagePlaceRecord> optional = villageplace.b((villageplacetype) -> {
+-            return villageplacetype == VillagePlaceType.v;
+-        }, blockposition, i, VillagePlace.Occupancy.ANY).sorted(Comparator.comparingDouble((VillagePlaceRecord villageplacerecord) -> { // CraftBukkit - decompile error
+-            return villageplacerecord.f().j(blockposition);
+-        }).thenComparingInt((villageplacerecord) -> {
+-            return villageplacerecord.f().getY();
+-        })).filter((villageplacerecord) -> {
+-            return this.world.getType(villageplacerecord.f()).b(BlockProperties.E);
+-        }).findFirst();
++        // Tuinity start - optimise portals
++        //villageplace.a(this.world, blockposition, i);
++        Optional<VillagePlaceRecord> optional;
++        java.util.List<VillagePlaceRecord> records = new java.util.ArrayList<>();
++        com.tuinity.tuinity.util.PoiAccess.findClosestPoiDataRecords(villageplace,
++                (VillagePlaceType villageplacetype) -> {
++                    return villageplacetype == VillagePlaceType.v; // this should break this entire diff on update if it changes, so TODO check that on diff break
++                },
++                (BlockPosition pos) -> {
++                    net.minecraft.world.level.chunk.IChunkAccess lowest = this.world.getChunkAt(pos.getX() >> 4, pos.getZ() >> 4, net.minecraft.world.level.chunk.ChunkStatus.EMPTY);
++                    if (!lowest.getChunkStatus().isAtLeastStatus(net.minecraft.world.level.chunk.ChunkStatus.FULL)) {
++                        // why would we generate the chunk?
++                        return false;
++                    }
++                    return lowest.getType(pos).contains(BlockProperties.E); // this should break this entire diff on update if it changes, so TODO check that on diff break
++                }, blockposition, i, Double.MAX_VALUE, VillagePlace.Occupancy.ANY, true, records);
++        // this gets us most of the way there, but we bias towards lower y values.
++        VillagePlaceRecord lowestYRecord = null;
++        for (VillagePlaceRecord record : records) {
++            if (lowestYRecord == null) {
++                lowestYRecord = record;
++            } else if (lowestYRecord.getPosition().getY() > record.getPosition().getY()) {
++                lowestYRecord = record;
++            }
++        }
++        // now we're done
++        optional = Optional.ofNullable(lowestYRecord);
++        // Tuinity end - optimise portals
+ 
+         return optional.map((villageplacerecord) -> {
+             BlockPosition blockposition1 = villageplacerecord.f();

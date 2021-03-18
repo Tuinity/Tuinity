@@ -9,11 +9,24 @@ we instead drop the current regionfile header and recalculate -
 hoping that at least then we don't swap chunks, and maybe recover
 them all.
 
-diff --git a/src/main/java/net/minecraft/server/ChunkRegionLoader.java b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-index f51bf71c8d6eef3c054ac64765709794fcfad5ee..17a5b5b5bab4412242a18224b366674c25cdf286 100644
---- a/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-+++ b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
-@@ -24,6 +24,14 @@ public class ChunkRegionLoader {
+diff --git a/src/main/java/net/minecraft/util/worldupdate/WorldUpgrader.java b/src/main/java/net/minecraft/util/worldupdate/WorldUpgrader.java
+index a4970654496c52fcd02c5c055ff5ac551bd19da3..6725b31a5183d5af7f8f7566ed21eb61797ef4c9 100644
+--- a/src/main/java/net/minecraft/util/worldupdate/WorldUpgrader.java
++++ b/src/main/java/net/minecraft/util/worldupdate/WorldUpgrader.java
+@@ -235,7 +235,7 @@ public class WorldUpgrader {
+                     int l = Integer.parseInt(matcher.group(2)) << 5;
+ 
+                     try {
+-                        RegionFile regionfile = new RegionFile(file2, file1, true);
++                        RegionFile regionfile = new RegionFile(file2, file1, true, true); // Tuinity - allow for chunk regionfiles to regen header
+                         Throwable throwable = null;
+ 
+                         try {
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkRegionLoader.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkRegionLoader.java
+index 4eaf497d048324a85ce49fc1c6e9559991c20df7..2d6b14345d4fcc803b011235e9798d5db613502a 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkRegionLoader.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkRegionLoader.java
+@@ -68,6 +68,14 @@ public class ChunkRegionLoader {
  
      private static final Logger LOGGER = LogManager.getLogger();
  
@@ -28,7 +41,7 @@ index f51bf71c8d6eef3c054ac64765709794fcfad5ee..17a5b5b5bab4412242a18224b366674c
      // Paper start - guard against serializing mismatching coordinates
      // TODO Note: This needs to be re-checked each update
      public static ChunkCoordIntPair getChunkCoordinate(NBTTagCompound chunkData) {
-@@ -401,10 +409,10 @@ public class ChunkRegionLoader {
+@@ -445,10 +453,10 @@ public class ChunkRegionLoader {
          NBTTagCompound nbttagcompound1 = new NBTTagCompound();
  
          nbttagcompound.setInt("DataVersion", SharedConstants.getGameVersion().getWorldVersion());
@@ -41,12 +54,12 @@ index f51bf71c8d6eef3c054ac64765709794fcfad5ee..17a5b5b5bab4412242a18224b366674c
          nbttagcompound1.setLong("InhabitedTime", ichunkaccess.getInhabitedTime());
          nbttagcompound1.setString("Status", ichunkaccess.getChunkStatus().d());
          ChunkConverter chunkconverter = ichunkaccess.p();
-diff --git a/src/main/java/net/minecraft/server/IChunkLoader.java b/src/main/java/net/minecraft/server/IChunkLoader.java
-index 582a5695bac7d078e3022b8ee70c512c0680d992..5601088cd5024a40e8296bab979f43de924c2b62 100644
---- a/src/main/java/net/minecraft/server/IChunkLoader.java
-+++ b/src/main/java/net/minecraft/server/IChunkLoader.java
-@@ -21,7 +21,7 @@ public class IChunkLoader implements AutoCloseable {
-     protected final RegionFileCache regionFileCache;
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/IChunkLoader.java b/src/main/java/net/minecraft/world/level/chunk/storage/IChunkLoader.java
+index 890362d28ab9cb760c73fe5014e144fb08ada6b8..3c532d3996dfc734ec07181701280b6072bff55f 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/IChunkLoader.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/IChunkLoader.java
+@@ -39,7 +39,7 @@ public class IChunkLoader implements AutoCloseable {
+     public final RegionFileCache regionFileCache;
  
      public IChunkLoader(File file, DataFixer datafixer, boolean flag) {
 -        this.regionFileCache = new RegionFileCache(file, flag); // Paper - nuke IOWorker
@@ -54,10 +67,10 @@ index 582a5695bac7d078e3022b8ee70c512c0680d992..5601088cd5024a40e8296bab979f43de
          this.b = datafixer;
          // Paper - nuke IOWorker
      }
-diff --git a/src/main/java/net/minecraft/server/RegionFile.java b/src/main/java/net/minecraft/server/RegionFile.java
-index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771de8081a5 100644
---- a/src/main/java/net/minecraft/server/RegionFile.java
-+++ b/src/main/java/net/minecraft/server/RegionFile.java
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFile.java b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFile.java
+index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660bec66927 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFile.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFile.java
 @@ -5,6 +5,7 @@ import java.io.BufferedInputStream;
  import java.io.BufferedOutputStream;
  import java.io.ByteArrayInputStream;
@@ -66,13 +79,13 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
  import java.io.DataInputStream;
  import java.io.DataOutputStream;
  import java.io.File;
-@@ -29,15 +30,350 @@ public class RegionFile implements AutoCloseable {
+@@ -35,15 +36,350 @@ public class RegionFile implements AutoCloseable {
      private static final Logger LOGGER = LogManager.getLogger();
      private static final ByteBuffer c = ByteBuffer.allocateDirect(1);
      private final FileChannel dataFile;
--    private final java.nio.file.Path e;
+-    private final Path e;
 -    private final RegionFileCompression f;
-+    private final java.nio.file.Path e; private final java.nio.file.Path getContainingDataFolder() { return this.e; } // Tuinity - OBFHELPER
++    private final Path e; private final java.nio.file.Path getContainingDataFolder() { return this.e; } // Tuinity - OBFHELPER
 +    private final RegionFileCompression f; private final RegionFileCompression getRegionFileCompression() { return this.f; } // Tuinity - OBFHELPER
      private final ByteBuffer g;
 -    private final IntBuffer h;
@@ -148,11 +161,11 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +    private void backupRegionFile(File to) {
 +        try {
 +            this.dataFile.force(true);
-+            MinecraftServer.LOGGER.warn("Backing up regionfile \"" + this.file.getAbsolutePath() + "\" to " + to.getAbsolutePath());
++            LOGGER.warn("Backing up regionfile \"" + this.file.getAbsolutePath() + "\" to " + to.getAbsolutePath());
 +            java.nio.file.Files.copy(this.file.toPath(), to.toPath());
-+            MinecraftServer.LOGGER.warn("Backed up the regionfile to " + to.getAbsolutePath());
++            LOGGER.warn("Backed up the regionfile to " + to.getAbsolutePath());
 +        } catch (IOException ex) {
-+            MinecraftServer.LOGGER.error("Failed to backup to " + to.getAbsolutePath(), ex);
++            LOGGER.error("Failed to backup to " + to.getAbsolutePath(), ex);
 +        }
 +    }
 +
@@ -162,7 +175,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +            return;
 +        }
 +        synchronized (this) {
-+            MinecraftServer.LOGGER.warn("Corrupt regionfile header detected! Attempting to re-calculate header offsets for regionfile " + this.file.getAbsolutePath(), new Throwable());
++            LOGGER.warn("Corrupt regionfile header detected! Attempting to re-calculate header offsets for regionfile " + this.file.getAbsolutePath(), new Throwable());
 +
 +            // try to backup file so maybe it could be sent to us for further investigation
 +
@@ -204,7 +217,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                            isAikarOversized = true;
 +                        }
 +                    } catch (Exception ex) {
-+                        MinecraftServer.LOGGER.error("Failed to read aikar oversized data for absolute chunk (" + chunkPos.x + "," + chunkPos.z + ") in regionfile " + this.file.getAbsolutePath() + ", oversized data for this chunk will be lost", ex);
++                        LOGGER.error("Failed to read aikar oversized data for absolute chunk (" + chunkPos.x + "," + chunkPos.z + ") in regionfile " + this.file.getAbsolutePath() + ", oversized data for this chunk will be lost", ex);
 +                        // fall through, if we can't read aikar oversized we can't risk corrupting chunk data
 +                    }
 +                }
@@ -232,7 +245,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                ChunkCoordIntPair ourLowerLeftPosition = RegionFileCache.getRegionFileCoordinates(this.file);
 +
 +                if (ourLowerLeftPosition == null) {
-+                    MinecraftServer.LOGGER.fatal("Unable to get chunk location of regionfile " + this.file.getAbsolutePath() + ", cannot recover oversized chunks");
++                    LOGGER.fatal("Unable to get chunk location of regionfile " + this.file.getAbsolutePath() + ", cannot recover oversized chunks");
 +                } else {
 +                    int lowerXBound = ourLowerLeftPosition.x; // inclusive
 +                    int lowerZBound = ourLowerLeftPosition.z; // inclusive
@@ -258,7 +271,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                        try {
 +                            chunkData = Files.readAllBytes(regionFile.toPath());
 +                        } catch (Exception ex) {
-+                            MinecraftServer.LOGGER.error("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath() + ", data will be lost", ex);
++                            LOGGER.error("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath() + ", data will be lost", ex);
 +                            continue;
 +                        }
 +
@@ -278,7 +291,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                        }
 +
 +                        if (compound == null) {
-+                            MinecraftServer.LOGGER.error("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath() + ", it's corrupt. Its data will be lost");
++                            LOGGER.error("Failed to read oversized chunk data in file " + regionFile.getAbsolutePath() + ", it's corrupt. Its data will be lost");
 +                            continue;
 +                        }
 +
@@ -313,7 +326,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                    if (newSectorAllocations.tryAllocate(sectorOffset, sectorLength)) {
 +                        calculatedOffsets[location] = sectorOffset << 8 | (sectorLength > 255 ? 255 : sectorLength); // support forge style oversized
 +                    } else {
-+                        MinecraftServer.LOGGER.error("Failed to allocate space for local chunk (overlapping data??) at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + ", chunk will be regenerated");
++                        LOGGER.error("Failed to allocate space for local chunk (overlapping data??) at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + ", chunk will be regenerated");
 +                    }
 +                }
 +            }
@@ -337,7 +350,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                        calculatedOffsets[location] = sectorOffset << 8 | (sectorLength > 255 ? 255 : sectorLength); // support forge style oversized
 +                    } catch (IOException ex) {
 +                        newSectorAllocations.free(sectorOffset, sectorLength);
-+                        MinecraftServer.LOGGER.error("Failed to write new oversized chunk data holder, local chunk at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + " will be regenerated");
++                        LOGGER.error("Failed to write new oversized chunk data holder, local chunk at (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath() + " will be regenerated");
 +                    }
 +                }
 +            }
@@ -359,7 +372,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                try {
 +                    this.writeOversizedMeta();
 +                } catch (Exception ex) {
-+                    MinecraftServer.LOGGER.error("Failed to write aikar oversized chunk meta, all aikar style oversized chunk data will be lost for regionfile " + this.file.getAbsolutePath(), ex);
++                    LOGGER.error("Failed to write aikar oversized chunk meta, all aikar style oversized chunk data will be lost for regionfile " + this.file.getAbsolutePath(), ex);
 +                    this.getOversizedMetaFile().delete();
 +                }
 +            } else {
@@ -370,7 +383,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +
 +            // before we overwrite the old sectors, print a summary of the chunks that got changed.
 +
-+            MinecraftServer.LOGGER.info("Starting summary of changes for regionfile " + this.file.getAbsolutePath());
++            LOGGER.info("Starting summary of changes for regionfile " + this.file.getAbsolutePath());
 +
 +            for (int chunkX = 0; chunkX < 32; ++chunkX) {
 +                for (int chunkZ = 0; chunkZ < 32; ++chunkZ) {
@@ -387,16 +400,16 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +
 +                    if (oldOffset == 0) {
 +                        // found lost data
-+                        MinecraftServer.LOGGER.info("Found missing data for local chunk (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath());
++                        LOGGER.info("Found missing data for local chunk (" + chunkX + "," + chunkZ + ") in regionfile " + this.file.getAbsolutePath());
 +                    } else if (newOffset == 0) {
-+                        MinecraftServer.LOGGER.warn("Data for local chunk (" + chunkX + "," + chunkZ + ") could not be recovered in regionfile " + this.file.getAbsolutePath() + ", it will be regenerated");
++                        LOGGER.warn("Data for local chunk (" + chunkX + "," + chunkZ + ") could not be recovered in regionfile " + this.file.getAbsolutePath() + ", it will be regenerated");
 +                    } else {
-+                        MinecraftServer.LOGGER.info("Local chunk (" + chunkX + "," + chunkZ + ") changed to point to newer data or correct chunk in regionfile " + this.file.getAbsolutePath());
++                        LOGGER.info("Local chunk (" + chunkX + "," + chunkZ + ") changed to point to newer data or correct chunk in regionfile " + this.file.getAbsolutePath());
 +                    }
 +                }
 +            }
 +
-+            MinecraftServer.LOGGER.info("End of change summary for regionfile " + this.file.getAbsolutePath());
++            LOGGER.info("End of change summary for regionfile " + this.file.getAbsolutePath());
 +
 +            // simply destroy the timestamp header, it's not used
 +
@@ -408,9 +421,9 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +            try {
 +                this.flushHeader();
 +                this.dataFile.force(true); // try to ensure it goes through...
-+                MinecraftServer.LOGGER.info("Successfully wrote new header to disk for regionfile " + this.file.getAbsolutePath());
++                LOGGER.info("Successfully wrote new header to disk for regionfile " + this.file.getAbsolutePath());
 +            } catch (IOException ex) {
-+                MinecraftServer.LOGGER.fatal("Failed to write new header to disk for regionfile " + this.file.getAbsolutePath(), ex);
++                LOGGER.fatal("Failed to write new header to disk for regionfile " + this.file.getAbsolutePath(), ex);
 +            }
 +        }
 +    }
@@ -421,7 +434,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
      public final java.util.concurrent.locks.ReentrantLock fileLock = new java.util.concurrent.locks.ReentrantLock(true); // Paper
  
      // Paper start - Cache chunk status
-@@ -65,11 +401,22 @@ public class RegionFile implements AutoCloseable {
+@@ -71,10 +407,21 @@ public class RegionFile implements AutoCloseable {
      // Paper end
  
      public RegionFile(File file, File file1, boolean flag) throws IOException {
@@ -433,23 +446,22 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +        // Tuinity end - add can recalc flag
 +    }
  
-     public RegionFile(java.nio.file.Path java_nio_file_path, java.nio.file.Path java_nio_file_path1, RegionFileCompression regionfilecompression, boolean flag) throws IOException {
+     public RegionFile(Path path, Path path1, RegionFileCompression regionfilecompression, boolean flag) throws IOException {
 +        // Tuinity start - add can recalc flag
-+        this(java_nio_file_path, java_nio_file_path1, regionfilecompression, flag, false);
++        this(path, path1, regionfilecompression, flag, false);
 +    }
-+    public RegionFile(java.nio.file.Path java_nio_file_path, java.nio.file.Path java_nio_file_path1, RegionFileCompression regionfilecompression, boolean flag, boolean canRecalcHeader) throws IOException {
-         this.g = ByteBuffer.allocateDirect(8192);
++    public RegionFile(Path path, Path path1, RegionFileCompression regionfilecompression, boolean flag, boolean canRecalcHeader) throws IOException {
 +        this.canRecalcHeader = canRecalcHeader;
-+        // Tuinity end - add can recalc flag
-         this.file = java_nio_file_path.toFile(); // Paper
++        // Tuinity start - add can recalc flag
+         this.g = ByteBuffer.allocateDirect(8192);
+         this.file = path.toFile(); // Paper
          initOversizedState(); // Paper
-         this.freeSectors = new RegionFileBitSet();
-@@ -97,14 +444,16 @@ public class RegionFile implements AutoCloseable {
-                     RegionFile.LOGGER.warn("Region file {} has truncated header: {}", java_nio_file_path, i);
+@@ -103,14 +450,16 @@ public class RegionFile implements AutoCloseable {
+                     RegionFile.LOGGER.warn("Region file {} has truncated header: {}", path, i);
                  }
  
--                long j = Files.size(java_nio_file_path);
-+                final long j = Files.size(java_nio_file_path); final long regionFileSize = j;
+-                long j = Files.size(path);
++                final long j = Files.size(path); final long regionFileSize = j; // Tuinity - recalculate header on header corruption
  
 +                boolean needsHeaderRecalc = false; // Tuinity - recalculate header on header corruption
 +                boolean hasBackedUp = false; // Tuinity - recalculate header on header corruption
@@ -465,7 +477,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
                          // Spigot start
                          if (j1 == 255) {
                              // We're maxed out, so we need to read the proper length from the section
-@@ -112,33 +461,105 @@ public class RegionFile implements AutoCloseable {
+@@ -118,33 +467,105 @@ public class RegionFile implements AutoCloseable {
                              this.dataFile.read(realLen, i1 * 4096);
                              j1 = (realLen.getInt(0) + 4) / 4096 + 1;
                          }
@@ -473,16 +485,16 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
                          // Spigot end
  
                          if (i1 < 2) {
-                             RegionFile.LOGGER.warn("Region file {} has invalid sector at index: {}; sector {} overlaps with header", java_nio_file_path, k, i1);
+                             RegionFile.LOGGER.warn("Region file {} has invalid sector at index: {}; sector {} overlaps with header", path, k, i1);
 -                            this.h.put(k, 0);
 -                        } else if (j1 == 0) {
 +                            //this.h.put(k, 0); // Tuinity - we catch this, but need it in the header for the summary change
 +                        } else if (j1 <= 0) { // Tuinity - <= 0, not ==
-                             RegionFile.LOGGER.warn("Region file {} has an invalid sector at index: {}; size has to be > 0", java_nio_file_path, k);
+                             RegionFile.LOGGER.warn("Region file {} has an invalid sector at index: {}; size has to be > 0", path, k);
 -                            this.h.put(k, 0);
 +                            //this.h.put(k, 0); // Tuinity - we catch this, but need it in the header for the summary change
                          } else if ((long) i1 * 4096L > j) {
-                             RegionFile.LOGGER.warn("Region file {} has an invalid sector at index: {}; sector {} is out of bounds", java_nio_file_path, k, i1);
+                             RegionFile.LOGGER.warn("Region file {} has an invalid sector at index: {}; sector {} is out of bounds", path, k, i1);
 -                            this.h.put(k, 0);
 +                            //this.h.put(k, 0); // Tuinity - we catch this, but need it in the header for the summary change
                          } else {
@@ -492,12 +504,12 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                        // Tuinity start - recalculate header on header corruption
 +                        if (offset < 2 || sectorLength <= 0 || ((long)offset * 4096L) > regionFileSize) {
 +                            if (canRecalcHeader) {
-+                                MinecraftServer.LOGGER.error("Detected invalid header for regionfile " + this.file.getAbsolutePath() + "! Recalculating header...");
++                                LOGGER.error("Detected invalid header for regionfile " + this.file.getAbsolutePath() + "! Recalculating header...");
 +                                needsHeaderRecalc = true;
 +                                break;
 +                            } else {
 +                                // location = chunkX | (chunkZ << 5);
-+                                MinecraftServer.LOGGER.fatal("Detected invalid header for regionfile " + this.file.getAbsolutePath() +
++                                LOGGER.fatal("Detected invalid header for regionfile " + this.file.getAbsolutePath() +
 +                                        "! Cannot recalculate, removing local chunk (" + (headerLocation & 31) + "," + (headerLocation >>> 5) + ") from header");
 +                                if (!hasBackedUp) {
 +                                    hasBackedUp = true;
@@ -510,11 +522,11 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                        }
 +                        boolean failedToAllocate = !this.freeSectors.tryAllocate(offset, sectorLength);
 +                        if (failedToAllocate) {
-+                            MinecraftServer.LOGGER.error("Overlapping allocation by local chunk (" + (headerLocation & 31) + "," + (headerLocation >>> 5) + ") in regionfile " + this.file.getAbsolutePath());
++                            LOGGER.error("Overlapping allocation by local chunk (" + (headerLocation & 31) + "," + (headerLocation >>> 5) + ") in regionfile " + this.file.getAbsolutePath());
                          }
 +                        if (failedToAllocate & !canRecalcHeader) {
 +                            // location = chunkX | (chunkZ << 5);
-+                            MinecraftServer.LOGGER.fatal("Detected invalid header for regionfile " + this.file.getAbsolutePath() +
++                            LOGGER.fatal("Detected invalid header for regionfile " + this.file.getAbsolutePath() +
 +                                    "! Cannot recalculate, removing local chunk (" + (headerLocation & 31) + "," + (headerLocation >>> 5) + ") from header");
 +                            if (!hasBackedUp) {
 +                                hasBackedUp = true;
@@ -532,7 +544,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
 +                // Tuinity start - recalculate header on header corruption
 +                // we move the recalc here so comparison to old header is correct when logging to console
 +                if (needsHeaderRecalc) { // true if header gave us overlapping allocations or had other issues
-+                    MinecraftServer.LOGGER.error("Recalculating regionfile " + this.file.getAbsolutePath() + ", header gave erroneous offsets & locations");
++                    LOGGER.error("Recalculating regionfile " + this.file.getAbsolutePath() + ", header gave erroneous offsets & locations");
 +                    this.recalculateHeader();
 +                }
 +                // Tuinity end
@@ -542,7 +554,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
      }
  
 +    private final java.nio.file.Path getOversizedChunkPath(ChunkCoordIntPair chunkcoordintpair) { return this.e(chunkcoordintpair); } // Tuinity - OBFHELPER
-     private java.nio.file.Path e(ChunkCoordIntPair chunkcoordintpair) {
+     private Path e(ChunkCoordIntPair chunkcoordintpair) {
 -        String s = "c." + chunkcoordintpair.x + "." + chunkcoordintpair.z + ".mcc";
 +        String s = "c." + chunkcoordintpair.x + "." + chunkcoordintpair.z + ".mcc"; // Tuinity - diff on change
  
@@ -577,7 +589,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
      @Nullable public synchronized DataInputStream getReadStream(ChunkCoordIntPair chunkCoordIntPair) throws IOException { return a(chunkCoordIntPair);} // Paper - OBFHELPER
      @Nullable
      public synchronized DataInputStream a(ChunkCoordIntPair chunkcoordintpair) throws IOException {
-@@ -163,6 +584,12 @@ public class RegionFile implements AutoCloseable {
+@@ -169,6 +590,12 @@ public class RegionFile implements AutoCloseable {
              ((java.nio.Buffer) bytebuffer).flip();
              if (bytebuffer.remaining() < 5) {
                  RegionFile.LOGGER.error("Chunk {} header is truncated: expected {} but read {}", chunkcoordintpair, l, bytebuffer.remaining());
@@ -590,7 +602,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
                  return null;
              } else {
                  int i1 = bytebuffer.getInt();
-@@ -170,6 +597,12 @@ public class RegionFile implements AutoCloseable {
+@@ -176,6 +603,12 @@ public class RegionFile implements AutoCloseable {
  
                  if (i1 == 0) {
                      RegionFile.LOGGER.warn("Chunk {} is allocated, but stream is missing", chunkcoordintpair);
@@ -603,7 +615,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
                      return null;
                  } else {
                      int j1 = i1 - 1;
-@@ -177,17 +610,49 @@ public class RegionFile implements AutoCloseable {
+@@ -183,17 +616,49 @@ public class RegionFile implements AutoCloseable {
                      if (a(b0)) {
                          if (j1 != 0) {
                              RegionFile.LOGGER.warn("Chunk has both internal and external streams");
@@ -655,7 +667,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
                      }
                  }
              }
-@@ -347,10 +812,15 @@ public class RegionFile implements AutoCloseable {
+@@ -353,10 +818,15 @@ public class RegionFile implements AutoCloseable {
      }
  
      private ByteBuffer b() {
@@ -672,7 +684,7 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
          ((java.nio.Buffer) bytebuffer).flip();
          return bytebuffer;
      }
-@@ -387,6 +857,7 @@ public class RegionFile implements AutoCloseable {
+@@ -393,6 +863,7 @@ public class RegionFile implements AutoCloseable {
          };
      }
  
@@ -680,10 +692,10 @@ index 1751fb6934d9242e475c1a44b2a4a1ade6987766..1ffa213a819f9d39488ca3599f77e771
      private void c() throws IOException {
          ((java.nio.Buffer) this.g).position(0);
          this.dataFile.write(this.g, 0L);
-diff --git a/src/main/java/net/minecraft/server/RegionFileBitSet.java b/src/main/java/net/minecraft/server/RegionFileBitSet.java
-index 1ebdf73cc927405bc536dc74a5118d2a086db0e5..cfa3ecb031b59ec677f016ecdea92d16436fb511 100644
---- a/src/main/java/net/minecraft/server/RegionFileBitSet.java
-+++ b/src/main/java/net/minecraft/server/RegionFileBitSet.java
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileBitSet.java b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileBitSet.java
+index c96eac4b0b519b2807153fa5a8ebf5a020a2b140..b5c8d9b17c2d5e229db5b48448709194d1fc04f8 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileBitSet.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileBitSet.java
 @@ -4,18 +4,42 @@ import java.util.BitSet;
  
  public class RegionFileBitSet {
@@ -728,11 +740,11 @@ index 1ebdf73cc927405bc536dc74a5118d2a086db0e5..cfa3ecb031b59ec677f016ecdea92d16
      public int a(int i) {
          int j = 0;
  
-diff --git a/src/main/java/net/minecraft/server/RegionFileCache.java b/src/main/java/net/minecraft/server/RegionFileCache.java
-index d64f7ad925e5f40740a58ceee0845ac2db5419f2..8b341c14e7082fc96a464f2386a3dedea31ec59c 100644
---- a/src/main/java/net/minecraft/server/RegionFileCache.java
-+++ b/src/main/java/net/minecraft/server/RegionFileCache.java
-@@ -15,12 +15,43 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCache.java b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCache.java
+index ebb0d6988f87013ea5d523ab4a1b31cb669ccc43..68cdbe184cd2e490595900d988c64f2011e47495 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCache.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCache.java
+@@ -22,12 +22,43 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
      public final Long2ObjectLinkedOpenHashMap<RegionFile> cache = new Long2ObjectLinkedOpenHashMap();
      private final File b;
      private final boolean c;
@@ -776,7 +788,7 @@ index d64f7ad925e5f40740a58ceee0845ac2db5419f2..8b341c14e7082fc96a464f2386a3dede
  
      // Paper start
      public synchronized RegionFile getRegionFileIfLoaded(ChunkCoordIntPair chunkcoordintpair) { // Paper - synchronize for async io
-@@ -54,9 +85,9 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -61,9 +92,9 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
                  this.b.mkdirs();
              }
  
@@ -788,7 +800,7 @@ index d64f7ad925e5f40740a58ceee0845ac2db5419f2..8b341c14e7082fc96a464f2386a3dede
  
              this.cache.putAndMoveToFirst(i, regionfile1);
              // Paper start
-@@ -145,6 +176,13 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -152,6 +183,13 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
              return null;
          }
          // CraftBukkit end
@@ -802,7 +814,7 @@ index d64f7ad925e5f40740a58ceee0845ac2db5419f2..8b341c14e7082fc96a464f2386a3dede
          try { // Paper
          DataInputStream datainputstream = regionfile.a(chunkcoordintpair);
          // Paper start
-@@ -160,6 +198,17 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -167,6 +205,17 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
          try {
              if (datainputstream != null) {
                  nbttagcompound = NBTCompressedStreamTools.a((DataInput) datainputstream);
@@ -820,10 +832,10 @@ index d64f7ad925e5f40740a58ceee0845ac2db5419f2..8b341c14e7082fc96a464f2386a3dede
                  return nbttagcompound;
              }
  
-diff --git a/src/main/java/net/minecraft/server/RegionFileCompression.java b/src/main/java/net/minecraft/server/RegionFileCompression.java
-index 3382d678e68e559b8d3cb9dced4fce24206cd38f..3b7894256dc8daa81be35f845cb5f8de02d7cb00 100644
---- a/src/main/java/net/minecraft/server/RegionFileCompression.java
-+++ b/src/main/java/net/minecraft/server/RegionFileCompression.java
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCompression.java b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCompression.java
+index 78728e064479e7056b7c69e306854330691faa12..d94640f8bdc71d708efca9a95e1986872e1a00d7 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCompression.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCompression.java
 @@ -13,7 +13,7 @@ import javax.annotation.Nullable;
  
  public class RegionFileCompression {
@@ -860,16 +872,3 @@ index 3382d678e68e559b8d3cb9dced4fce24206cd38f..3b7894256dc8daa81be35f845cb5f8de
      public InputStream a(InputStream inputstream) throws IOException {
          return (InputStream) this.f.wrap(inputstream);
      }
-diff --git a/src/main/java/net/minecraft/server/WorldUpgrader.java b/src/main/java/net/minecraft/server/WorldUpgrader.java
-index 5ccdc0b87b922724c3dd3085860c55d4959ca0b4..888dae2d5ee8a71e83dd24e5f3c6bc8513016f9d 100644
---- a/src/main/java/net/minecraft/server/WorldUpgrader.java
-+++ b/src/main/java/net/minecraft/server/WorldUpgrader.java
-@@ -218,7 +218,7 @@ public class WorldUpgrader {
-                     int l = Integer.parseInt(matcher.group(2)) << 5;
- 
-                     try {
--                        RegionFile regionfile = new RegionFile(file2, file1, true);
-+                        RegionFile regionfile = new RegionFile(file2, file1, true, true); // Tuinity - allow for chunk regionfiles to regen header
-                         Throwable throwable = null;
- 
-                         try {

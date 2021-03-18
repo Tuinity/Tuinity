@@ -7,56 +7,11 @@ Iterating over all of the navigators in the world is pretty expensive.
 Instead, only iterate over navigators in the current region that are
 eligible for repathing.
 
-diff --git a/src/main/java/net/minecraft/server/NavigationAbstract.java b/src/main/java/net/minecraft/server/NavigationAbstract.java
-index 1558c5f8256f50be6850f1d7f70eee3e8ec76496..6aec5098d346c1b7498fd8b800154cd31ce08a97 100644
---- a/src/main/java/net/minecraft/server/NavigationAbstract.java
-+++ b/src/main/java/net/minecraft/server/NavigationAbstract.java
-@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
- 
- public abstract class NavigationAbstract {
- 
--    protected final EntityInsentient a; public Entity getEntity() { return a; } // Paper - OBFHELPER
-+    protected final EntityInsentient a; public final EntityInsentient getEntity() { return a; } // Paper - OBFHELPER // Tuinity - match types
-     protected final World b;
-     @Nullable
-     protected PathEntity c; protected final PathEntity getCurrentPath() { return this.c; } // Paper - OBFHELPER
-@@ -21,7 +21,7 @@ public abstract class NavigationAbstract {
-     protected long j;
-     protected double k;
-     protected float l;
--    protected boolean m;
-+    protected boolean m; protected final boolean needsPathRecalculation() { return this.m; } // Tuinity - OBFHELPER
-     protected long n;
-     protected PathfinderAbstract o;
-     private BlockPosition p;
-@@ -30,6 +30,13 @@ public abstract class NavigationAbstract {
-     private final Pathfinder s; public Pathfinder getPathfinder() { return this.s; } // Paper - OBFHELPER
-     private boolean t;
- 
-+    // Tuinity start
-+    public boolean isViableForPathRecalculationChecking() {
-+        return !this.needsPathRecalculation() &&
-+                (this.c != null && !this.c.c() && this.c.e() != 0);
-+    }
-+    // Tuinity end
-+
-     public NavigationAbstract(EntityInsentient entityinsentient, World world) {
-         this.g = Vec3D.ORIGIN;
-         this.h = BaseBlockPosition.ZERO;
-@@ -393,7 +400,7 @@ public abstract class NavigationAbstract {
-     }
- 
-     public void b(BlockPosition blockposition) {
--        if (this.c != null && !this.c.c() && this.c.e() != 0) {
-+        if (this.c != null && !this.c.c() && this.c.e() != 0) { // Tuinity - diff on change - needed for isViableForPathRecalculationChecking()
-             PathPoint pathpoint = this.c.d();
-             Vec3D vec3d = new Vec3D(((double) pathpoint.a + this.a.locX()) / 2.0D, ((double) pathpoint.b + this.a.locY()) / 2.0D, ((double) pathpoint.c + this.a.locZ()) / 2.0D);
- 
-diff --git a/src/main/java/net/minecraft/server/PlayerChunkMap.java b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-index ff91f069e5f4a16c069c8a68d8cb55e9ad3627c8..58089180c730ce0bc423cdb20e86f11858543c25 100644
---- a/src/main/java/net/minecraft/server/PlayerChunkMap.java
-+++ b/src/main/java/net/minecraft/server/PlayerChunkMap.java
-@@ -299,17 +299,82 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+index e30995df572df6135e159d34cd7646fd08db4a5a..b48d419f82f0d9df1f8848d95066bad7e8e5629a 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
+@@ -353,17 +353,82 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
  
      public static final class DataRegionData implements com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionData {
  
@@ -139,7 +94,7 @@ index ff91f069e5f4a16c069c8a68d8cb55e9ad3627c8..58089180c730ce0bc423cdb20e86f118
          }
  
          @Override
-@@ -319,6 +384,15 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+@@ -373,6 +438,15 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
              final DataRegionSectionData sectionData = (DataRegionSectionData)section.sectionData;
              final DataRegionData oldRegionData = oldRegion == null ? null : (DataRegionData)oldRegion.regionData;
              final DataRegionData newRegionData = (DataRegionData)newRegion.regionData;
@@ -155,11 +110,11 @@ index ff91f069e5f4a16c069c8a68d8cb55e9ad3627c8..58089180c730ce0bc423cdb20e86f118
          }
      }
      // Tuiniy end
-diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index ff9cbb830779b54af3fd3964d559b0d88376681d..c6d2ab318d711072507ce3667d07a9cdeb0d0fbe 100644
---- a/src/main/java/net/minecraft/server/WorldServer.java
-+++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -970,6 +970,15 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
+index 6ce29205ba4480b19912a7acd393c4198d6a9e35..4ffe6c1e791f1a8531525bc053b30629fcc30e82 100644
+--- a/src/main/java/net/minecraft/server/level/WorldServer.java
++++ b/src/main/java/net/minecraft/server/level/WorldServer.java
+@@ -1083,6 +1083,15 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                  gameprofilerfiller.enter("checkDespawn");
                  if (!entity.dead) {
                      entity.checkDespawn();
@@ -175,7 +130,7 @@ index ff9cbb830779b54af3fd3964d559b0d88376681d..c6d2ab318d711072507ce3667d07a9cd
                  }
  
                  gameprofilerfiller.exit();
-@@ -992,7 +1001,14 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1105,7 +1114,14 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                      this.removeEntityFromChunk(entity);
                      this.entitiesById.remove(entity.getId()); // Tuinity
                      this.unregisterEntity(entity);
@@ -190,7 +145,7 @@ index ff9cbb830779b54af3fd3964d559b0d88376681d..c6d2ab318d711072507ce3667d07a9cd
  
                  gameprofilerfiller.exit();
              }
-@@ -1403,6 +1419,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1516,6 +1532,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              int i = MathHelper.floor(entity.locX() / 16.0D);
              int j =  Math.min(15, Math.max(0, MathHelper.floor(entity.locY() / 16.0D))); // Paper - stay consistent with chunk add/remove behavior
              int k = MathHelper.floor(entity.locZ() / 16.0D);
@@ -203,7 +158,7 @@ index ff9cbb830779b54af3fd3964d559b0d88376681d..c6d2ab318d711072507ce3667d07a9cd
  
              if (!entity.inChunk || entity.chunkX != i || entity.chunkY != j || entity.chunkZ != k) {
                  // Paper start - remove entity if its in a chunk more correctly.
-@@ -1412,6 +1434,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1525,6 +1547,12 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                  }
                  // Paper end
  
@@ -216,7 +171,7 @@ index ff9cbb830779b54af3fd3964d559b0d88376681d..c6d2ab318d711072507ce3667d07a9cd
                  if (entity.inChunk && this.isChunkLoaded(entity.chunkX, entity.chunkZ)) {
                      this.getChunkAt(entity.chunkX, entity.chunkZ).a(entity, entity.chunkY);
                  }
-@@ -1425,6 +1453,11 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -1538,6 +1566,11 @@ public class WorldServer extends World implements GeneratorAccessSeed {
                  } else {
                      this.getChunkAt(i, k).a(entity);
                  }
@@ -228,7 +183,7 @@ index ff9cbb830779b54af3fd3964d559b0d88376681d..c6d2ab318d711072507ce3667d07a9cd
              }
  
              this.getMethodProfiler().exit();
-@@ -1887,9 +1920,64 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -2000,9 +2033,64 @@ public class WorldServer extends World implements GeneratorAccessSeed {
              // Tuinity end
          }
          new com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent(entity.getBukkitEntity()).callEvent(); // Paper - fire while valid
@@ -293,7 +248,7 @@ index ff9cbb830779b54af3fd3964d559b0d88376681d..c6d2ab318d711072507ce3667d07a9cd
      private void registerEntity(Entity entity) {
          org.spigotmc.AsyncCatcher.catchOp("entity register"); // Spigot
          // Paper start - don't double enqueue entity registration
-@@ -2070,16 +2158,26 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -2183,16 +2271,26 @@ public class WorldServer extends World implements GeneratorAccessSeed {
          VoxelShape voxelshape1 = iblockdata1.getCollisionShape(this, blockposition);
  
          if (VoxelShapes.c(voxelshape, voxelshape1, OperatorBoolean.NOT_SAME)) {
@@ -322,3 +277,48 @@ index ff9cbb830779b54af3fd3964d559b0d88376681d..c6d2ab318d711072507ce3667d07a9cd
                  } catch (java.util.ConcurrentModificationException ex) {
                      // This can happen because the pathfinder update below may trigger a chunk load, which in turn may cause more navigators to register
                      // In this case we just run the update again across all the iterators as the chunk will then be loaded
+diff --git a/src/main/java/net/minecraft/world/entity/ai/navigation/NavigationAbstract.java b/src/main/java/net/minecraft/world/entity/ai/navigation/NavigationAbstract.java
+index e6ba9b7fbf08ae0dd083a1ebee8eb7ed8a937751..148bdbc2cffb002d8b6dd05e70854ab503804949 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/navigation/NavigationAbstract.java
++++ b/src/main/java/net/minecraft/world/entity/ai/navigation/NavigationAbstract.java
+@@ -30,7 +30,7 @@ import net.minecraft.world.phys.Vec3D;
+ 
+ public abstract class NavigationAbstract {
+ 
+-    protected final EntityInsentient a; public Entity getEntity() { return a; } // Paper - OBFHELPER
++    protected final EntityInsentient a; public final EntityInsentient getEntity() { return a; } // Paper - OBFHELPER // Tuinity - match types
+     protected final World b;
+     @Nullable
+     protected PathEntity c; protected final PathEntity getCurrentPath() { return this.c; } // Paper - OBFHELPER
+@@ -43,7 +43,7 @@ public abstract class NavigationAbstract {
+     protected long j;
+     protected double k;
+     protected float l;
+-    protected boolean m;
++    protected boolean m; protected final boolean needsPathRecalculation() { return this.m; } // Tuinity - OBFHELPER
+     protected long n;
+     protected PathfinderAbstract o;
+     private BlockPosition p;
+@@ -52,6 +52,13 @@ public abstract class NavigationAbstract {
+     private final Pathfinder s; public Pathfinder getPathfinder() { return this.s; } // Paper - OBFHELPER
+     private boolean t;
+ 
++    // Tuinity start
++    public boolean isViableForPathRecalculationChecking() {
++        return !this.needsPathRecalculation() &&
++                (this.c != null && !this.c.c() && this.c.e() != 0);
++    }
++    // Tuinity end
++
+     public NavigationAbstract(EntityInsentient entityinsentient, World world) {
+         this.g = Vec3D.ORIGIN;
+         this.h = BaseBlockPosition.ZERO;
+@@ -415,7 +422,7 @@ public abstract class NavigationAbstract {
+     }
+ 
+     public void b(BlockPosition blockposition) {
+-        if (this.c != null && !this.c.c() && this.c.e() != 0) {
++        if (this.c != null && !this.c.c() && this.c.e() != 0) { // Tuinity - diff on change - needed for isViableForPathRecalculationChecking()
+             PathPoint pathpoint = this.c.d();
+             Vec3D vec3d = new Vec3D(((double) pathpoint.a + this.a.locX()) / 2.0D, ((double) pathpoint.b + this.a.locY()) / 2.0D, ((double) pathpoint.c + this.a.locZ()) / 2.0D);
+ 

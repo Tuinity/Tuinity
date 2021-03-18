@@ -10,11 +10,62 @@ Soften some of the block gets by passing the chunk to
 the biome methods, removing the need to invoke a chunk
 lookup.
 
-diff --git a/src/main/java/net/minecraft/server/BiomeBase.java b/src/main/java/net/minecraft/server/BiomeBase.java
-index 0854ac9ef586b378420d9899f3afd2755e6f9f33..3fc101552e3c229076c91a1cfa45206b4cc7a04c 100644
---- a/src/main/java/net/minecraft/server/BiomeBase.java
-+++ b/src/main/java/net/minecraft/server/BiomeBase.java
-@@ -145,14 +145,33 @@ public final class BiomeBase {
+diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
+index b4a22a1bb8001437d0eae48d7284eca0a1b30ad4..943f72ed96549e1a495af984670ed3efe8707f6a 100644
+--- a/src/main/java/net/minecraft/server/level/WorldServer.java
++++ b/src/main/java/net/minecraft/server/level/WorldServer.java
+@@ -1196,6 +1196,9 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+     private final BlockPosition.MutableBlockPosition chunkTickMutablePosition = new BlockPosition.MutableBlockPosition();
+     private final com.destroystokyo.paper.util.math.ThreadUnsafeRandom randomTickRandom = new com.destroystokyo.paper.util.math.ThreadUnsafeRandom();
+     // Paper end
++    // Tuinity start - optimise chunk ice snow ticking
++    private final BiomeBase[] biomeBaseCache = new BiomeBase[1];
++    // Tuinity end - optimise chunk ice snow ticking
+ 
+     public void a(Chunk chunk, int i) { final int randomTickSpeed = i; // Paper
+         ChunkCoordIntPair chunkcoordintpair = chunk.getPos();
+@@ -1233,28 +1236,32 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+         gameprofilerfiller.exitEnter("iceandsnow");
+         if (!this.paperConfig.disableIceAndSnow && this.randomTickRandom.nextInt(16) == 0) { // Paper - Disable ice and snow // Paper - optimise random ticking
+             // Paper start - optimise chunk ticking
++            // Tuinity start - optimise chunk ice snow ticking
++            BiomeBase[] biomeCache = this.biomeBaseCache;
++            biomeCache[0] = null;
++            // Tuinity start - optimise chunk ice snow ticking
+             this.getRandomBlockPosition(j, 0, k, 15, blockposition);
+             int normalY = chunk.getHighestBlockY(HeightMap.Type.MOTION_BLOCKING, blockposition.getX() & 15, blockposition.getZ() & 15);
+             int downY = normalY - 1;
+             blockposition.setY(normalY);
+             // Paper end
+-            BiomeBase biomebase = this.getBiome(blockposition);
++            //BiomeBase biomebase = this.getBiome(blockposition); // Tuinity - lazily-get biome
+ 
+             // Paper start - optimise chunk ticking
+             blockposition.setY(downY);
+-            if (biomebase.a(this, blockposition)) {
++            if (BiomeBase.canTurnWaterIntoIce(this, blockposition, true, chunk, biomeCache)) { // Tuinity - add chunk parameter, avoid biome lookup
+                 org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(this, blockposition, Blocks.ICE.getBlockData(), null); // CraftBukkit
+                 // Paper end
+             }
+ 
+             blockposition.setY(normalY); // Paper
+-            if (flag && biomebase.b(this, blockposition)) {
++            if (flag && BiomeBase.canTurnAirIntoSnow(this, blockposition, chunk, biomeCache)) {
+                 org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(this, blockposition, Blocks.SNOW.getBlockData(), null); // CraftBukkit
+             }
+ 
+             // Paper start - optimise chunk ticking
+             blockposition.setY(downY);
+-            if (flag && this.getBiome(blockposition).c() == BiomeBase.Precipitation.RAIN) {
++            if (flag && chunk.getType(blockposition).getBlock() instanceof net.minecraft.world.level.block.BlockCauldron && this.getBiome(blockposition).c() == BiomeBase.Precipitation.RAIN) { // Tuinity - only cauldron uses that method, and it's not likely to hit. So, avoid the expensive biome lookup and replace it with a block lookup TODO check on update for overrides
+                 chunk.getType(blockposition).getBlock().c((World) this, blockposition);
+                 // Paper end
+             }
+diff --git a/src/main/java/net/minecraft/world/level/biome/BiomeBase.java b/src/main/java/net/minecraft/world/level/biome/BiomeBase.java
+index 15096a9c2719b8b4c099f62d0a1c808e56b63a8e..9bbd175f7e20591bbefdbddcb5e998e7098c5adb 100644
+--- a/src/main/java/net/minecraft/world/level/biome/BiomeBase.java
++++ b/src/main/java/net/minecraft/world/level/biome/BiomeBase.java
+@@ -175,14 +175,33 @@ public final class BiomeBase {
      }
  
      public boolean a(IWorldReader iworldreader, BlockPosition blockposition, boolean flag) {
@@ -51,7 +102,7 @@ index 0854ac9ef586b378420d9899f3afd2755e6f9f33..3fc101552e3c229076c91a1cfa45206b
                      if (!flag) {
                          return true;
                      }
-@@ -170,13 +189,32 @@ public final class BiomeBase {
+@@ -200,13 +219,32 @@ public final class BiomeBase {
      }
  
      public boolean b(IWorldReader iworldreader, BlockPosition blockposition) {
@@ -85,55 +136,4 @@ index 0854ac9ef586b378420d9899f3afd2755e6f9f33..3fc101552e3c229076c91a1cfa45206b
 +                    // Tuinity end - moved down from top, only run when we actually encounter water
                      return true;
                  }
-             }
-diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index 658d74b8ab1698fa2832facc6d8e9678af958c85..a77fceac7c9e79a6bac05becc21bcb6bf2a1a7c7 100644
---- a/src/main/java/net/minecraft/server/WorldServer.java
-+++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -1083,6 +1083,9 @@ public class WorldServer extends World implements GeneratorAccessSeed {
-     private final BlockPosition.MutableBlockPosition chunkTickMutablePosition = new BlockPosition.MutableBlockPosition();
-     private final com.destroystokyo.paper.util.math.ThreadUnsafeRandom randomTickRandom = new com.destroystokyo.paper.util.math.ThreadUnsafeRandom();
-     // Paper end
-+    // Tuinity start - optimise chunk ice snow ticking
-+    private final BiomeBase[] biomeBaseCache = new BiomeBase[1];
-+    // Tuinity end - optimise chunk ice snow ticking
- 
-     public void a(Chunk chunk, int i) { final int randomTickSpeed = i; // Paper
-         ChunkCoordIntPair chunkcoordintpair = chunk.getPos();
-@@ -1120,28 +1123,32 @@ public class WorldServer extends World implements GeneratorAccessSeed {
-         gameprofilerfiller.exitEnter("iceandsnow");
-         if (!this.paperConfig.disableIceAndSnow && this.randomTickRandom.nextInt(16) == 0) { // Paper - Disable ice and snow // Paper - optimise random ticking
-             // Paper start - optimise chunk ticking
-+            // Tuinity start - optimise chunk ice snow ticking
-+            BiomeBase[] biomeCache = this.biomeBaseCache;
-+            biomeCache[0] = null;
-+            // Tuinity start - optimise chunk ice snow ticking
-             this.getRandomBlockPosition(j, 0, k, 15, blockposition);
-             int normalY = chunk.getHighestBlockY(HeightMap.Type.MOTION_BLOCKING, blockposition.getX() & 15, blockposition.getZ() & 15);
-             int downY = normalY - 1;
-             blockposition.setY(normalY);
-             // Paper end
--            BiomeBase biomebase = this.getBiome(blockposition);
-+            //BiomeBase biomebase = this.getBiome(blockposition); // Tuinity - lazily-get biome
- 
-             // Paper start - optimise chunk ticking
-             blockposition.setY(downY);
--            if (biomebase.a(this, blockposition)) {
-+            if (BiomeBase.canTurnWaterIntoIce(this, blockposition, true, chunk, biomeCache)) { // Tuinity - add chunk parameter, avoid biome lookup
-                 org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(this, blockposition, Blocks.ICE.getBlockData(), null); // CraftBukkit
-                 // Paper end
-             }
- 
-             blockposition.setY(normalY); // Paper
--            if (flag && biomebase.b(this, blockposition)) {
-+            if (flag && BiomeBase.canTurnAirIntoSnow(this, blockposition, chunk, biomeCache)) {
-                 org.bukkit.craftbukkit.event.CraftEventFactory.handleBlockFormEvent(this, blockposition, Blocks.SNOW.getBlockData(), null); // CraftBukkit
-             }
- 
-             // Paper start - optimise chunk ticking
-             blockposition.setY(downY);
--            if (flag && this.getBiome(blockposition).c() == BiomeBase.Precipitation.RAIN) {
-+            if (flag && chunk.getType(blockposition).getBlock() instanceof BlockCauldron && this.getBiome(blockposition).c() == BiomeBase.Precipitation.RAIN) { // Tuinity - only cauldron uses that method, and it's not likely to hit. So, avoid the expensive biome lookup and replace it with a block lookup TODO check on update for overrides
-                 chunk.getType(blockposition).getBlock().c((World) this, blockposition);
-                 // Paper end
              }

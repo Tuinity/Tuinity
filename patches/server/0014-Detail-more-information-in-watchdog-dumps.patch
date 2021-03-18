@@ -6,11 +6,123 @@ Subject: [PATCH] Detail more information in watchdog dumps
 - Dump position, world, velocity, and uuid for currently ticking entities
 - Dump player name, player uuid, position, and world for packet handling
 
-diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 6eee9c858dffad0bb0ce06d850deec0725789c9f..32dadb91a30b67202a463cf5c9abc998efecad80 100644
---- a/src/main/java/net/minecraft/server/Entity.java
-+++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -599,7 +599,39 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+diff --git a/src/main/java/net/minecraft/network/NetworkManager.java b/src/main/java/net/minecraft/network/NetworkManager.java
+index f86f430598026a3a7e27fb8d40cfc5fe7b9b845d..7a61e5d21486a9e62cf5cfa4250e859d60385f0e 100644
+--- a/src/main/java/net/minecraft/network/NetworkManager.java
++++ b/src/main/java/net/minecraft/network/NetworkManager.java
+@@ -405,7 +405,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+         }
+ 
+         if (this.packetListener instanceof PlayerConnection) {
++            // Tuinity start - detailed watchdog information
++            net.minecraft.network.protocol.PlayerConnectionUtils.packetProcessing.push(this.packetListener);
++            try {
++            // Tuinity end - detailed watchdog information
+             ((PlayerConnection) this.packetListener).tick();
++            } finally { // Tuinity start - detailed watchdog information
++                net.minecraft.network.protocol.PlayerConnectionUtils.packetProcessing.pop();
++            } // Tuinity start - detailed watchdog information
+         }
+ 
+         if (this.channel != null) {
+diff --git a/src/main/java/net/minecraft/network/protocol/PlayerConnectionUtils.java b/src/main/java/net/minecraft/network/protocol/PlayerConnectionUtils.java
+index 67d8fe8ad036a9252c774bb6a914c8ec79981876..71a000edfab27c9965d1929af78582821d5af97a 100644
+--- a/src/main/java/net/minecraft/network/protocol/PlayerConnectionUtils.java
++++ b/src/main/java/net/minecraft/network/protocol/PlayerConnectionUtils.java
+@@ -25,10 +25,30 @@ public class PlayerConnectionUtils {
+         ensureMainThread(packet, t0, (IAsyncTaskHandler) worldserver.getMinecraftServer());
+     }
+ 
++    // Tuinity start - detailed watchdog information
++    public static final java.util.concurrent.ConcurrentLinkedDeque<PacketListener> packetProcessing = new java.util.concurrent.ConcurrentLinkedDeque<>();
++    static final java.util.concurrent.atomic.AtomicLong totalMainThreadPacketsProcessed = new java.util.concurrent.atomic.AtomicLong();
++
++    public static long getTotalProcessedPackets() {
++        return totalMainThreadPacketsProcessed.get();
++    }
++
++    public static java.util.List<PacketListener> getCurrentPacketProcessors() {
++        java.util.List<PacketListener> ret = new java.util.ArrayList<>(4);
++        for (PacketListener listener : packetProcessing) {
++            ret.add(listener);
++        }
++
++        return ret;
++    }
++    // Tuinity end - detailed watchdog information
++
+     public static <T extends PacketListener> void ensureMainThread(Packet<T> packet, T t0, IAsyncTaskHandler<?> iasynctaskhandler) throws CancelledPacketHandleException {
+         if (!iasynctaskhandler.isMainThread()) {
+             Timing timing = MinecraftTimings.getPacketTiming(packet); // Paper - timings
+             iasynctaskhandler.execute(() -> {
++                packetProcessing.push(t0); // Tuinity - detailed watchdog information
++                try { // Tuinity - detailed watchdog information
+                 if (MinecraftServer.getServer().hasStopped() || (t0 instanceof PlayerConnection && ((PlayerConnection) t0).processedDisconnect)) return; // CraftBukkit, MC-142590
+                 if (t0.a().isConnected()) {
+                     try (Timing ignored = timing.startTiming()) { // Paper - timings
+@@ -52,6 +72,12 @@ public class PlayerConnectionUtils {
+                 } else {
+                     PlayerConnectionUtils.LOGGER.debug("Ignoring packet due to disconnection: " + packet);
+                 }
++                // Tuinity start - detailed watchdog information
++                } finally {
++                    totalMainThreadPacketsProcessed.getAndIncrement();
++                    packetProcessing.pop();
++                }
++                // Tuinity end - detailed watchdog information
+ 
+             });
+             throw CancelledPacketHandleException.INSTANCE;
+diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
+index d7399bc4a4c8ec0712dbe8b909bf5ef1fafa75db..2dc399e7aab930b062d7fdac354de7b7188f2369 100644
+--- a/src/main/java/net/minecraft/server/level/WorldServer.java
++++ b/src/main/java/net/minecraft/server/level/WorldServer.java
+@@ -1014,7 +1014,26 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+ 
+     }
+ 
++    // Tuinity start - log detailed entity tick information
++    // TODO replace with varhandle
++    static final java.util.concurrent.atomic.AtomicReference<Entity> currentlyTickingEntity = new java.util.concurrent.atomic.AtomicReference<>();
++
++    public static List<Entity> getCurrentlyTickingEntities() {
++        Entity ticking = currentlyTickingEntity.get();
++        List<Entity> ret = java.util.Arrays.asList(ticking == null ? new Entity[0] : new Entity[] { ticking });
++
++        return ret;
++    }
++    // Tuinity end - log detailed entity tick information
++
+     public void entityJoinedWorld(Entity entity) {
++        // Tuinity start - log detailed entity tick information
++        com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot tick an entity off-main");
++        try {
++            if (currentlyTickingEntity.get() == null) {
++                currentlyTickingEntity.lazySet(entity);
++            }
++            // Tuinity end - log detailed entity tick information
+         if (!(entity instanceof EntityHuman) && !this.getChunkProvider().a(entity)) {
+             this.chunkCheck(entity);
+         } else {
+@@ -1067,6 +1086,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+             //} finally { timer.stopTiming(); } // Paper - timings - move up
+ 
+         }
++        // Tuinity start - log detailed entity tick information
++        } finally {
++            if (currentlyTickingEntity.get() == entity) {
++                currentlyTickingEntity.lazySet(null);
++            }
++        }
++        // Tuinity end - log detailed entity tick information
+     }
+ 
+     public void a(Entity entity, Entity entity1) {
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index 6a3e859eef2878d9e203bba7930e52d7513d96e8..3912a524c6ada9c3b6d4abddc1578368c5391bee 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -691,7 +691,39 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, ne
          return this.onGround;
      }
  
@@ -50,7 +162,7 @@ index 6eee9c858dffad0bb0ce06d850deec0725789c9f..32dadb91a30b67202a463cf5c9abc998
          if (this.noclip) {
              this.a(this.getBoundingBox().c(vec3d));
              this.recalcPosition();
-@@ -743,6 +775,13 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -835,6 +867,13 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, ne
  
              this.world.getMethodProfiler().exit();
          }
@@ -64,7 +176,7 @@ index 6eee9c858dffad0bb0ce06d850deec0725789c9f..32dadb91a30b67202a463cf5c9abc998
      }
  
      protected BlockPosition ap() {
-@@ -3316,12 +3355,16 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -3408,12 +3447,16 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, ne
          return this.locBlock;
      }
  
@@ -81,7 +193,7 @@ index 6eee9c858dffad0bb0ce06d850deec0725789c9f..32dadb91a30b67202a463cf5c9abc998
      }
  
      public void setMot(double d0, double d1, double d2) {
-@@ -3376,7 +3419,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
+@@ -3468,7 +3511,9 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, ne
          }
          // Paper end
          if (this.loc.x != d0 || this.loc.y != d1 || this.loc.z != d2) {
@@ -91,120 +203,8 @@ index 6eee9c858dffad0bb0ce06d850deec0725789c9f..32dadb91a30b67202a463cf5c9abc998
              int i = MathHelper.floor(d0);
              int j = MathHelper.floor(d1);
              int k = MathHelper.floor(d2);
-diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index fb1e3c705b8abee13695762cdfd0e9f1bfdb5ad8..ed9c06c91a3ee77dad6e616cf28a34a4177ce6e3 100644
---- a/src/main/java/net/minecraft/server/NetworkManager.java
-+++ b/src/main/java/net/minecraft/server/NetworkManager.java
-@@ -387,7 +387,14 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
-         }
- 
-         if (this.packetListener instanceof PlayerConnection) {
-+            // Tuinity start - detailed watchdog information
-+            PlayerConnectionUtils.packetProcessing.push(this.packetListener);
-+            try {
-+            // Tuinity end - detailed watchdog information
-             ((PlayerConnection) this.packetListener).tick();
-+            } finally { // Tuinity start - detailed watchdog information
-+                PlayerConnectionUtils.packetProcessing.pop();
-+            } // Tuinity start - detailed watchdog information
-         }
- 
-         if (this.channel != null) {
-diff --git a/src/main/java/net/minecraft/server/PlayerConnectionUtils.java b/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
-index 8c7080777b370f97e1291dfedde5b419290f39cc..8112b01f15c33f50fe5ec9aebf75d8091d440994 100644
---- a/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
-+++ b/src/main/java/net/minecraft/server/PlayerConnectionUtils.java
-@@ -13,10 +13,30 @@ public class PlayerConnectionUtils {
-         ensureMainThread(packet, t0, (IAsyncTaskHandler) worldserver.getMinecraftServer());
-     }
- 
-+    // Tuinity start - detailed watchdog information
-+    static final java.util.concurrent.ConcurrentLinkedDeque<PacketListener> packetProcessing = new java.util.concurrent.ConcurrentLinkedDeque<>();
-+    static final java.util.concurrent.atomic.AtomicLong totalMainThreadPacketsProcessed = new java.util.concurrent.atomic.AtomicLong();
-+
-+    public static long getTotalProcessedPackets() {
-+        return totalMainThreadPacketsProcessed.get();
-+    }
-+
-+    public static java.util.List<PacketListener> getCurrentPacketProcessors() {
-+        java.util.List<PacketListener> ret = new java.util.ArrayList<>(4);
-+        for (PacketListener listener : packetProcessing) {
-+            ret.add(listener);
-+        }
-+
-+        return ret;
-+    }
-+    // Tuinity end - detailed watchdog information
-+
-     public static <T extends PacketListener> void ensureMainThread(Packet<T> packet, T t0, IAsyncTaskHandler<?> iasynctaskhandler) throws CancelledPacketHandleException {
-         if (!iasynctaskhandler.isMainThread()) {
-             Timing timing = MinecraftTimings.getPacketTiming(packet); // Paper - timings
-             iasynctaskhandler.execute(() -> {
-+                packetProcessing.push(t0); // Tuinity - detailed watchdog information
-+                try { // Tuinity - detailed watchdog information
-                 if (MinecraftServer.getServer().hasStopped() || (t0 instanceof PlayerConnection && ((PlayerConnection) t0).processedDisconnect)) return; // CraftBukkit, MC-142590
-                 if (t0.a().isConnected()) {
-                     try (Timing ignored = timing.startTiming()) { // Paper - timings
-@@ -40,6 +60,12 @@ public class PlayerConnectionUtils {
-                 } else {
-                     PlayerConnectionUtils.LOGGER.debug("Ignoring packet due to disconnection: " + packet);
-                 }
-+                // Tuinity start - detailed watchdog information
-+                } finally {
-+                    totalMainThreadPacketsProcessed.getAndIncrement();
-+                    packetProcessing.pop();
-+                }
-+                // Tuinity end - detailed watchdog information
- 
-             });
-             throw CancelledPacketHandleException.INSTANCE;
-diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
-index e285038154d83cbf0d7c0b6b8a247c11b9e20119..949ed1cbb19317844424975c9e976148cfa2614d 100644
---- a/src/main/java/net/minecraft/server/WorldServer.java
-+++ b/src/main/java/net/minecraft/server/WorldServer.java
-@@ -901,7 +901,26 @@ public class WorldServer extends World implements GeneratorAccessSeed {
- 
-     }
- 
-+    // Tuinity start - log detailed entity tick information
-+    // TODO replace with varhandle
-+    static final java.util.concurrent.atomic.AtomicReference<Entity> currentlyTickingEntity = new java.util.concurrent.atomic.AtomicReference<>();
-+
-+    public static List<Entity> getCurrentlyTickingEntities() {
-+        Entity ticking = currentlyTickingEntity.get();
-+        List<Entity> ret = java.util.Arrays.asList(ticking == null ? new Entity[0] : new Entity[] { ticking });
-+
-+        return ret;
-+    }
-+    // Tuinity end - log detailed entity tick information
-+
-     public void entityJoinedWorld(Entity entity) {
-+        // Tuinity start - log detailed entity tick information
-+        com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot tick an entity off-main");
-+        try {
-+            if (currentlyTickingEntity.get() == null) {
-+                currentlyTickingEntity.lazySet(entity);
-+            }
-+            // Tuinity end - log detailed entity tick information
-         if (!(entity instanceof EntityHuman) && !this.getChunkProvider().a(entity)) {
-             this.chunkCheck(entity);
-         } else {
-@@ -954,6 +973,13 @@ public class WorldServer extends World implements GeneratorAccessSeed {
-             //} finally { timer.stopTiming(); } // Paper - timings - move up
- 
-         }
-+        // Tuinity start - log detailed entity tick information
-+        } finally {
-+            if (currentlyTickingEntity.get() == entity) {
-+                currentlyTickingEntity.lazySet(null);
-+            }
-+        }
-+        // Tuinity end - log detailed entity tick information
-     }
- 
-     public void a(Entity entity, Entity entity1) {
 diff --git a/src/main/java/org/spigotmc/WatchdogThread.java b/src/main/java/org/spigotmc/WatchdogThread.java
-index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..089ddda8892c3660c5dcb62d0fd56544857a2eba 100644
+index 30a665c090f419985e1d0f49df9e8d110c83943a..00c728704a1a7aa8b3a2e7679eaa0d2f604da087 100644
 --- a/src/main/java/org/spigotmc/WatchdogThread.java
 +++ b/src/main/java/org/spigotmc/WatchdogThread.java
 @@ -65,6 +65,78 @@ public class WatchdogThread extends Thread
@@ -212,12 +212,12 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..089ddda8892c3660c5dcb62d0fd56544
      }
  
 +    // Tuinity start - log detailed tick information
-+    private void dumpEntity(net.minecraft.server.Entity entity) {
++    private void dumpEntity(net.minecraft.world.entity.Entity entity) {
 +        Logger log = Bukkit.getServer().getLogger();
 +        double posX, posY, posZ;
-+        net.minecraft.server.Vec3D mot;
++        net.minecraft.world.phys.Vec3D mot;
 +        double moveStartX, moveStartY, moveStartZ;
-+        net.minecraft.server.Vec3D moveVec;
++        net.minecraft.world.phys.Vec3D moveVec;
 +        synchronized (entity.posLock) {
 +            posX = entity.locX();
 +            posY = entity.locY();
@@ -231,7 +231,7 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..089ddda8892c3660c5dcb62d0fd56544
 +
 +        String entityType = entity.getMinecraftKey().toString();
 +        java.util.UUID entityUUID = entity.getUniqueID();
-+        net.minecraft.server.World world = entity.getWorld();
++        net.minecraft.world.level.World world = entity.getWorld();
 +
 +        log.log(Level.SEVERE, "Ticking entity: " + entityType + ", entity class: " + entity.getClass().getName());
 +        log.log(Level.SEVERE, "Entity status: dead: " + entity.dead + ", valid: " + entity.valid + ", alive: " + entity.isAlive() + ", is passenger: " + entity.isPassenger());
@@ -250,9 +250,9 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..089ddda8892c3660c5dcb62d0fd56544
 +        Logger log = Bukkit.getServer().getLogger();
 +
 +        // ticking entities
-+        for (net.minecraft.server.Entity entity : net.minecraft.server.WorldServer.getCurrentlyTickingEntities()) {
++        for (net.minecraft.world.entity.Entity entity : net.minecraft.server.level.WorldServer.getCurrentlyTickingEntities()) {
 +            this.dumpEntity(entity);
-+            net.minecraft.server.Entity vehicle = entity.getVehicle();
++            net.minecraft.world.entity.Entity vehicle = entity.getVehicle();
 +            if (vehicle != null) {
 +                log.log(Level.SEVERE, "Detailing vehicle for above entity:");
 +                this.dumpEntity(vehicle);
@@ -260,16 +260,16 @@ index ae8903ee1decd22e2ad6138f29fbc757b807e0a7..089ddda8892c3660c5dcb62d0fd56544
 +        }
 +
 +        // packet processors
-+        for (net.minecraft.server.PacketListener packetListener : net.minecraft.server.PlayerConnectionUtils.getCurrentPacketProcessors()) {
-+            if (packetListener instanceof net.minecraft.server.PlayerConnection) {
-+                net.minecraft.server.EntityPlayer player = ((net.minecraft.server.PlayerConnection)packetListener).player;
-+                long totalPackets = net.minecraft.server.PlayerConnectionUtils.getTotalProcessedPackets();
++        for (net.minecraft.network.PacketListener packetListener : net.minecraft.network.protocol.PlayerConnectionUtils.getCurrentPacketProcessors()) {
++            if (packetListener instanceof net.minecraft.server.network.PlayerConnection) {
++                net.minecraft.server.level.EntityPlayer player = ((net.minecraft.server.network.PlayerConnection)packetListener).player;
++                long totalPackets = net.minecraft.network.protocol.PlayerConnectionUtils.getTotalProcessedPackets();
 +                if (player == null) {
 +                    log.log(Level.SEVERE, "Handling packet for player connection or ticking player connection (null player): " + packetListener);
 +                    log.log(Level.SEVERE, "Total packets processed on the main thread for all players: " + totalPackets);
 +                } else {
 +                    this.dumpEntity(player);
-+                    net.minecraft.server.Entity vehicle = player.getVehicle();
++                    net.minecraft.world.entity.Entity vehicle = player.getVehicle();
 +                    if (vehicle != null) {
 +                        log.log(Level.SEVERE, "Detailing vehicle for above entity:");
 +                        this.dumpEntity(vehicle);

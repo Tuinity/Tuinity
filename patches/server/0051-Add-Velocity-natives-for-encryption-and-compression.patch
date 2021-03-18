@@ -6,7 +6,7 @@ Subject: [PATCH] Add Velocity natives for encryption and compression
 This patch is licensed under the MIT license. See /licenses/MIT.md.
 
 diff --git a/pom.xml b/pom.xml
-index 650c6b91440d4ce1c5f82517a00056673750e74e..ddb06df414408461e2ad270e4849514cc7d3ec78 100644
+index 722be9c738cf71e1465989549f76664f11f07963..57de9b1a91129009a8cc8e4eb9a4c0ef48d8e101 100644
 --- a/pom.xml
 +++ b/pom.xml
 @@ -149,6 +149,13 @@
@@ -22,25 +22,12 @@ index 650c6b91440d4ce1c5f82517a00056673750e74e..ddb06df414408461e2ad270e4849514c
 +        </dependency>
      </dependencies>
  
-     <repositories>
-diff --git a/src/main/java/net/minecraft/server/LoginListener.java b/src/main/java/net/minecraft/server/LoginListener.java
-index 6be12b7ae8501c22a7c544638c44fc6faedd5b07..2b4ac8d1f3218e89b73fb9e1d3eed8cb8bf7334d 100644
---- a/src/main/java/net/minecraft/server/LoginListener.java
-+++ b/src/main/java/net/minecraft/server/LoginListener.java
-@@ -235,7 +235,7 @@ public class LoginListener implements PacketLoginInListener {
- 
-             s = (new BigInteger(MinecraftEncryption.a("", this.server.getKeyPair().getPublic(), this.loginKey))).toString(16);
-             this.g = LoginListener.EnumProtocolState.AUTHENTICATING;
--            this.networkManager.a(cipher, cipher1);
-+            this.networkManager.a(this.loginKey); // Tuinity
-         } catch (CryptographyException cryptographyexception) {
-             throw new IllegalStateException("Protocol error", cryptographyexception);
-         }
-diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index f9aa04f2980aa5e952d64ae8c9f3629f7e76e2a0..d63a547bb1ce8e7eb9298127d3ff662f2e1191b7 100644
---- a/src/main/java/net/minecraft/server/NetworkManager.java
-+++ b/src/main/java/net/minecraft/server/NetworkManager.java
-@@ -549,10 +549,16 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+     <!-- This builds a completely 'ready to start' jar with all dependencies inside -->
+diff --git a/src/main/java/net/minecraft/network/NetworkManager.java b/src/main/java/net/minecraft/network/NetworkManager.java
+index 2abf64fda6e504a89b2e443af48894023d446cef..69bfe8d0a9cf745557c3e06141dec1ed3bb7d567 100644
+--- a/src/main/java/net/minecraft/network/NetworkManager.java
++++ b/src/main/java/net/minecraft/network/NetworkManager.java
+@@ -568,10 +568,16 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
          return this.channel instanceof LocalChannel || this.channel instanceof LocalServerChannel;
      }
  
@@ -60,10 +47,10 @@ index f9aa04f2980aa5e952d64ae8c9f3629f7e76e2a0..d63a547bb1ce8e7eb9298127d3ff662f
      }
  
      public boolean isConnected() {
-diff --git a/src/main/java/net/minecraft/server/PacketCompressor.java b/src/main/java/net/minecraft/server/PacketCompressor.java
-index 3cdd07cad85ef2d2c4b6c27a55a878695b4a7b12..50b2a8dfbdd0fe60e295d7c7214d7c99bcbeb19a 100644
---- a/src/main/java/net/minecraft/server/PacketCompressor.java
-+++ b/src/main/java/net/minecraft/server/PacketCompressor.java
+diff --git a/src/main/java/net/minecraft/network/PacketCompressor.java b/src/main/java/net/minecraft/network/PacketCompressor.java
+index 45b9d3d3c84d11e7f27f699506a1036dff9fdc53..43ea54479ba70a5c3f4a0f8e4e5a0d03e93162c1 100644
+--- a/src/main/java/net/minecraft/network/PacketCompressor.java
++++ b/src/main/java/net/minecraft/network/PacketCompressor.java
 @@ -7,14 +7,18 @@ import java.util.zip.Deflater;
  
  public class PacketCompressor extends MessageToByteEncoder<ByteBuf> {
@@ -146,10 +133,10 @@ index 3cdd07cad85ef2d2c4b6c27a55a878695b4a7b12..50b2a8dfbdd0fe60e295d7c7214d7c99
      public void a(int i) {
          this.c = i;
      }
-diff --git a/src/main/java/net/minecraft/server/PacketDecompressor.java b/src/main/java/net/minecraft/server/PacketDecompressor.java
-index 23c850be0155c1ece807d244117a196488f0a13b..4bab19a52b400071e69b06b940ab6432dfe59a1b 100644
---- a/src/main/java/net/minecraft/server/PacketDecompressor.java
-+++ b/src/main/java/net/minecraft/server/PacketDecompressor.java
+diff --git a/src/main/java/net/minecraft/network/PacketDecompressor.java b/src/main/java/net/minecraft/network/PacketDecompressor.java
+index 1932ca55dad37ca773f215eaec23164533d509d3..ce7d7b4e8c1e5de935c83d7db5186ad8a0849e60 100644
+--- a/src/main/java/net/minecraft/network/PacketDecompressor.java
++++ b/src/main/java/net/minecraft/network/PacketDecompressor.java
 @@ -10,13 +10,17 @@ import java.util.zip.Inflater;
  
  public class PacketDecompressor extends ByteToMessageDecoder {
@@ -221,10 +208,10 @@ index 23c850be0155c1ece807d244117a196488f0a13b..4bab19a52b400071e69b06b940ab6432
      public void a(int i) {
          this.b = i;
      }
-diff --git a/src/main/java/net/minecraft/server/PacketDecrypter.java b/src/main/java/net/minecraft/server/PacketDecrypter.java
-index c85f291c5b22a8e85c7556b220cba698701748f2..771cc0f4fa98be294abba65c83442205b6b0ef0b 100644
---- a/src/main/java/net/minecraft/server/PacketDecrypter.java
-+++ b/src/main/java/net/minecraft/server/PacketDecrypter.java
+diff --git a/src/main/java/net/minecraft/network/PacketDecrypter.java b/src/main/java/net/minecraft/network/PacketDecrypter.java
+index c8aa02b288d67efe1f9e20e038248a4f032f92dd..4bd7c7db965818054929c9222a0968f6d127cc5c 100644
+--- a/src/main/java/net/minecraft/network/PacketDecrypter.java
++++ b/src/main/java/net/minecraft/network/PacketDecrypter.java
 @@ -8,13 +8,24 @@ import javax.crypto.Cipher;
  
  public class PacketDecrypter extends MessageToMessageDecoder<ByteBuf> {
@@ -254,10 +241,10 @@ index c85f291c5b22a8e85c7556b220cba698701748f2..771cc0f4fa98be294abba65c83442205
      }
 +    // Tuinity end
  }
-diff --git a/src/main/java/net/minecraft/server/PacketEncrypter.java b/src/main/java/net/minecraft/server/PacketEncrypter.java
-index e35369476839e9622520af1027d7478aa6d1b037..aba14794cc4cb114fea17bb92816ac29a64b44f8 100644
---- a/src/main/java/net/minecraft/server/PacketEncrypter.java
-+++ b/src/main/java/net/minecraft/server/PacketEncrypter.java
+diff --git a/src/main/java/net/minecraft/network/PacketEncrypter.java b/src/main/java/net/minecraft/network/PacketEncrypter.java
+index 5759f91d5e9dc52b16c8955b8d318da2b53c7af4..0960f415fd3c6c764cf3dd273bb9e9c59d80ab31 100644
+--- a/src/main/java/net/minecraft/network/PacketEncrypter.java
++++ b/src/main/java/net/minecraft/network/PacketEncrypter.java
 @@ -5,15 +5,38 @@ import io.netty.channel.ChannelHandlerContext;
  import io.netty.handler.codec.MessageToByteEncoder;
  import javax.crypto.Cipher;
@@ -303,11 +290,24 @@ index e35369476839e9622520af1027d7478aa6d1b037..aba14794cc4cb114fea17bb92816ac29
      }
  }
 +// Tuinity end
-diff --git a/src/main/java/net/minecraft/server/ServerConnection.java b/src/main/java/net/minecraft/server/ServerConnection.java
-index 5f4dacf9c93c2495a07df2647fe0411f796da6af..0668d383db1f3a81d1053954d72678c7ac5aecec 100644
---- a/src/main/java/net/minecraft/server/ServerConnection.java
-+++ b/src/main/java/net/minecraft/server/ServerConnection.java
-@@ -74,6 +74,11 @@ public class ServerConnection {
+diff --git a/src/main/java/net/minecraft/server/network/LoginListener.java b/src/main/java/net/minecraft/server/network/LoginListener.java
+index 185667110cd6f566b23546728d20fc79223f3c92..dc98ef48a664d9ee2a302fff8c611fd16dc704b6 100644
+--- a/src/main/java/net/minecraft/server/network/LoginListener.java
++++ b/src/main/java/net/minecraft/server/network/LoginListener.java
+@@ -255,7 +255,7 @@ public class LoginListener implements PacketLoginInListener {
+ 
+             s = (new BigInteger(MinecraftEncryption.a("", this.server.getKeyPair().getPublic(), this.loginKey))).toString(16);
+             this.g = LoginListener.EnumProtocolState.AUTHENTICATING;
+-            this.networkManager.a(cipher, cipher1);
++            this.networkManager.a(this.loginKey); // Tuinity
+         } catch (CryptographyException cryptographyexception) {
+             throw new IllegalStateException("Protocol error", cryptographyexception);
+         }
+diff --git a/src/main/java/net/minecraft/server/network/ServerConnection.java b/src/main/java/net/minecraft/server/network/ServerConnection.java
+index dc362724ea0cc1b2f9d9ceffff483217b4356c40..70fde7bad2e0a6d7432d8509fdb7c46d9f020d4c 100644
+--- a/src/main/java/net/minecraft/server/network/ServerConnection.java
++++ b/src/main/java/net/minecraft/server/network/ServerConnection.java
+@@ -87,6 +87,11 @@ public class ServerConnection {
                  ServerConnection.LOGGER.info("Using default channel type");
              }
  

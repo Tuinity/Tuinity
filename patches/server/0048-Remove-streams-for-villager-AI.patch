@@ -4,11 +4,23 @@ Date: Thu, 27 Aug 2020 20:51:40 -0700
 Subject: [PATCH] Remove streams for villager AI
 
 
-diff --git a/src/main/java/net/minecraft/server/Behavior.java b/src/main/java/net/minecraft/server/Behavior.java
-index 65af976527133ee5c2f52e411e19c4f7f06df3ef..0b9d469a92decfb0632805791868ef7faa88c535 100644
---- a/src/main/java/net/minecraft/server/Behavior.java
-+++ b/src/main/java/net/minecraft/server/Behavior.java
-@@ -7,7 +7,7 @@ import java.util.Map.Entry;
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index c5ce10a55de6f611ec65f32382b0082f86e73fe3..d1269c08dc0b4e2caa7289748a894519f5d0a66d 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -1681,6 +1681,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, ne
+         return d3 * d3 + d4 * d4 + d5 * d5;
+     }
+ 
++    public final double getDistanceSquared(Entity other) { return this.h(other); } // Tuinity - OBFHELPER
+     public double h(Entity entity) {
+         return this.e(entity.getPositionVector());
+     }
+diff --git a/src/main/java/net/minecraft/world/entity/ai/behavior/Behavior.java b/src/main/java/net/minecraft/world/entity/ai/behavior/Behavior.java
+index a30b92736d8b36f750eb721d4a056bdfc98845b5..717e5f71fb919ac8952a077714d7f4581d546a28 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/behavior/Behavior.java
++++ b/src/main/java/net/minecraft/world/entity/ai/behavior/Behavior.java
+@@ -11,7 +11,7 @@ import net.minecraft.world.entity.ai.memory.MemoryStatus;
  public abstract class Behavior<E extends EntityLiving> {
  
      protected final Map<MemoryModuleType<?>, MemoryStatus> a;
@@ -17,11 +29,11 @@ index 65af976527133ee5c2f52e411e19c4f7f06df3ef..0b9d469a92decfb0632805791868ef7f
      private long c;
      private final int d;
      private final int e;
-diff --git a/src/main/java/net/minecraft/server/BehaviorFindPosition.java b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-index 63a761ebef80d4af09cdc2682e496d78492c4a3a..275d4cad8ff0dd64b74ef8f8056cdef093523f97 100644
---- a/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-+++ b/src/main/java/net/minecraft/server/BehaviorFindPosition.java
-@@ -84,7 +84,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorFindPosition.java b/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorFindPosition.java
+index a04d4dc665f34687b5d744fea56bc46263f27235..5fe71380b04600d6cd0bb068d239ff8fdfe2afbb 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorFindPosition.java
++++ b/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorFindPosition.java
+@@ -94,7 +94,7 @@ public class BehaviorFindPosition extends Behavior<EntityCreature> {
                  villageplace.a(this.b.c(), (blockposition1) -> {
                      return blockposition1.equals(blockposition);
                  }, blockposition, 1);
@@ -30,11 +42,11 @@ index 63a761ebef80d4af09cdc2682e496d78492c4a3a..275d4cad8ff0dd64b74ef8f8056cdef0
                  this.e.ifPresent((obyte) -> {
                      worldserver.broadcastEntityEffect(entitycreature, obyte);
                  });
-diff --git a/src/main/java/net/minecraft/server/BehaviorGate.java b/src/main/java/net/minecraft/server/BehaviorGate.java
-index 46e910581210421c8699637431804dc2f43eb4a6..fb967bc03f58fab8cec2732b1890108f2fc66af8 100644
---- a/src/main/java/net/minecraft/server/BehaviorGate.java
-+++ b/src/main/java/net/minecraft/server/BehaviorGate.java
-@@ -12,7 +12,7 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorGate.java b/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorGate.java
+index 2d4345de154fb2d31f34695672ebdb4dac31b181..c46cdffe3d877bff70b843766c8189eae06148ff 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorGate.java
++++ b/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorGate.java
+@@ -17,7 +17,7 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
      private final Set<MemoryModuleType<?>> b;
      private final BehaviorGate.Order c;
      private final BehaviorGate.Execution d;
@@ -43,7 +55,7 @@ index 46e910581210421c8699637431804dc2f43eb4a6..fb967bc03f58fab8cec2732b1890108f
  
      public BehaviorGate(Map<MemoryModuleType<?>, MemoryStatus> map, Set<MemoryModuleType<?>> set, BehaviorGate.Order behaviorgate_order, BehaviorGate.Execution behaviorgate_execution, List<Pair<Behavior<? super E>, Integer>> list) {
          super(map);
-@@ -26,11 +26,17 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
+@@ -31,11 +31,17 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
  
      @Override
      protected boolean b(WorldServer worldserver, E e0, long i) {
@@ -66,7 +78,7 @@ index 46e910581210421c8699637431804dc2f43eb4a6..fb967bc03f58fab8cec2732b1890108f
      }
  
      @Override
-@@ -46,20 +52,28 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
+@@ -51,20 +57,28 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
  
      @Override
      protected void d(WorldServer worldserver, E e0, long i) {
@@ -105,7 +117,7 @@ index 46e910581210421c8699637431804dc2f43eb4a6..fb967bc03f58fab8cec2732b1890108f
          BehaviorController behaviorcontroller = e0.getBehaviorController();
  
          this.b.forEach(behaviorcontroller::removeMemory); // Paper - decomp fix
-@@ -79,21 +93,29 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
+@@ -84,21 +98,29 @@ public class BehaviorGate<E extends EntityLiving> extends Behavior<E> {
          RUN_ONE {
              @Override
              public <E extends EntityLiving> void a(WeightedList<Behavior<? super E>> weightedlist, WorldServer worldserver, E e0, long i) {
@@ -145,11 +157,11 @@ index 46e910581210421c8699637431804dc2f43eb4a6..fb967bc03f58fab8cec2732b1890108f
              }
          };
  
-diff --git a/src/main/java/net/minecraft/server/BehaviorLookInteract.java b/src/main/java/net/minecraft/server/BehaviorLookInteract.java
-index a33303c31881b6391723e16a06d7841d48679958..ce57e6a4acac97d6da82202094306e7e91f1c87e 100644
---- a/src/main/java/net/minecraft/server/BehaviorLookInteract.java
-+++ b/src/main/java/net/minecraft/server/BehaviorLookInteract.java
-@@ -7,7 +7,7 @@ import java.util.function.Predicate;
+diff --git a/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorLookInteract.java b/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorLookInteract.java
+index f56072c77b9dfd0eeafb7a6970eecf593315f63e..196a5659a1f2c8c20a10f36c3fa81a8edc43a00c 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorLookInteract.java
++++ b/src/main/java/net/minecraft/world/entity/ai/behavior/BehaviorLookInteract.java
+@@ -14,7 +14,7 @@ import net.minecraft.world.entity.ai.memory.MemoryStatus;
  public class BehaviorLookInteract extends Behavior<EntityLiving> {
  
      private final EntityTypes<?> b;
@@ -158,7 +170,7 @@ index a33303c31881b6391723e16a06d7841d48679958..ce57e6a4acac97d6da82202094306e7e
      private final Predicate<EntityLiving> d;
      private final Predicate<EntityLiving> e;
  
-@@ -29,7 +29,20 @@ public class BehaviorLookInteract extends Behavior<EntityLiving> {
+@@ -36,7 +36,20 @@ public class BehaviorLookInteract extends Behavior<EntityLiving> {
  
      @Override
      public boolean a(WorldServer worldserver, EntityLiving entityliving) {
@@ -180,7 +192,7 @@ index a33303c31881b6391723e16a06d7841d48679958..ce57e6a4acac97d6da82202094306e7e
      }
  
      @Override
-@@ -37,16 +50,28 @@ public class BehaviorLookInteract extends Behavior<EntityLiving> {
+@@ -44,16 +57,28 @@ public class BehaviorLookInteract extends Behavior<EntityLiving> {
          super.a(worldserver, entityliving, i);
          BehaviorController<?> behaviorcontroller = entityliving.getBehaviorController();
  
@@ -217,38 +229,33 @@ index a33303c31881b6391723e16a06d7841d48679958..ce57e6a4acac97d6da82202094306e7e
      private boolean a(EntityLiving entityliving) {
          return this.b.equals(entityliving.getEntityType()) && this.d.test(entityliving);
      }
-diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
-index 99b01cb35e2af2d61688b0b10ad1c655b9f2e4c3..1b56d83bdac536e8189901f03ad58e82d33ac8a3 100644
---- a/src/main/java/net/minecraft/server/Entity.java
-+++ b/src/main/java/net/minecraft/server/Entity.java
-@@ -1589,6 +1589,7 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, Ke
-         return d3 * d3 + d4 * d4 + d5 * d5;
-     }
+diff --git a/src/main/java/net/minecraft/world/entity/ai/behavior/WeightedList.java b/src/main/java/net/minecraft/world/entity/ai/behavior/WeightedList.java
+index 1ca9b0595ae9d914d23590ec0b0c2e857c39b250..e2b5d6155bebdbf99b0850de7f9e1f5d342f9e2f 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/behavior/WeightedList.java
++++ b/src/main/java/net/minecraft/world/entity/ai/behavior/WeightedList.java
+@@ -14,7 +14,7 @@ import java.util.stream.Stream;
  
-+    public final double getDistanceSquared(Entity other) { return this.h(other); } // Tuinity - OBFHELPER
-     public double h(Entity entity) {
-         return this.e(entity.getPositionVector());
-     }
-diff --git a/src/main/java/net/minecraft/server/RegionFileSection.java b/src/main/java/net/minecraft/server/RegionFileSection.java
-index 04256a95108b8182e8f808e856e0d2b62165e242..d9362b74fda2ea937281f897fbc2cb501775a275 100644
---- a/src/main/java/net/minecraft/server/RegionFileSection.java
-+++ b/src/main/java/net/minecraft/server/RegionFileSection.java
-@@ -50,8 +50,8 @@ public class RegionFileSection<R> extends RegionFileCache implements AutoCloseab
+ public class WeightedList<U> {
  
-     }
+-    protected final List<WeightedList.a<U>> list; // Paper - decompile conflict
++    protected final List<WeightedList.a<U>> list; public final List<WeightedList.a<U>> getList() { return this.list; } // Paper - decompile conflict // Tuinity - OBFHELPER
+     private final Random b;
+     private final boolean isUnsafe; // Paper
  
--    @Nullable
--    protected Optional<R> c(long i) {
-+    @Nullable protected Optional<R> getIfLoaded(long value) { return this.c(value); } // Tuinity - OBFHELPER
-+    @Nullable protected Optional<R> c(long i) { // Tuinity - OBFHELPER
-         return (Optional) this.c.get(i);
-     }
+@@ -74,7 +74,7 @@ public class WeightedList<U> {
  
-diff --git a/src/main/java/net/minecraft/server/SensorNearestBed.java b/src/main/java/net/minecraft/server/SensorNearestBed.java
-index ad3609f2b884f64f1a1a449036cece49a46e933e..83025d69e8a0732f16581fcfeaef5c1a45d70b63 100644
---- a/src/main/java/net/minecraft/server/SensorNearestBed.java
-+++ b/src/main/java/net/minecraft/server/SensorNearestBed.java
-@@ -48,7 +48,7 @@ public class SensorNearestBed extends Sensor<EntityInsentient> {
+     public static class a<T> {
+ 
+-        private final T a;
++        private final T a; public final T getValue() { return this.a; } // Tuinity - OBFHELPER
+         private final int b;
+         private double c;
+ 
+diff --git a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestBed.java b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestBed.java
+index 1e58a06860125243d0f7c062aca095dd2aae98f2..5e4c022bcbf4456bc9020f56fb26fee0c627d722 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestBed.java
++++ b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestBed.java
+@@ -55,7 +55,7 @@ public class SensorNearestBed extends Sensor<EntityInsentient> {
                  Optional<VillagePlaceType> optional = villageplace.c(blockposition);
  
                  if (optional.isPresent()) {
@@ -257,11 +264,11 @@ index ad3609f2b884f64f1a1a449036cece49a46e933e..83025d69e8a0732f16581fcfeaef5c1a
                  }
              } else if (this.b < 5) {
                  this.a.long2LongEntrySet().removeIf((entry) -> {
-diff --git a/src/main/java/net/minecraft/server/SensorNearestItems.java b/src/main/java/net/minecraft/server/SensorNearestItems.java
-index edf7d31e8e06f67be58282b2a76d1ac899b4f3e8..1de170b9fe6f2888da6dcf0151aaf1f865691c6a 100644
---- a/src/main/java/net/minecraft/server/SensorNearestItems.java
-+++ b/src/main/java/net/minecraft/server/SensorNearestItems.java
-@@ -18,19 +18,24 @@ public class SensorNearestItems extends Sensor<EntityInsentient> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestItems.java b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestItems.java
+index 2e3149a0b15299468079796bd3ea56eabdb4998c..943e269b99321cbd7373181a898dcdfa6cbb6a89 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestItems.java
++++ b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestItems.java
+@@ -24,19 +24,24 @@ public class SensorNearestItems extends Sensor<EntityInsentient> {
  
      protected void a(WorldServer worldserver, EntityInsentient entityinsentient) {
          BehaviorController<?> behaviorcontroller = entityinsentient.getBehaviorController();
@@ -295,11 +302,11 @@ index edf7d31e8e06f67be58282b2a76d1ac899b4f3e8..1de170b9fe6f2888da6dcf0151aaf1f8
 +        behaviorcontroller.setMemory(MemoryModuleType.NEAREST_VISIBLE_WANTED_ITEM, optional);
      }
  }
-diff --git a/src/main/java/net/minecraft/server/SensorNearestLivingEntities.java b/src/main/java/net/minecraft/server/SensorNearestLivingEntities.java
-index b3388d4a665e8f91083a2e746482a9f0bd988da1..83e47ab6eb27847f7260f297d7b04a8e6c82d619 100644
---- a/src/main/java/net/minecraft/server/SensorNearestLivingEntities.java
-+++ b/src/main/java/net/minecraft/server/SensorNearestLivingEntities.java
-@@ -22,11 +22,16 @@ public class SensorNearestLivingEntities extends Sensor<EntityLiving> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestLivingEntities.java b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestLivingEntities.java
+index 0bc17d148e91277efdf72541e5470fa56d455670..845ed38e48fe404df1d2b0d5aba657628b1e2056 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestLivingEntities.java
++++ b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestLivingEntities.java
+@@ -27,11 +27,16 @@ public class SensorNearestLivingEntities extends Sensor<EntityLiving> {
          BehaviorController<?> behaviorcontroller = entityliving.getBehaviorController();
  
          behaviorcontroller.setMemory(MemoryModuleType.MOBS, list); // Paper - decompile error
@@ -321,11 +328,11 @@ index b3388d4a665e8f91083a2e746482a9f0bd988da1..83e47ab6eb27847f7260f297d7b04a8e
      }
  
      @Override
-diff --git a/src/main/java/net/minecraft/server/SensorNearestPlayers.java b/src/main/java/net/minecraft/server/SensorNearestPlayers.java
-index ae946619f10a757171e4217e414d6a5248a45494..fa2d366ca6695c099c29469bf69a7845350b4f07 100644
---- a/src/main/java/net/minecraft/server/SensorNearestPlayers.java
-+++ b/src/main/java/net/minecraft/server/SensorNearestPlayers.java
-@@ -19,26 +19,31 @@ public class SensorNearestPlayers extends Sensor<EntityLiving> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestPlayers.java b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestPlayers.java
+index 60e4da9217d4d950b5077baf6b50eaee20f8df09..c2afe3481265eb9390592ad46ba78d5be48d500f 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestPlayers.java
++++ b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorNearestPlayers.java
+@@ -26,26 +26,31 @@ public class SensorNearestPlayers extends Sensor<EntityLiving> {
  
      @Override
      protected void a(WorldServer worldserver, EntityLiving entityliving) {
@@ -374,11 +381,11 @@ index ae946619f10a757171e4217e414d6a5248a45494..fa2d366ca6695c099c29469bf69a7845
 +        // Tuinity end - remove streams
      }
  }
-diff --git a/src/main/java/net/minecraft/server/SensorVillagerBabies.java b/src/main/java/net/minecraft/server/SensorVillagerBabies.java
-index a367bbfde4fbfeca6d01dec49c05f5e185aab43a..794b33a13b7f11b973caf085b0bded9b2135a4d7 100644
---- a/src/main/java/net/minecraft/server/SensorVillagerBabies.java
-+++ b/src/main/java/net/minecraft/server/SensorVillagerBabies.java
-@@ -17,11 +17,23 @@ public class SensorVillagerBabies extends Sensor<EntityLiving> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorVillagerBabies.java b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorVillagerBabies.java
+index e5e246143f014d78dac765c97a5d9e3ac91a7793..aaf31114f3e09304db83270f4f521fa7f566da06 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/sensing/SensorVillagerBabies.java
++++ b/src/main/java/net/minecraft/world/entity/ai/sensing/SensorVillagerBabies.java
+@@ -21,11 +21,23 @@ public class SensorVillagerBabies extends Sensor<EntityLiving> {
  
      @Override
      protected void a(WorldServer worldserver, EntityLiving entityliving) {
@@ -404,11 +411,11 @@ index a367bbfde4fbfeca6d01dec49c05f5e185aab43a..794b33a13b7f11b973caf085b0bded9b
      }
  
      private boolean b(EntityLiving entityliving) {
-diff --git a/src/main/java/net/minecraft/server/VillagePlace.java b/src/main/java/net/minecraft/server/VillagePlace.java
-index 46c4e66566b7206d311653341987b9312dea3e68..0094babbd59cc81554b9480088464d632824ae8e 100644
---- a/src/main/java/net/minecraft/server/VillagePlace.java
-+++ b/src/main/java/net/minecraft/server/VillagePlace.java
-@@ -311,6 +311,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java
+index dc36d714dfb360ddb203480079d1ab231da0ed45..84843ebbef7a6e56633b35712b1643801dca62dc 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java
++++ b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlace.java
+@@ -324,6 +324,7 @@ public class VillagePlace extends RegionFileSection<VillagePlaceSection> {
              this.d = predicate;
          }
  
@@ -416,11 +423,11 @@ index 46c4e66566b7206d311653341987b9312dea3e68..0094babbd59cc81554b9480088464d63
          public Predicate<? super VillagePlaceRecord> a() {
              return this.d;
          }
-diff --git a/src/main/java/net/minecraft/server/VillagePlaceRecord.java b/src/main/java/net/minecraft/server/VillagePlaceRecord.java
-index 0b40c2f4dada7d8432e3f91e9cf206c2bda3b24b..6eaf9fc9cc93f79a497b07a3549d459ba66be849 100644
---- a/src/main/java/net/minecraft/server/VillagePlaceRecord.java
-+++ b/src/main/java/net/minecraft/server/VillagePlaceRecord.java
-@@ -6,7 +6,7 @@ import java.util.Objects;
+diff --git a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlaceRecord.java b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlaceRecord.java
+index 3fcbf223c4835b92a7da0df9e5443ca1e5217bb4..29a291bc08d8043e5bd8353798be930582455feb 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlaceRecord.java
++++ b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlaceRecord.java
+@@ -8,7 +8,7 @@ import net.minecraft.core.IRegistry;
  
  public class VillagePlaceRecord {
  
@@ -429,11 +436,11 @@ index 0b40c2f4dada7d8432e3f91e9cf206c2bda3b24b..6eaf9fc9cc93f79a497b07a3549d459b
      private final VillagePlaceType b;
      private int c;
      private final Runnable d;
-diff --git a/src/main/java/net/minecraft/server/VillagePlaceSection.java b/src/main/java/net/minecraft/server/VillagePlaceSection.java
-index b86963aa34b5ae479f924c5a52afc5b5b66dba76..943a437ff27162eae09211c28bdc0d141fa6a404 100644
---- a/src/main/java/net/minecraft/server/VillagePlaceSection.java
-+++ b/src/main/java/net/minecraft/server/VillagePlaceSection.java
-@@ -23,12 +23,12 @@ public class VillagePlaceSection {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlaceSection.java b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlaceSection.java
+index a72bd9ce8f683ae3f4d9c08c973292e3433e8f16..41ffad7cbb6c77713736f37b3728b201d315f6d4 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlaceSection.java
++++ b/src/main/java/net/minecraft/world/entity/ai/village/poi/VillagePlaceSection.java
+@@ -27,12 +27,12 @@ public class VillagePlaceSection {
  
      private static final Logger LOGGER = LogManager.getLogger();
      private final Short2ObjectMap<VillagePlaceRecord> b;
@@ -448,25 +455,18 @@ index b86963aa34b5ae479f924c5a52afc5b5b66dba76..943a437ff27162eae09211c28bdc0d14
              return instance.group(RecordCodecBuilder.point(runnable), Codec.BOOL.optionalFieldOf("Valid", false).forGetter((villageplacesection) -> {
                  return villageplacesection.e;
              }), VillagePlaceRecord.a(runnable).listOf().fieldOf("Records").forGetter((villageplacesection) -> {
-diff --git a/src/main/java/net/minecraft/server/WeightedList.java b/src/main/java/net/minecraft/server/WeightedList.java
-index 5d9d58411f2fad9d5da703f964d269b4a7c2b205..f0fdfd6891e59891e7370a2d682b65c647b28e9e 100644
---- a/src/main/java/net/minecraft/server/WeightedList.java
-+++ b/src/main/java/net/minecraft/server/WeightedList.java
-@@ -14,7 +14,7 @@ import java.util.stream.Stream;
+diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileSection.java b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileSection.java
+index d3b9a9e4695655860c72db5f2188472681e8d37a..0791dcc6c2efda54ce3afb36e8d3b0b022807f67 100644
+--- a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileSection.java
++++ b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileSection.java
+@@ -59,8 +59,8 @@ public class RegionFileSection<R> extends RegionFileCache implements AutoCloseab
  
- public class WeightedList<U> {
+     }
  
--    protected final List<WeightedList.a<U>> list; // Paper - decompile conflict
-+    protected final List<WeightedList.a<U>> list; public final List<WeightedList.a<U>> getList() { return this.list; } // Paper - decompile conflict // Tuinity - OBFHELPER
-     private final Random b;
-     private final boolean isUnsafe; // Paper
- 
-@@ -74,7 +74,7 @@ public class WeightedList<U> {
- 
-     public static class a<T> {
- 
--        private final T a;
-+        private final T a; public final T getValue() { return this.a; } // Tuinity - OBFHELPER
-         private final int b;
-         private double c;
+-    @Nullable
+-    protected Optional<R> c(long i) {
++    @Nullable protected Optional<R> getIfLoaded(long value) { return this.c(value); } // Tuinity - OBFHELPER
++    @Nullable protected Optional<R> c(long i) { // Tuinity - OBFHELPER
+         return (Optional) this.c.get(i);
+     }
  

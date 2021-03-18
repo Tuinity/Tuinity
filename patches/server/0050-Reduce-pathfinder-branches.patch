@@ -5,22 +5,22 @@ Subject: [PATCH] Reduce pathfinder branches
 
 Reduce static path type detection to simple lazy-init fields
 
-diff --git a/src/main/java/net/minecraft/server/BlockBase.java b/src/main/java/net/minecraft/server/BlockBase.java
-index 85f60b56b5689b77ba3d9e99e29b4f734df5d91e..2760b377d1f68ac5f66e7274317379e2dda8288a 100644
---- a/src/main/java/net/minecraft/server/BlockBase.java
-+++ b/src/main/java/net/minecraft/server/BlockBase.java
-@@ -309,7 +309,9 @@ public abstract class BlockBase {
+diff --git a/src/main/java/net/minecraft/world/level/block/state/BlockBase.java b/src/main/java/net/minecraft/world/level/block/state/BlockBase.java
+index 19936d615c14c4cb4eeddfaaf8438765f6c0b8b3..a96069c86ef5f5af4820436dd1f24e297bcca73f 100644
+--- a/src/main/java/net/minecraft/world/level/block/state/BlockBase.java
++++ b/src/main/java/net/minecraft/world/level/block/state/BlockBase.java
+@@ -361,7 +361,9 @@ public abstract class BlockBase {
          private final BlockBase.e o;
          private final BlockBase.e p;
          @Nullable
 -        protected BlockBase.BlockData.Cache a;
-+        protected BlockBase.BlockData.Cache a; protected final BlockBase.BlockData.Cache getShapeCache() { return this.a; } // Tuinity - OBFHELPER
-+        public PathType staticPathType; // Tuinity - cache static path types
-+        public PathType neighbourOverridePathType; // Tuinity - cache static path types
++        protected BlockBase.BlockData.Cache a; public final BlockBase.BlockData.Cache getShapeCache() { return this.a; } // Tuinity - OBFHELPER
++        public net.minecraft.world.level.pathfinder.PathType staticPathType; // Tuinity - cache static path types
++        public net.minecraft.world.level.pathfinder.PathType neighbourOverridePathType; // Tuinity - cache static path types
  
          protected BlockData(Block block, ImmutableMap<IBlockState<?>, Comparable<?>> immutablemap, MapCodec<IBlockData> mapcodec) {
              super(block, immutablemap, mapcodec);
-@@ -357,6 +359,8 @@ public abstract class BlockBase {
+@@ -409,6 +411,8 @@ public abstract class BlockBase {
                  this.a = new BlockBase.BlockData.Cache(this.p());
              }
              this.shapeExceedsCube = this.a == null || this.a.c; // Tuinity - moved from actual method to here
@@ -29,10 +29,10 @@ index 85f60b56b5689b77ba3d9e99e29b4f734df5d91e..2760b377d1f68ac5f66e7274317379e2
  
          }
  
-diff --git a/src/main/java/net/minecraft/server/PathType.java b/src/main/java/net/minecraft/server/PathType.java
-index fb37f5b500c52f915b4536e5ec35552b75056046..52a2d3db7da3596bfdd6fd51147cc93bbe6c7ed0 100644
---- a/src/main/java/net/minecraft/server/PathType.java
-+++ b/src/main/java/net/minecraft/server/PathType.java
+diff --git a/src/main/java/net/minecraft/world/level/pathfinder/PathType.java b/src/main/java/net/minecraft/world/level/pathfinder/PathType.java
+index fd20802155097d4951cbe273f64de4809dee5c96..a07612f68f08aaaf75c3c656b6f90886b587d7ee 100644
+--- a/src/main/java/net/minecraft/world/level/pathfinder/PathType.java
++++ b/src/main/java/net/minecraft/world/level/pathfinder/PathType.java
 @@ -4,6 +4,8 @@ public enum PathType {
  
      BLOCKED(-1.0F), OPEN(0.0F), WALKABLE(0.0F), WALKABLE_DOOR(0.0F), TRAPDOOR(0.0F), FENCE(-1.0F), LAVA(-1.0F), WATER(8.0F), WATER_BORDER(8.0F), RAIL(0.0F), UNPASSABLE_RAIL(-1.0F), DANGER_FIRE(8.0F), DAMAGE_FIRE(16.0F), DANGER_CACTUS(8.0F), DAMAGE_CACTUS(-1.0F), DANGER_OTHER(8.0F), DAMAGE_OTHER(-1.0F), DOOR_OPEN(0.0F), DOOR_WOOD_CLOSED(-1.0F), DOOR_IRON_CLOSED(-1.0F), BREACH(4.0F), LEAVES(-1.0F), STICKY_HONEY(8.0F), COCOA(0.0F);
@@ -42,11 +42,11 @@ index fb37f5b500c52f915b4536e5ec35552b75056046..52a2d3db7da3596bfdd6fd51147cc93b
      private final float y;
  
      private PathType(float f) {
-diff --git a/src/main/java/net/minecraft/server/PathfinderNormal.java b/src/main/java/net/minecraft/server/PathfinderNormal.java
-index 74e81e1e4aea6f74b14a84231ddeb7f2fb845ae7..33804e68931e8b4145b896eedeab79bde78779f2 100644
---- a/src/main/java/net/minecraft/server/PathfinderNormal.java
-+++ b/src/main/java/net/minecraft/server/PathfinderNormal.java
-@@ -421,6 +421,12 @@ public class PathfinderNormal extends PathfinderAbstract {
+diff --git a/src/main/java/net/minecraft/world/level/pathfinder/PathfinderNormal.java b/src/main/java/net/minecraft/world/level/pathfinder/PathfinderNormal.java
+index a0c7d3ab747ba1a3cf07e716f3591663a8a9e14b..7b92a54cfb64fb77af99e6bf66eacbdb9e769dc1 100644
+--- a/src/main/java/net/minecraft/world/level/pathfinder/PathfinderNormal.java
++++ b/src/main/java/net/minecraft/world/level/pathfinder/PathfinderNormal.java
+@@ -444,6 +444,12 @@ public class PathfinderNormal extends PathfinderAbstract {
          if (pathtype == PathType.OPEN && j >= 1) {
              PathType pathtype1 = b(iblockaccess, blockposition_mutableblockposition.d(i, j - 1, k));
  
@@ -59,7 +59,7 @@ index 74e81e1e4aea6f74b14a84231ddeb7f2fb845ae7..33804e68931e8b4145b896eedeab79bd
              pathtype = pathtype1 != PathType.WALKABLE && pathtype1 != PathType.OPEN && pathtype1 != PathType.WATER && pathtype1 != PathType.LAVA ? PathType.WALKABLE : PathType.OPEN;
              if (pathtype1 == PathType.DAMAGE_FIRE) {
                  pathtype = PathType.DAMAGE_FIRE;
-@@ -437,6 +443,7 @@ public class PathfinderNormal extends PathfinderAbstract {
+@@ -460,6 +466,7 @@ public class PathfinderNormal extends PathfinderAbstract {
              if (pathtype1 == PathType.STICKY_HONEY) {
                  pathtype = PathType.STICKY_HONEY;
              }
@@ -67,7 +67,7 @@ index 74e81e1e4aea6f74b14a84231ddeb7f2fb845ae7..33804e68931e8b4145b896eedeab79bd
          }
  
          if (pathtype == PathType.WALKABLE) {
-@@ -462,22 +469,29 @@ public class PathfinderNormal extends PathfinderAbstract {
+@@ -485,22 +492,29 @@ public class PathfinderNormal extends PathfinderAbstract {
                              pathtype = PathType.BLOCKED;
                          } else {
                          // Paper end
@@ -102,7 +102,7 @@ index 74e81e1e4aea6f74b14a84231ddeb7f2fb845ae7..33804e68931e8b4145b896eedeab79bd
                          } // Paper
                      }
                  }
-@@ -490,6 +504,20 @@ public class PathfinderNormal extends PathfinderAbstract {
+@@ -513,6 +527,20 @@ public class PathfinderNormal extends PathfinderAbstract {
      protected static PathType b(IBlockAccess iblockaccess, BlockPosition blockposition) {
          IBlockData iblockdata = iblockaccess.getTypeIfLoaded(blockposition); // Paper
          if (iblockdata == null) return PathType.BLOCKED; // Paper
