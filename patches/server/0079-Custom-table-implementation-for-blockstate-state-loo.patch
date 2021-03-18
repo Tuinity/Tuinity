@@ -8,15 +8,15 @@ improvement.
 
 diff --git a/src/main/java/com/tuinity/tuinity/util/table/ZeroCollidingReferenceStateTable.java b/src/main/java/com/tuinity/tuinity/util/table/ZeroCollidingReferenceStateTable.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..298d09634effcb06cd2237a1f7f903e9e46ec78d
+index 0000000000000000000000000000000000000000..6985facdb2d1689a71472d3ac282e4f5f3cb9869
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/table/ZeroCollidingReferenceStateTable.java
 @@ -0,0 +1,160 @@
 +package com.tuinity.tuinity.util.table;
 +
 +import com.google.common.collect.Table;
-+import net.minecraft.server.IBlockDataHolder;
-+import net.minecraft.server.IBlockState;
++import net.minecraft.world.level.block.state.IBlockDataHolder;
++import net.minecraft.world.level.block.state.properties.IBlockState;
 +import java.util.Collection;
 +import java.util.HashSet;
 +import java.util.Map;
@@ -172,85 +172,11 @@ index 0000000000000000000000000000000000000000..298d09634effcb06cd2237a1f7f903e9
 +        return (int)(((index_value >>> 32) + Long.bitCount(index_value & lower_mask)) | contains_check);
 +    }
 +}
-diff --git a/src/main/java/net/minecraft/server/BlockStateBoolean.java b/src/main/java/net/minecraft/server/BlockStateBoolean.java
-index 4ca8db630434915de4eaeac6c4ecd60714d7f5d9..d6c8ae638b3993ce55be91087de09a300405e075 100644
---- a/src/main/java/net/minecraft/server/BlockStateBoolean.java
-+++ b/src/main/java/net/minecraft/server/BlockStateBoolean.java
-@@ -12,6 +12,13 @@ public class BlockStateBoolean extends IBlockState<Boolean> {
-         super(s, Boolean.class);
-     }
- 
-+    // Tuinity start - optimise iblockdata state lookup
-+    @Override
-+    public final int getIdFor(final Boolean value) {
-+        return value.booleanValue() ? 1 : 0;
-+    }
-+    // Tuinity end - optimise iblockdata state lookup
-+
-     @Override
-     public Collection<Boolean> getValues() {
-         return this.a;
-diff --git a/src/main/java/net/minecraft/server/BlockStateEnum.java b/src/main/java/net/minecraft/server/BlockStateEnum.java
-index 8dc620b22bb904aa6a82e2127aa9da861986525c..e6663281481a48fe1b838339160565fbf4c6a65a 100644
---- a/src/main/java/net/minecraft/server/BlockStateEnum.java
-+++ b/src/main/java/net/minecraft/server/BlockStateEnum.java
-@@ -17,6 +17,15 @@ public class BlockStateEnum<T extends Enum<T> & INamable> extends IBlockState<T>
-     private final ImmutableSet<T> a;
-     private final Map<String, T> b = Maps.newHashMap();
- 
-+    // Tuinity start - optimise iblockdata state lookup
-+    private int[] idLookupTable;
-+
-+    @Override
-+    public final int getIdFor(final T value) {
-+        return this.idLookupTable[value.ordinal()];
-+    }
-+    // Tuinity end - optimise iblockdata state lookup
-+
-     protected BlockStateEnum(String s, Class<T> oclass, Collection<T> collection) {
-         super(s, oclass);
-         this.a = ImmutableSet.copyOf(collection);
-@@ -32,6 +41,14 @@ public class BlockStateEnum<T extends Enum<T> & INamable> extends IBlockState<T>
- 
-             this.b.put(s1, t0);
-         }
-+        // Tuinity start - optimise iblockdata state lookup
-+        int id = 0;
-+        this.idLookupTable = new int[oclass.getEnumConstants().length];
-+        java.util.Arrays.fill(this.idLookupTable, -1);
-+        for (final T value : this.getValues()) {
-+            this.idLookupTable[value.ordinal()] = id++;
-+        }
-+        // Tuinity end - optimise iblockdata state lookup
- 
-     }
- 
-diff --git a/src/main/java/net/minecraft/server/BlockStateInteger.java b/src/main/java/net/minecraft/server/BlockStateInteger.java
-index 36b84446e96faefad3b783f73df74e0f3bce8255..acae5fe0bff44d2bc3921c8e078b2f261de3a035 100644
---- a/src/main/java/net/minecraft/server/BlockStateInteger.java
-+++ b/src/main/java/net/minecraft/server/BlockStateInteger.java
-@@ -13,6 +13,16 @@ public class BlockStateInteger extends IBlockState<Integer> {
-     public final int min;
-     public final int max;
- 
-+    // Tuinity start - optimise iblockdata state lookup
-+    @Override
-+    public final int getIdFor(final Integer value) {
-+        final int val = value.intValue();
-+        final int ret = val - this.min;
-+
-+        return ret | ((this.max - ret) >> 31);
-+    }
-+    // Tuinity end - optimise iblockdata state lookup
-+
-     protected BlockStateInteger(String s, int i, int j) {
-         super(s, Integer.class);
-         this.min = i;
-diff --git a/src/main/java/net/minecraft/server/IBlockDataHolder.java b/src/main/java/net/minecraft/server/IBlockDataHolder.java
-index b19c694cf01bc868dd7c4ec6432b613d19f2ca40..06d2dd7584253a406aa77867fac5543aa01020fd 100644
---- a/src/main/java/net/minecraft/server/IBlockDataHolder.java
-+++ b/src/main/java/net/minecraft/server/IBlockDataHolder.java
-@@ -39,11 +39,13 @@ public abstract class IBlockDataHolder<O, S> {
+diff --git a/src/main/java/net/minecraft/world/level/block/state/IBlockDataHolder.java b/src/main/java/net/minecraft/world/level/block/state/IBlockDataHolder.java
+index ba046cffdd8331c7e0427f19fa54d0c7a99077d9..9f9a3210a68e489dcdeabaeeddf01b59775eebd2 100644
+--- a/src/main/java/net/minecraft/world/level/block/state/IBlockDataHolder.java
++++ b/src/main/java/net/minecraft/world/level/block/state/IBlockDataHolder.java
+@@ -40,11 +40,13 @@ public abstract class IBlockDataHolder<O, S> {
      private final ImmutableMap<IBlockState<?>, Comparable<?>> b;
      private Table<IBlockState<?>, Comparable<?>, S> e;
      protected final MapCodec<S> d;
@@ -264,7 +190,7 @@ index b19c694cf01bc868dd7c4ec6432b613d19f2ca40..06d2dd7584253a406aa77867fac5543a
      }
  
      public <T extends Comparable<T>> S a(IBlockState<T> iblockstate) {
-@@ -85,11 +87,11 @@ public abstract class IBlockDataHolder<O, S> {
+@@ -86,11 +88,11 @@ public abstract class IBlockDataHolder<O, S> {
  
      public <T extends Comparable<T>> boolean contains(IBlockState<T> iblockstate) { return this.b(iblockstate); } // Paper - OBFHELPER
      public <T extends Comparable<T>> boolean b(IBlockState<T> iblockstate) {
@@ -278,7 +204,7 @@ index b19c694cf01bc868dd7c4ec6432b613d19f2ca40..06d2dd7584253a406aa77867fac5543a
  
          if (comparable == null) {
              throw new IllegalArgumentException("Cannot get property " + iblockstate + " as it does not exist in " + this.c);
-@@ -99,27 +101,21 @@ public abstract class IBlockDataHolder<O, S> {
+@@ -100,27 +102,21 @@ public abstract class IBlockDataHolder<O, S> {
      }
  
      public <T extends Comparable<T>> Optional<T> d(IBlockState<T> iblockstate) {
@@ -314,7 +240,7 @@ index b19c694cf01bc868dd7c4ec6432b613d19f2ca40..06d2dd7584253a406aa77867fac5543a
      }
  
      public void a(Map<Map<IBlockState<?>, Comparable<?>>, S> map) {
-@@ -143,7 +139,8 @@ public abstract class IBlockDataHolder<O, S> {
+@@ -144,7 +140,8 @@ public abstract class IBlockDataHolder<O, S> {
                  }
              }
  
@@ -324,11 +250,85 @@ index b19c694cf01bc868dd7c4ec6432b613d19f2ca40..06d2dd7584253a406aa77867fac5543a
          }
      }
  
-diff --git a/src/main/java/net/minecraft/server/IBlockState.java b/src/main/java/net/minecraft/server/IBlockState.java
-index 6550b55067db31dbbc903fe17a13849383651c5a..30344d1e5703690d97ecb889af24fa5e7b35f895 100644
---- a/src/main/java/net/minecraft/server/IBlockState.java
-+++ b/src/main/java/net/minecraft/server/IBlockState.java
-@@ -15,6 +15,17 @@ public abstract class IBlockState<T extends Comparable<T>> {
+diff --git a/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateBoolean.java b/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateBoolean.java
+index f2f94950681b198ae7a4c31a044fd62e98e448ab..2c7306c2b0c1d9e701bc3aa2c115434abeab3d72 100644
+--- a/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateBoolean.java
++++ b/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateBoolean.java
+@@ -12,6 +12,13 @@ public class BlockStateBoolean extends IBlockState<Boolean> {
+         super(s, Boolean.class);
+     }
+ 
++    // Tuinity start - optimise iblockdata state lookup
++    @Override
++    public final int getIdFor(final Boolean value) {
++        return value.booleanValue() ? 1 : 0;
++    }
++    // Tuinity end - optimise iblockdata state lookup
++
+     @Override
+     public Collection<Boolean> getValues() {
+         return this.a;
+diff --git a/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateEnum.java b/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateEnum.java
+index 3079cd13ea1465f4221fde4fec7df639f7c1eb49..a11069695b64e515f0e76e1d6ccddc33503492cd 100644
+--- a/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateEnum.java
++++ b/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateEnum.java
+@@ -18,6 +18,15 @@ public class BlockStateEnum<T extends Enum<T> & INamable> extends IBlockState<T>
+     private final ImmutableSet<T> a;
+     private final Map<String, T> b = Maps.newHashMap();
+ 
++    // Tuinity start - optimise iblockdata state lookup
++    private int[] idLookupTable;
++
++    @Override
++    public final int getIdFor(final T value) {
++        return this.idLookupTable[value.ordinal()];
++    }
++    // Tuinity end - optimise iblockdata state lookup
++
+     protected BlockStateEnum(String s, Class<T> oclass, Collection<T> collection) {
+         super(s, oclass);
+         this.a = ImmutableSet.copyOf(collection);
+@@ -33,6 +42,14 @@ public class BlockStateEnum<T extends Enum<T> & INamable> extends IBlockState<T>
+ 
+             this.b.put(s1, t0);
+         }
++        // Tuinity start - optimise iblockdata state lookup
++        int id = 0;
++        this.idLookupTable = new int[oclass.getEnumConstants().length];
++        java.util.Arrays.fill(this.idLookupTable, -1);
++        for (final T value : this.getValues()) {
++            this.idLookupTable[value.ordinal()] = id++;
++        }
++        // Tuinity end - optimise iblockdata state lookup
+ 
+     }
+ 
+diff --git a/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateInteger.java b/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateInteger.java
+index 190978c889222185b47065e9e5f96a82e59c7b4e..e8165d4de4acca241924aa4076fc8868e1f453d9 100644
+--- a/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateInteger.java
++++ b/src/main/java/net/minecraft/world/level/block/state/properties/BlockStateInteger.java
+@@ -13,6 +13,16 @@ public class BlockStateInteger extends IBlockState<Integer> {
+     public final int min;
+     public final int max;
+ 
++    // Tuinity start - optimise iblockdata state lookup
++    @Override
++    public final int getIdFor(final Integer value) {
++        final int val = value.intValue();
++        final int ret = val - this.min;
++
++        return ret | ((this.max - ret) >> 31);
++    }
++    // Tuinity end - optimise iblockdata state lookup
++
+     protected BlockStateInteger(String s, int i, int j) {
+         super(s, Integer.class);
+         this.min = i;
+diff --git a/src/main/java/net/minecraft/world/level/block/state/properties/IBlockState.java b/src/main/java/net/minecraft/world/level/block/state/properties/IBlockState.java
+index 759d6a4adaa511488ace5e2650eb685cbb6c4c16..21250d10a51bd0697709f0aa059908f9f71491d5 100644
+--- a/src/main/java/net/minecraft/world/level/block/state/properties/IBlockState.java
++++ b/src/main/java/net/minecraft/world/level/block/state/properties/IBlockState.java
+@@ -16,6 +16,17 @@ public abstract class IBlockState<T extends Comparable<T>> {
      private final Codec<T> d;
      private final Codec<IBlockState.a<T>> e;
  
