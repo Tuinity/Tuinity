@@ -125,7 +125,7 @@ Run the following commands in the root directory:
 If all you want is a paperclip server jar, just run `./gradlew initGitSubmodules`.
 
 Otherwise, to setup the `Tuinity-API` and `Tuinity-Server` repo, just run the following command
-in your project root `./gradlew applyPatches` additionally, after you run `./gradlew applyPatches` you can run `./gradlew paperclip` to build the 
+in your project root `./gradlew applyPatches` additionally, after you run `./gradlew applyPatches` you can run `./gradlew jar` to build the 
 respective api and server jars.
 
 `./gradlew applyPatches` should initialize the repo such that you can now start modifying and creating
