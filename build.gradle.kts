@@ -22,7 +22,7 @@ toothpick {
     upstream = "Paper"
     upstreamBranch = "origin/master"
 
-    paperclipName = "tuinity-paperclip.jar"
+    paperclipName = "tuinity-paperclip"
 
     server {
         project = project(":$forkNameLowercase-server")
