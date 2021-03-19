@@ -19,7 +19,14 @@ jobs:
       with:
         java-version: ${{ matrix.java }}
 
-    - uses: actions/cache@v2
+    - name: Pull Gradle Cache
+      uses: actions/cache@v2
+      id: gradle-cache
+      with:
+        path: ~/.gradle
+        key: ${{ runner.os }}-maven-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}-java-${{ matrix.java }}
+    - name: Pull Maven Cache
+      uses: actions/cache@v2
       with:
         path: ~/.m2/repository
         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -30,7 +37,10 @@ jobs:
         git config --global user.email "you@example.com"
         git config --global user.name "Your Name"
         git submodule update --init --recursive
-        ./tuinity jar
+        ./gradlew initGitSubmodules
+        ./gradlew setupUpstream
+        ./gradlew applyPatches
+        ./gradlew paperclip
         
     - uses: actions/upload-artifact@v2
       with:
