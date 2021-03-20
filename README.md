@@ -139,8 +139,8 @@ patch will be placed in the patches folder. Modifying commits will also modify i
 corresponding patch file.
 
 ## License
-The PATCHES-LICENSE file describes the license for api & server patches,
-found in `./patches` and its subdirectories except when noted otherwise.
+The [PATCHES-LICENSE](/PATCHES-LICENSE) file describes the license for api & server patches,
+found [here](/patches) and its subdirectories except when noted otherwise.
 
 Everything else is licensed under the MIT license, except when note otherwise.
 See https://github.com/starlis/empirecraft and https://github.com/electronicboy/byof
