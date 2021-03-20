@@ -26,11 +26,11 @@ Each time you want to update your dependency you must re-build Tuinity.
 <details><summary>Gradle</summary>
 <p>
  
- * Artifact Information
+ ## Artifact Information
 
 > Groovy DSL
 
-*API*
+### API
 
 ```groovy
 dependencies {
@@ -38,7 +38,7 @@ dependencies {
 }
  ```
 
-*Server*
+### Server
 
 ```groovy
 dependencies {
@@ -48,7 +48,7 @@ dependencies {
  
 > Kotlin DSL
 
-*API*
+### API
 
 ```groovy
 dependencies {
@@ -56,7 +56,7 @@ dependencies {
 }
  ```
 
-*Server*
+### Server
 
 ```kotlin
 dependencies {
@@ -122,7 +122,7 @@ Run the following commands in the root directory:
 ./gradlew paperclip
 ```
 
-If all you want is a paperclip server jar, just run `./gradlew initGitSubmodules`.
+If all you want is a paperclip server jar, just run the commands above.
 
 Otherwise, to setup the `Tuinity-API` and `Tuinity-Server` repo, just run the following command
 in your project root `./gradlew applyPatches` additionally, after you run `./gradlew applyPatches` you can run `./gradlew jar` to build the 
