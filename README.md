@@ -28,9 +28,9 @@ Each time you want to update your dependency you must re-build Tuinity.
  
  ## Artifact Information
 
-> Groovy DSL
+> ### Groovy DSL
 
-### API
++ #### API
 
 ```groovy
 dependencies {
@@ -38,7 +38,7 @@ dependencies {
 }
  ```
 
-### Server
++ #### Server
 
 ```groovy
 dependencies {
@@ -46,9 +46,9 @@ dependencies {
 }
 ```
  
-> Kotlin DSL
+> ### Kotlin DSL
 
-### API
++ #### API
 
 ```groovy
 dependencies {
@@ -56,7 +56,7 @@ dependencies {
 }
  ```
 
-### Server
++ #### Server
 
 ```kotlin
 dependencies {
