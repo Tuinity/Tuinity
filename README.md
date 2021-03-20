@@ -116,6 +116,7 @@ via building tuinity.**
 Run the following commands in the root directory:
 
 ```shell
+./gradlew clean
 ./gradlew initGitSubmodules
 ./gradlew setupUpstream
 ./gradlew applyPatches
