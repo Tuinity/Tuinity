@@ -24,7 +24,7 @@ and an action can be defined: DROP or KICK
 If interval or rate are less-than 0, the limit is ignored
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index fdc56a5080ab2f7331431ee1f5976ba669b725ac..36b1e95c964288843e0dd3c92704265759f8afb9 100644
+index fdc56a5080ab2f7331431ee1f5976ba669b725ac..29b89c244bb8a20bed1789bb7c5001739d3b6c3a 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -1,6 +1,7 @@
@@ -35,7 +35,7 @@ index fdc56a5080ab2f7331431ee1f5976ba669b725ac..36b1e95c964288843e0dd3c927042657
  import net.minecraft.server.level.TicketType;
  import org.bukkit.Bukkit;
  import org.bukkit.configuration.ConfigurationSection;
-@@ -139,6 +140,89 @@ public final class TuinityConfig {
+@@ -139,6 +140,98 @@ public final class TuinityConfig {
          lagCompensateBlockBreaking = TuinityConfig.getBoolean("lag-compensate-block-breaking", true);
      }
  
@@ -82,17 +82,26 @@ index fdc56a5080ab2f7331431ee1f5976ba669b725ac..36b1e95c964288843e0dd3c927042657
 +        TuinityConfig.getString("packet-limiter.limits." +
 +                net.minecraft.network.protocol.game.PacketPlayInAutoRecipe.class.getSimpleName() + ".action", PacketLimit.ViolateAction.DROP.name());
 +
++        final String canonicalName = MinecraftServer.class.getCanonicalName();
++        final String nmsPackage = canonicalName.substring(0, canonicalName.lastIndexOf("."));
 +        for (final String packetClassName : section.getKeys(false)) {
 +            if (packetClassName.equals("all")) {
 +                continue;
 +            }
-+            final Class<?> packetClazz;
++            Class<?> packetClazz = null;
 +
 +            try {
-+                packetClazz = Class.forName("net.minecraft.server." + packetClassName);
++                packetClazz = Class.forName(nmsPackage + "." + packetClassName);
 +            } catch (final ClassNotFoundException ex) {
-+                MinecraftServer.LOGGER.warn("Packet '" + packetClassName + "' does not exist, cannot limit it! Please update tuinity.yml");
-+                continue;
++                for (final String subpackage : java.util.Arrays.asList("game", "handshake", "login", "status")) {
++                    try {
++                        packetClazz = Class.forName("net.minecraft.network.protocol." + subpackage + "." + packetClassName);
++                    } catch (final ClassNotFoundException ignore) {}
++                }
++                if (packetClazz == null) {
++                    MinecraftServer.LOGGER.warn("Packet '" + packetClassName + "' does not exist, cannot limit it! Please update tuinity.yml");
++                    continue;
++                }
 +            }
 +
 +            if (!net.minecraft.network.protocol.Packet.class.isAssignableFrom(packetClazz)) {
