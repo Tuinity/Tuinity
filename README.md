@@ -118,16 +118,16 @@ via building tuinity.**
 Run the following commands in the root directory:
 
 ```shell
-./tuinity clean jar
+./tuinity jar
 ```
 
 If all you want is a paperclip server jar, just run the command above.
 
 Otherwise, to setup the `Tuinity-API` and `Tuinity-Server` repo, just run the following command
-in your project root `./tuinity clean patch` additionally, after you run this command You can run `./tuinity build` to build the 
+in your project root `./tuinity patch` additionally, after you run this command You can run `./tuinity build` to build the 
 respective api and server jars.
 
-`./tuinity clean patch` should initialize the repo such that you can now start modifying and creating
+`./tuinity patch` should initialize the repo such that you can now start modifying and creating
 patches. The folder `Tuinity-API` is the api repo and the `Tuinity-Server` folder
 is the server repo and will contain the source files you will modify.
 
