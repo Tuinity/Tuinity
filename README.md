@@ -50,7 +50,7 @@ dependencies {
 
 + #### API
 
-```groovy
+```kotlin
 dependencies {
     compileOnly("com.tuinity:tuinity-api:1.16.5-R0.1-SNAPSHOT")
 }
