@@ -123,7 +123,6 @@ Run the following commands in the root directory:
 
 If all you want is a paperclip server jar, just run the command above.
 
-#### IT'S RECOMMENDED TO RUN `./tuinity clean` BEFORE EVERY TASK THAT ISN'T `./tuinity jar`
 
 Otherwise, to setup the `Tuinity-API` and `Tuinity-Server` repo, just run the following command
 in your project root `./tuinity patch` additionally, after you run this command You can run `./tuinity build` to build the 
