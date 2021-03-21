@@ -1,6 +1,6 @@
 <div align=center>
-    <!-- ./blob/master/tuinity-logo.webp -->
-    <img src="./tuinity-logo.webp" width="512">
+    <!-- ./blob/master/images/tuinity-logo.webp -->
+    <img src="./images/tuinity-logo.webp" width="512">
     <br /><br />
     <p>Fork of <a href="https://github.com/PaperMC/Paper">Paper</a> aimed at improving server performance at high playercounts.</p>
     <img alt="Java CI" src="https://github.com/Spottedleaf/Tuinity/workflows/Java%20CI/badge.svg">
@@ -17,23 +17,72 @@ Tuinity uses the same paperclip jar system that Paper uses.
 
 You can download the latest build of Tuinity by going [here](https://ci.codemc.io/job/Spottedleaf/job/Tuinity/).
 
-You can also [build it yourself](https://github.com/Spottedleaf/Tuinity#building).
+You can also [build it yourself](#building).
 
 ## How To (Plugin developers)
-In order to use Tuinity as a dependency you must [build it yourself](https://github.com/Spottedleaf/Tuinity#building).
+In order to use Tuinity as a dependency you must [build it yourself](#building).
 Each time you want to update your dependency you must re-build Tuinity.
 
-Tuinity-API maven dependency:
+<details><summary>Gradle</summary>
+<p>
+ 
+ ## Artifact Information
+
+> ### Groovy DSL
+
++ #### API
+
+```groovy
+dependencies {
+    compileOnly "com.tuinity:tuinity-api:1.16.5-R0.1-SNAPSHOT"
+}
+ ```
+
++ #### Server
+
+```groovy
+dependencies {
+    compileOnly "com.tuinity:tuinity:1.16.5-R0.1-SNAPSHOT" 
+}
+```
+ 
+> ### Kotlin DSL
+
++ #### API
+
+```groovy
+dependencies {
+    compileOnly("com.tuinity:tuinity-api:1.16.5-R0.1-SNAPSHOT")
+}
+ ```
+
++ #### Server
+
+```kotlin
+dependencies {
+    compileOnly("com.tuinity:tuinity:1.16.5-R0.1-SNAPSHOT")
+}
+```
+
+</p>
+</details>
+
+<details><summary>Maven</summary>
+<p>
+    
+* Artifact Information - Tuinity-API
+
 ```xml
 <dependency>
     <groupId>com.tuinity</groupId>
     <artifactId>tuinity-api</artifactId>
     <version>1.16.5-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
- </dependency>
- ```
+</dependency>
+```
 
-Tuinity-Server maven dependency:
+* Artifact Information - Tuinity-Server
+
 ```xml
 <dependency>
     <groupId>com.tuinity</groupId>
@@ -43,25 +92,42 @@ Tuinity-Server maven dependency:
 </dependency>
 ```
 
-There is no repository required since the artifacts should be locally installed
-via building Tuinity.
+</p>
+</details>
+
+**There is no repository required since the artifacts should be locally installed
+via building tuinity.**
+
 
 ## Building
 
-Requirements:
-- You need `git` installed, with a configured user name and email. 
-   On Windows you need to run from git bash.
-- You need `maven` installed.
-- You need `jdk` 8+ installed to compile (and `jre` 8+ to run).
-- Anything else that `paper` requires to build.
+<details><summary>Requirements</summary>
+<p>
 
-If all you want is a paperclip server jar, just run `./tuinity jar`.
+- You need **Git** installed, with a configured user name and email. On windows you need to run from git bash.
+
+- You need **JDK 8+** installed to compile (and **JRE 8+** to run)
+
+- You need **Maven** installed.
+
+- Anything else that **[Paper](https://github.com/PaperMC/Paper)** requires to build
+ 
+</p>
+</details>
+
+Run the following commands in the root directory:
+
+```shell
+./tuinity clean jar
+```
+
+If all you want is a paperclip server jar, just run the command above.
 
 Otherwise, to setup the `Tuinity-API` and `Tuinity-Server` repo, just run the following command
-in your project root `./tuinity patch` additionally, after you run `./tuinity patch` you can run `./tuinity build` to build the 
+in your project root `./tuinity clean patch` additionally, after you run this command You can run `./tuinity build` to build the 
 respective api and server jars.
 
-`./tuinity patch` should initialize the repo such that you can now start modifying and creating
+`./tuinity clean patch` should initialize the repo such that you can now start modifying and creating
 patches. The folder `Tuinity-API` is the api repo and the `Tuinity-Server` folder
 is the server repo and will contain the source files you will modify.
 
@@ -72,8 +138,8 @@ patch will be placed in the patches folder. Modifying commits will also modify i
 corresponding patch file.
 
 ## License
-The PATCHES-LICENSE file describes the license for api & server patches,
-found in `./patches` and its subdirectories except when noted otherwise.
+The [PATCHES-LICENSE](/PATCHES-LICENSE) file describes the license for api & server patches,
+found [here](/patches) and its subdirectories except when noted otherwise.
 
 Everything else is licensed under the MIT license, except when note otherwise.
 See https://github.com/starlis/empirecraft and https://github.com/electronicboy/byof
