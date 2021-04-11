@@ -260,8 +260,30 @@ index 41c8646aef9a8df2f99319c2a8e76d850bdcc1f6..6b6a90dc07ab126a21d011d1a831019e
          // Paper start
          long endTime = System.nanoTime();
          long remaining = (TICK_TIME - (endTime - lastTick)) - catchupTime;
+diff --git a/src/main/java/net/minecraft/server/level/EntityPlayer.java b/src/main/java/net/minecraft/server/level/EntityPlayer.java
+index 37c9b5fd712e30a9a0faccc840f738f4b2cfc723..f7e9a151ffbbb64cb8f8bc1d37516d7979277b17 100644
+--- a/src/main/java/net/minecraft/server/level/EntityPlayer.java
++++ b/src/main/java/net/minecraft/server/level/EntityPlayer.java
+@@ -370,7 +370,7 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+ 
+                 if (blockposition1 != null) {
+                     this.setPositionRotation(blockposition1, 0.0F, 0.0F);
+-                    if (worldserver.getCubes(this)) {
++                    if (!worldserver.collidesWithAnyBlockOrWorldBorder(this, this.getBoundingBox(), true, false)) { // Tuinity - make sure this is loaded
+                         break;
+                     }
+                 }
+@@ -378,7 +378,7 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+         } else {
+             this.setPositionRotation(blockposition, 0.0F, 0.0F);
+ 
+-            while (!worldserver.getCubes(this) && this.locY() < 255.0D) {
++            while (worldserver.collidesWithAnyBlockOrWorldBorder(this, this.getBoundingBox(), true, false) && this.locY() < 255.0D) { // Tuinity - make sure this is loaded
+                 this.setPosition(this.locX(), this.locY() + 1.0D, this.locZ());
+             }
+         }
 diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
-index 794704609afa80038077fad9a21d9b1462d84377..f696cc065c7058550a10705f0f827872be11c54d 100644
+index 794704609afa80038077fad9a21d9b1462d84377..30b1e2e6d7d15b1579ce0ab87c9eb95219b07af0 100644
 --- a/src/main/java/net/minecraft/server/level/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/level/WorldServer.java
 @@ -474,6 +474,251 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -509,13 +531,26 @@ index 794704609afa80038077fad9a21d9b1462d84377..f696cc065c7058550a10705f0f827872
 +    @Override
 +    public boolean getCubes(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Predicate<Entity> predicate) {
 +        if (entity instanceof net.minecraft.world.entity.decoration.EntityArmorStand && !entity.world.paperConfig.armorStandEntityLookups) return false;
-+        return !this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb, true, true) && !this.hardCollidesWithAnyEntities(entity, axisalignedbb, predicate);
++        return !this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb, false, false) && !this.hardCollidesWithAnyEntities(entity, axisalignedbb, predicate);
 +    }
 +    // Tuinity end - optimise collision
 +
      // CraftBukkit start
      @Override
      public TileEntity getTileEntity(BlockPosition pos, boolean validate) {
+diff --git a/src/main/java/net/minecraft/server/players/PlayerList.java b/src/main/java/net/minecraft/server/players/PlayerList.java
+index 2df8e914f66176e22aeddf8b94a83af5ea921d88..306d5ab69f8c4ca1c69f081e17cf9a4a2bee0446 100644
+--- a/src/main/java/net/minecraft/server/players/PlayerList.java
++++ b/src/main/java/net/minecraft/server/players/PlayerList.java
+@@ -943,7 +943,7 @@ public abstract class PlayerList {
+ 
+         worldserver1.getChunkProvider().addTicket(TicketType.POST_TELEPORT, new ChunkCoordIntPair(location.getBlockX() >> 4, location.getBlockZ() >> 4), 1, entityplayer.getId()); // Paper
+         entityplayer1.forceCheckHighPriority(); // Player
+-        while (avoidSuffocation && !worldserver1.getCubes(entityplayer1) && entityplayer1.locY() < 256.0D) {
++        while (avoidSuffocation && worldserver1.collidesWithAnyBlockOrWorldBorder(entityplayer1, entityplayer1.getBoundingBox(), true, false) && entityplayer1.locY() < 256.0D) { // Tuinity - make sure this is loaded
+             entityplayer1.setPosition(entityplayer1.locX(), entityplayer1.locY() + 1.0D, entityplayer1.locZ());
+         }
+         // CraftBukkit start
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
 index b32b0ebf283a8face528ded0b845270953f536f1..c5ce10a55de6f611ec65f32382b0082f86e73fe3 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
