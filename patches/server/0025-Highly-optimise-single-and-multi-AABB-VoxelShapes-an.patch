@@ -248,7 +248,7 @@ index 006e7076932f6be576a64da09c4d84ca4a15f5dd..e832ea0497b2d6af7556bda7f6728e72
          0, 2, 60L, TimeUnit.SECONDS,
          new LinkedBlockingQueue<Runnable>(),
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index 41c8646aef9a8df2f99319c2a8e76d850bdcc1f6..6b6a90dc07ab126a21d011d1a831019ec1456834 100644
+index 5c909b776e111d6bd9e2429f25fed121bb391219..d7e1c830764973c31dff8311a79e617d8f283a53 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
 @@ -1441,6 +1441,8 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
@@ -260,8 +260,30 @@ index 41c8646aef9a8df2f99319c2a8e76d850bdcc1f6..6b6a90dc07ab126a21d011d1a831019e
          // Paper start
          long endTime = System.nanoTime();
          long remaining = (TICK_TIME - (endTime - lastTick)) - catchupTime;
+diff --git a/src/main/java/net/minecraft/server/level/EntityPlayer.java b/src/main/java/net/minecraft/server/level/EntityPlayer.java
+index 37c9b5fd712e30a9a0faccc840f738f4b2cfc723..f7e9a151ffbbb64cb8f8bc1d37516d7979277b17 100644
+--- a/src/main/java/net/minecraft/server/level/EntityPlayer.java
++++ b/src/main/java/net/minecraft/server/level/EntityPlayer.java
+@@ -370,7 +370,7 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+ 
+                 if (blockposition1 != null) {
+                     this.setPositionRotation(blockposition1, 0.0F, 0.0F);
+-                    if (worldserver.getCubes(this)) {
++                    if (!worldserver.collidesWithAnyBlockOrWorldBorder(this, this.getBoundingBox(), true, false)) { // Tuinity - make sure this is loaded
+                         break;
+                     }
+                 }
+@@ -378,7 +378,7 @@ public class EntityPlayer extends EntityHuman implements ICrafting {
+         } else {
+             this.setPositionRotation(blockposition, 0.0F, 0.0F);
+ 
+-            while (!worldserver.getCubes(this) && this.locY() < 255.0D) {
++            while (worldserver.collidesWithAnyBlockOrWorldBorder(this, this.getBoundingBox(), true, false) && this.locY() < 255.0D) { // Tuinity - make sure this is loaded
+                 this.setPosition(this.locX(), this.locY() + 1.0D, this.locZ());
+             }
+         }
 diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
-index 794704609afa80038077fad9a21d9b1462d84377..f696cc065c7058550a10705f0f827872be11c54d 100644
+index 1658c03b70b5984c87d069276efcc7b8c8878431..86d1ce955c88530c043128a043fe75534077c665 100644
 --- a/src/main/java/net/minecraft/server/level/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/level/WorldServer.java
 @@ -474,6 +474,251 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -509,13 +531,26 @@ index 794704609afa80038077fad9a21d9b1462d84377..f696cc065c7058550a10705f0f827872
 +    @Override
 +    public boolean getCubes(@Nullable Entity entity, AxisAlignedBB axisalignedbb, Predicate<Entity> predicate) {
 +        if (entity instanceof net.minecraft.world.entity.decoration.EntityArmorStand && !entity.world.paperConfig.armorStandEntityLookups) return false;
-+        return !this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb, true, true) && !this.hardCollidesWithAnyEntities(entity, axisalignedbb, predicate);
++        return !this.collidesWithAnyBlockOrWorldBorder(entity, axisalignedbb, false, false) && !this.hardCollidesWithAnyEntities(entity, axisalignedbb, predicate);
 +    }
 +    // Tuinity end - optimise collision
 +
      // CraftBukkit start
      @Override
      public TileEntity getTileEntity(BlockPosition pos, boolean validate) {
+diff --git a/src/main/java/net/minecraft/server/players/PlayerList.java b/src/main/java/net/minecraft/server/players/PlayerList.java
+index 2df8e914f66176e22aeddf8b94a83af5ea921d88..306d5ab69f8c4ca1c69f081e17cf9a4a2bee0446 100644
+--- a/src/main/java/net/minecraft/server/players/PlayerList.java
++++ b/src/main/java/net/minecraft/server/players/PlayerList.java
+@@ -943,7 +943,7 @@ public abstract class PlayerList {
+ 
+         worldserver1.getChunkProvider().addTicket(TicketType.POST_TELEPORT, new ChunkCoordIntPair(location.getBlockX() >> 4, location.getBlockZ() >> 4), 1, entityplayer.getId()); // Paper
+         entityplayer1.forceCheckHighPriority(); // Player
+-        while (avoidSuffocation && !worldserver1.getCubes(entityplayer1) && entityplayer1.locY() < 256.0D) {
++        while (avoidSuffocation && worldserver1.collidesWithAnyBlockOrWorldBorder(entityplayer1, entityplayer1.getBoundingBox(), true, false) && entityplayer1.locY() < 256.0D) { // Tuinity - make sure this is loaded
+             entityplayer1.setPosition(entityplayer1.locX(), entityplayer1.locY() + 1.0D, entityplayer1.locZ());
+         }
+         // CraftBukkit start
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
 index b32b0ebf283a8face528ded0b845270953f536f1..c5ce10a55de6f611ec65f32382b0082f86e73fe3 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
@@ -1008,7 +1043,7 @@ index 03584572fa5bf0d96fc4cecece573547f9c94cea..8bc965a3b3d0d4140c6b94636f0b33b2
                      }
  
 diff --git a/src/main/java/net/minecraft/world/level/World.java b/src/main/java/net/minecraft/world/level/World.java
-index d2e4028c67e70fc6aa3193ea6f1fc845bc637fd3..8d3dbf064df74434988b3c60fcb2b72bece37b7e 100644
+index bf7ca5c956a2a3a9cd2bfde7a0e4e8805d618797..a0ff1e87224f418a387656c8793151af7929454a 100644
 --- a/src/main/java/net/minecraft/world/level/World.java
 +++ b/src/main/java/net/minecraft/world/level/World.java
 @@ -1175,8 +1175,13 @@ public abstract class World implements GeneratorAccess, AutoCloseable {

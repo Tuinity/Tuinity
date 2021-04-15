@@ -68,10 +68,10 @@ index 890362d28ab9cb760c73fe5014e144fb08ada6b8..3c532d3996dfc734ec07181701280b60
          // Paper - nuke IOWorker
      }
 diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFile.java b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFile.java
-index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660bec66927 100644
+index 1b0535ba211904b2384cc80c02c21ed1a606e752..7cdac33e153ccba0a7e8b5aa8fbcbb58ade6a9d2 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFile.java
 +++ b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFile.java
-@@ -5,6 +5,7 @@ import java.io.BufferedInputStream;
+@@ -6,6 +6,7 @@ import java.io.BufferedInputStream;
  import java.io.BufferedOutputStream;
  import java.io.ByteArrayInputStream;
  import java.io.ByteArrayOutputStream;
@@ -79,7 +79,7 @@ index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660
  import java.io.DataInputStream;
  import java.io.DataOutputStream;
  import java.io.File;
-@@ -35,15 +36,350 @@ public class RegionFile implements AutoCloseable {
+@@ -36,15 +37,350 @@ public class RegionFile implements AutoCloseable {
      private static final Logger LOGGER = LogManager.getLogger();
      private static final ByteBuffer c = ByteBuffer.allocateDirect(1);
      private final FileChannel dataFile;
@@ -434,7 +434,7 @@ index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660
      public final java.util.concurrent.locks.ReentrantLock fileLock = new java.util.concurrent.locks.ReentrantLock(true); // Paper
  
      // Paper start - Cache chunk status
-@@ -71,10 +407,21 @@ public class RegionFile implements AutoCloseable {
+@@ -72,10 +408,21 @@ public class RegionFile implements AutoCloseable {
      // Paper end
  
      public RegionFile(File file, File file1, boolean flag) throws IOException {
@@ -456,7 +456,7 @@ index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660
          this.g = ByteBuffer.allocateDirect(8192);
          this.file = path.toFile(); // Paper
          initOversizedState(); // Paper
-@@ -103,14 +450,16 @@ public class RegionFile implements AutoCloseable {
+@@ -104,14 +451,16 @@ public class RegionFile implements AutoCloseable {
                      RegionFile.LOGGER.warn("Region file {} has truncated header: {}", path, i);
                  }
  
@@ -477,7 +477,7 @@ index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660
                          // Spigot start
                          if (j1 == 255) {
                              // We're maxed out, so we need to read the proper length from the section
-@@ -118,33 +467,105 @@ public class RegionFile implements AutoCloseable {
+@@ -119,33 +468,105 @@ public class RegionFile implements AutoCloseable {
                              this.dataFile.read(realLen, i1 * 4096);
                              j1 = (realLen.getInt(0) + 4) / 4096 + 1;
                          }
@@ -589,8 +589,8 @@ index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660
      @Nullable public synchronized DataInputStream getReadStream(ChunkCoordIntPair chunkCoordIntPair) throws IOException { return a(chunkCoordIntPair);} // Paper - OBFHELPER
      @Nullable
      public synchronized DataInputStream a(ChunkCoordIntPair chunkcoordintpair) throws IOException {
-@@ -169,6 +590,12 @@ public class RegionFile implements AutoCloseable {
-             ((java.nio.Buffer) bytebuffer).flip();
+@@ -170,6 +591,12 @@ public class RegionFile implements AutoCloseable {
+             ((java.nio.Buffer) bytebuffer).flip(); // CraftBukkit - decompile error
              if (bytebuffer.remaining() < 5) {
                  RegionFile.LOGGER.error("Chunk {} header is truncated: expected {} but read {}", chunkcoordintpair, l, bytebuffer.remaining());
 +                // Tuinity start - recalculate header on regionfile corruption
@@ -602,7 +602,7 @@ index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660
                  return null;
              } else {
                  int i1 = bytebuffer.getInt();
-@@ -176,6 +603,12 @@ public class RegionFile implements AutoCloseable {
+@@ -177,6 +604,12 @@ public class RegionFile implements AutoCloseable {
  
                  if (i1 == 0) {
                      RegionFile.LOGGER.warn("Chunk {} is allocated, but stream is missing", chunkcoordintpair);
@@ -615,7 +615,7 @@ index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660
                      return null;
                  } else {
                      int j1 = i1 - 1;
-@@ -183,17 +616,49 @@ public class RegionFile implements AutoCloseable {
+@@ -184,17 +617,49 @@ public class RegionFile implements AutoCloseable {
                      if (a(b0)) {
                          if (j1 != 0) {
                              RegionFile.LOGGER.warn("Chunk has both internal and external streams");
@@ -667,7 +667,7 @@ index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660
                      }
                  }
              }
-@@ -353,10 +818,15 @@ public class RegionFile implements AutoCloseable {
+@@ -354,10 +819,15 @@ public class RegionFile implements AutoCloseable {
      }
  
      private ByteBuffer b() {
@@ -681,16 +681,16 @@ index 4999ba61fb04713ffe3d23c556f732dc4abbf0bc..0bba434d29b09d7d164f5ca4f49cd660
          bytebuffer.putInt(1);
 -        bytebuffer.put((byte) (this.f.a() | 128));
 +        bytebuffer.put((byte) (compressionType.compressionTypeId() | 128)); // Tuinity - replace with compressionType
-         ((java.nio.Buffer) bytebuffer).flip();
+         ((java.nio.Buffer) bytebuffer).flip(); // CraftBukkit - decompile error
          return bytebuffer;
      }
-@@ -393,6 +863,7 @@ public class RegionFile implements AutoCloseable {
+@@ -394,6 +864,7 @@ public class RegionFile implements AutoCloseable {
          };
      }
  
-+    private final void flushHeader() throws IOException { this.b(); } // Tuinity - OBFHELPER
++    private final void flushHeader() throws IOException { this.c(); } // Tuinity - OBFHELPER
      private void c() throws IOException {
-         ((java.nio.Buffer) this.g).position(0);
+         ((java.nio.Buffer) this.g).position(0); // CraftBukkit - decompile error
          this.dataFile.write(this.g, 0L);
 diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileBitSet.java b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileBitSet.java
 index c96eac4b0b519b2807153fa5a8ebf5a020a2b140..b5c8d9b17c2d5e229db5b48448709194d1fc04f8 100644
