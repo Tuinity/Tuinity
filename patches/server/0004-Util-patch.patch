@@ -937,10 +937,10 @@ index 0000000000000000000000000000000000000000..be408aebbccbda46e8aa82ef33757413
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/util/misc/Delayed26WayDistancePropagator3D.java b/src/main/java/com/tuinity/tuinity/util/misc/Delayed26WayDistancePropagator3D.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..155d10994f2d7df9ac927d955d99016fe304360f
+index 0000000000000000000000000000000000000000..9cc49e8e4ad841df2b38dc37ec761bf360f5a357
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/misc/Delayed26WayDistancePropagator3D.java
-@@ -0,0 +1,295 @@
+@@ -0,0 +1,300 @@
 +package com.tuinity.tuinity.util.misc;
 +
 +import it.unimi.dsi.fastutil.HashCommon;
@@ -1062,10 +1062,12 @@ index 0000000000000000000000000000000000000000..155d10994f2d7df9ac927d955d99016f
 +        this.levelRemoveWorkQueueBitset |= (1L << level);
 +    }
 +
-+    public void propagateUpdates() {
++    public boolean propagateUpdates() {
 +        if (this.updatedSources.isEmpty()) {
-+            return;
++            return false;
 +        }
++
++        boolean ret = false;
 +
 +        for (final LongIterator iterator = this.updatedSources.iterator(); iterator.hasNext();) {
 +            final long coordinate = iterator.nextLong();
@@ -1076,6 +1078,7 @@ index 0000000000000000000000000000000000000000..155d10994f2d7df9ac927d955d99016f
 +            if (currentLevel == updatedSource) {
 +                continue;
 +            }
++            ret = true;
 +
 +            if (updatedSource > currentLevel) {
 +                // level increase
@@ -1096,6 +1099,8 @@ index 0000000000000000000000000000000000000000..155d10994f2d7df9ac927d955d99016f
 +
 +        // now we propagate the decreases (which will then re-propagate clobbered sources)
 +        this.propagateDecreases();
++
++        return ret;
 +    }
 +
 +    protected void propagateIncreases() {
@@ -1238,10 +1243,10 @@ index 0000000000000000000000000000000000000000..155d10994f2d7df9ac927d955d99016f
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/util/misc/Delayed8WayDistancePropagator2D.java b/src/main/java/com/tuinity/tuinity/util/misc/Delayed8WayDistancePropagator2D.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..606417a8aeaca2682595f417bba8e9d411999da9
+index 0000000000000000000000000000000000000000..cdd3c4032c1d6b34a10ba415bd4d0e377aa9af3c
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/misc/Delayed8WayDistancePropagator2D.java
-@@ -0,0 +1,713 @@
+@@ -0,0 +1,718 @@
 +package com.tuinity.tuinity.util.misc;
 +
 +import it.unimi.dsi.fastutil.HashCommon;
@@ -1622,10 +1627,12 @@ index 0000000000000000000000000000000000000000..606417a8aeaca2682595f417bba8e9d4
 +        this.levelRemoveWorkQueueBitset |= (1L << level);
 +    }
 +
-+    public void propagateUpdates() {
++    public boolean propagateUpdates() {
 +        if (this.updatedSources.isEmpty()) {
-+            return;
++            return false;
 +        }
++
++        boolean ret = false;
 +
 +        for (final LongIterator iterator = this.updatedSources.iterator(); iterator.hasNext();) {
 +            final long coordinate = iterator.nextLong();
@@ -1636,6 +1643,7 @@ index 0000000000000000000000000000000000000000..606417a8aeaca2682595f417bba8e9d4
 +            if (currentLevel == updatedSource) {
 +                continue;
 +            }
++            ret = true;
 +
 +            if (updatedSource > currentLevel) {
 +                // level increase
@@ -1656,6 +1664,8 @@ index 0000000000000000000000000000000000000000..606417a8aeaca2682595f417bba8e9d4
 +
 +        // now we propagate the decreases (which will then re-propagate clobbered sources)
 +        this.propagateDecreases();
++
++        return ret;
 +    }
 +
 +    protected void propagateIncreases() {

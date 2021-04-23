@@ -1,0 +1,284 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 21 Mar 2021 16:25:42 -0700
+Subject: [PATCH] Replace ticket level propagator
+
+Mojang's propagator is slow, and this isn't surprising
+given it's built on the same utilities the vanilla light engine
+is built on. The simple propagator I wrote is approximately 4x
+faster when simulating player movement. For a long time timing
+reports have shown this function take up significant tick, (
+approx 10% or more), and async sampling data shows the level
+propagation alone takes up a significant amount. So this
+should help with that. A big side effect is that mid-tick
+will be more effective, since more time will be allocated
+to actually processing chunk tasks vs the ticket level updates.
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkMapDistance.java b/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
+index db8532c42fcb2e96f4b3491352d1b9a25a8efe49..b713ff9cae31e075c9df39de52ce4515cb1e8622 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
++++ b/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
+@@ -8,6 +8,7 @@ import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
+ import it.unimi.dsi.fastutil.longs.Long2IntMap;
+ import it.unimi.dsi.fastutil.longs.Long2IntMaps;
+ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
++import it.unimi.dsi.fastutil.longs.Long2IntLinkedOpenHashMap; // Tuinity
+ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+ import it.unimi.dsi.fastutil.longs.Long2ObjectMap.Entry;
+ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+@@ -40,7 +41,7 @@ public abstract class ChunkMapDistance {
+     private static final int b = 33 + ChunkStatus.a(ChunkStatus.FULL) - 2;
+     private final Long2ObjectMap<ObjectSet<EntityPlayer>> c = new Long2ObjectOpenHashMap();
+     public final Long2ObjectOpenHashMap<ArraySetSorted<Ticket<?>>> tickets = new Long2ObjectOpenHashMap();
+-    private final ChunkMapDistance.a ticketLevelTracker = new ChunkMapDistance.a(); final ChunkMapDistance.a getTicketTracker() { return this.ticketLevelTracker; } // Tuinity - OBFHELPER
++    //private final ChunkMapDistance.a ticketLevelTracker = new ChunkMapDistance.a(); final ChunkMapDistance.a getTicketTracker() { return this.ticketLevelTracker; } // Tuinity - OBFHELPER  // Tuinity - replace ticket level propagator
+     public static final int MOB_SPAWN_RANGE = 8; // private final ChunkMapDistance.b f = new ChunkMapDistance.b(8); // Paper - no longer used
+     //private final ChunkMapDistance.c g = new ChunkMapDistance.c(33); // Tuinity - no longer used
+     // Paper start use a queue, but still keep unique requirement
+@@ -77,7 +78,7 @@ public abstract class ChunkMapDistance {
+             return ticket.getTicketType() == type;
+         });
+         if (changed) {
+-            this.getTicketTracker().update(chunk, getLowestTicketLevel(tickets), false);
++            this.updateTicketLevel(chunk, getLowestTicketLevel(tickets)); // Tuinity - replace ticket level propagator
+         }
+     }
+ 
+@@ -102,6 +103,45 @@ public abstract class ChunkMapDistance {
+         tickets.add(ticket); // re-add with new expire time and ticket level
+     }
+     // Tuinity end - delay chunk unloads
++    // Tuinity start - replace ticket level propagator
++    protected final Long2IntLinkedOpenHashMap ticketLevelUpdates = new Long2IntLinkedOpenHashMap() {
++        @Override
++        protected void rehash(int newN) {
++            // no downsizing allowed
++            if (newN < this.n) {
++                return;
++            }
++            super.rehash(newN);
++        }
++    };
++    protected final com.tuinity.tuinity.util.misc.Delayed8WayDistancePropagator2D ticketLevelPropagator = new com.tuinity.tuinity.util.misc.Delayed8WayDistancePropagator2D(
++            (long coordinate, byte oldLevel, byte newLevel) -> {
++                ChunkMapDistance.this.ticketLevelUpdates.putAndMoveToLast(coordinate, convertBetweenTicketLevels(newLevel));
++            }
++    );
++    // function for converting between ticket levels and propagator levels and vice versa
++    // the problem is the ticket level propagator will propagate from a set source down to zero, whereas mojang expects
++    // levels to propagate from a set value up to a maximum value. so we need to convert the levels we put into the propagator
++    // and the levels we get out of the propagator
++
++    // this maps so that GOLDEN_TICKET + 1 will be 0 in the propagator, GOLDEN_TICKET will be 1, and so on
++    // we need GOLDEN_TICKET+1 as 0 because anything >= GOLDEN_TICKET+1 should be unloaded
++    public static int convertBetweenTicketLevels(final int level) {
++        return PlayerChunkMap.GOLDEN_TICKET - level + 1;
++    }
++
++    protected final int getPropagatedTicketLevel(final long coordinate) {
++        return convertBetweenTicketLevels(this.ticketLevelPropagator.getLevel(coordinate));
++    }
++
++    protected final void updateTicketLevel(final long coordinate, final int ticketLevel) {
++        if (ticketLevel > PlayerChunkMap.GOLDEN_TICKET) {
++            this.ticketLevelPropagator.removeSource(coordinate);
++        } else {
++            this.ticketLevelPropagator.setSource(coordinate, convertBetweenTicketLevels(ticketLevel));
++        }
++    }
++    // Tuinity end - replace ticket level propagator
+ 
+     protected ChunkMapDistance(Executor executor, Executor executor1) {
+         executor1.getClass();
+@@ -146,7 +186,7 @@ public abstract class ChunkMapDistance {
+                     this.computeDelayedTicketFor(entry.getLongKey(), tempLevel[0], entry.getValue());
+                 }
+                 // Tuinity end - delay chunk unloads
+-                this.ticketLevelTracker.update(entry.getLongKey(), getLowestTicketLevel((ArraySetSorted) entry.getValue()), false);
++                this.updateTicketLevel(entry.getLongKey(), getLowestTicketLevel((ArraySetSorted) entry.getValue())); // Tuinity - replace ticket level propagator
+             }
+ 
+             if (((ArraySetSorted) entry.getValue()).isEmpty()) {
+@@ -166,66 +206,99 @@ public abstract class ChunkMapDistance {
+     protected abstract boolean a(long i);
+ 
+     @Nullable
+-    protected abstract PlayerChunk b(long i);
++    protected abstract PlayerChunk b(long i); protected final PlayerChunk getUpdatingChunk(long i) { return this.b(i); } // Tuinity - OBFHELPER
+ 
+     @Nullable
+-    protected abstract PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k);
++    protected abstract PlayerChunk a(long i, int j, @Nullable PlayerChunk playerchunk, int k); protected final PlayerChunk updateTicketLevel(long coord, int newLevel, @Nullable PlayerChunk playerchunk, int oldLevel) { return this.a(coord, newLevel, playerchunk, oldLevel); } // Tuinity - OBFHELPER
+ 
++    protected long ticketLevelUpdateCount; // Tuinity - replace ticket level propagator
+     public boolean a(PlayerChunkMap playerchunkmap) {
+         com.tuinity.tuinity.util.TickThread.softEnsureTickThread("Cannot tick ChunkMapDistance off of the main-thread");// Tuinity
+         //this.f.a(); // Paper - no longer used
+         AsyncCatcher.catchOp("DistanceManagerTick"); // Paper
+         //this.g.a(); // Tuinity - no longer used
+-        int i = Integer.MAX_VALUE - this.ticketLevelTracker.a(Integer.MAX_VALUE);
+-        boolean flag = i != 0;
++        boolean flag = this.ticketLevelPropagator.propagateUpdates(); // Tuinity - replace ticket level propagator
+ 
+         if (flag) {
+             ;
+         }
+ 
+-        // Paper start
+-        if (!this.pendingChunkUpdates.isEmpty()) {
+-            this.pollingPendingChunkUpdates = true; try {
+-            while(!this.pendingChunkUpdates.isEmpty()) {
+-                PlayerChunk remove = this.pendingChunkUpdates.remove();
+-                remove.isUpdateQueued = false;
+-                remove.a(playerchunkmap);
+-            }
+-            } finally { this.pollingPendingChunkUpdates = false; }
+-            // Paper end
+-            return true;
+-        } else {
+-            if (!this.l.isEmpty()) {
+-                LongIterator longiterator = this.l.iterator();
++        // Tuinity start - replace level propagator
++        if (!this.ticketLevelUpdates.isEmpty()) {
++            boolean oldPolling = this.pollingPendingChunkUpdates;
++            this.pollingPendingChunkUpdates = true;
++            try {
++                for (java.util.Iterator<Long2IntMap.Entry> iterator = this.ticketLevelUpdates.long2IntEntrySet().fastIterator(); iterator.hasNext(); ) {
++                    Long2IntMap.Entry entry = iterator.next();
++                    long key = entry.getLongKey();
++                    int newLevel = entry.getIntValue();
++                    PlayerChunk chunk = this.getUpdatingChunk(key);
+ 
+-                while (longiterator.hasNext()) {
+-                    long j = longiterator.nextLong();
++                    if (chunk == null && newLevel > PlayerChunkMap.GOLDEN_TICKET) {
++                        // not loaded and it shouldn't be loaded!
++                        continue;
++                    }
+ 
+-                    if (this.e(j).stream().anyMatch((ticket) -> {
+-                        return ticket.getTicketType() == TicketType.PLAYER;
+-                    })) {
+-                        PlayerChunk playerchunk = playerchunkmap.getUpdatingChunk(j);
++                    int currentLevel = chunk == null ? PlayerChunkMap.GOLDEN_TICKET + 1 : chunk.getTicketLevel();
+ 
+-                        if (playerchunk == null) {
+-                            throw new IllegalStateException();
++                    if (currentLevel == newLevel) {
++                        // nothing to do
++                        continue;
++                    }
++
++                    this.updateTicketLevel(key, newLevel, chunk, currentLevel);
++                }
++
++                long recursiveCheck = ++this.ticketLevelUpdateCount;
++                while (!this.ticketLevelUpdates.isEmpty()) {
++                    long key = this.ticketLevelUpdates.firstLongKey();
++                    int newLevel = this.ticketLevelUpdates.removeFirstInt();
++                    PlayerChunk chunk = this.getUpdatingChunk(key);
++
++                    if (chunk == null) {
++                        if (newLevel <= PlayerChunkMap.GOLDEN_TICKET) {
++                            throw new IllegalStateException("Expected chunk holder to be created");
+                         }
++                        // not loaded and it shouldn't be loaded!
++                        continue;
++                    }
+ 
+-                        CompletableFuture<Either<Chunk, PlayerChunk.Failure>> completablefuture = playerchunk.b();
++                    int currentLevel = chunk.oldTicketLevel;
+ 
+-                        completablefuture.thenAccept((either) -> {
+-                            this.m.execute(() -> {
+-                                this.k.a(ChunkTaskQueueSorter.a(() -> {
+-                                }, j, false));
+-                            });
+-                        });
++                    if (currentLevel == newLevel) {
++                        // nothing to do
++                        continue;
++                    }
++
++                    chunk.handleLevelUpdate(playerchunkmap);
++                    if (recursiveCheck != this.ticketLevelUpdateCount) {
++                        if (!this.ticketLevelUpdates.isEmpty()) {
++                            throw new IllegalStateException("Recursive call should have processed updates");
++                        }
++                        break;
+                     }
+                 }
+ 
+-                this.l.clear();
++                for (;;) {
++                    if (recursiveCheck != this.ticketLevelUpdateCount) {
++                        break;
++                    }
++                    PlayerChunk pendingUpdate = this.pendingChunkUpdates.poll();
++                    if (pendingUpdate == null) {
++                        break;
++                    }
++
++                    pendingUpdate.handleLevelUpdate(playerchunkmap);
++                }
++            } finally {
++                this.pollingPendingChunkUpdates = oldPolling;
+             }
+ 
+-            return flag;
++            return true;
+         }
++
++        return flag;
++        // Tuinity end - replace level propagator
+     }
+     boolean pollingPendingChunkUpdates = false; // Paper
+ 
+@@ -237,7 +310,7 @@ public abstract class ChunkMapDistance {
+ 
+         ticket1.a(this.currentTick);
+         if (ticket.b() < j) {
+-            this.ticketLevelTracker.update(i, ticket.b(), true);
++            this.updateTicketLevel(i, ticket.b()); // Tuinity - replace ticket level propagator
+         }
+ 
+         return ticket == ticket1; // CraftBukkit
+@@ -263,7 +336,7 @@ public abstract class ChunkMapDistance {
+         }
+ 
+         int newLevel = getLowestTicketLevel(arraysetsorted); // Paper
+-        if (newLevel > oldLevel) this.ticketLevelTracker.update(i, newLevel, false); // Paper
++        if (newLevel > oldLevel) this.updateTicketLevel(i, newLevel); // Paper // Tuinity - replace ticket level propagator
+         return removed; // CraftBukkit
+     }
+ 
+@@ -517,7 +590,7 @@ public abstract class ChunkMapDistance {
+             ArraySetSorted<Ticket<?>> tickets = entry.getValue();
+             if (tickets.remove(target)) {
+                 // copied from removeTicket
+-                this.ticketLevelTracker.update(entry.getLongKey(), getLowestTicketLevel(tickets), false);
++                this.updateTicketLevel(entry.getLongKey(), getLowestTicketLevel(tickets)); // Tuinity - replace ticket level propagator
+ 
+                 // can't use entry after it's removed
+                 if (tickets.isEmpty()) {
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunk.java b/src/main/java/net/minecraft/server/level/PlayerChunk.java
+index 63c2f6d3312d9005ef2f821456e3946f3a9a0c3b..86f156587a0939b28c5cf6f64907255c1c4f8b35 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunk.java
+@@ -55,7 +55,7 @@ public class PlayerChunk {
+     private volatile CompletableFuture<Either<Chunk, PlayerChunk.Failure>> entityTickingFuture; private volatile boolean isEntityTickingReady; // Paper - cache chunk ticking stage
+     private CompletableFuture<IChunkAccess> chunkSave;
+     public int oldTicketLevel;
+-    private int ticketLevel;
++    private int ticketLevel; public final void setTicketLevel(final int level) { this.ticketLevel = level; } // Tuinity - OBFHELPER
+     volatile int n; public final int getCurrentPriority() { return n; } // Paper - OBFHELPER - make volatile since this is concurrently accessed
+     public final ChunkCoordIntPair location; // Paper - private -> public
+     private boolean p;
+@@ -600,6 +600,7 @@ public class PlayerChunk {
+     }
+ 
+     protected long updateCount; // Tuinity - correctly handle recursion
++    protected final void handleLevelUpdate(PlayerChunkMap playerchunkmap) { this.a(playerchunkmap); } // Tuinity - OBFHELPER
+     protected void a(PlayerChunkMap playerchunkmap) {
+         com.tuinity.tuinity.util.TickThread.ensureTickThread("Async ticket level update"); // Tuinity
+         long updateCount = ++this.updateCount; // Tuinity - correctly handle recursion

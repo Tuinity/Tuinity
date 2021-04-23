@@ -1032,7 +1032,7 @@ index 0000000000000000000000000000000000000000..0d577aa1c7868ce89c3902535adcb554
 +    }
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index 299b31ed429c922fcb6122e3c511bd16735e3c71..d0433feeb274f474af04ba1e09f9f75d5b4dcfea 100644
+index 299b31ed429c922fcb6122e3c511bd16735e3c71..a30bb38144acb74f41638cc2b573e09265cde0e1 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 @@ -244,6 +244,25 @@ public final class TuinityConfig {
@@ -1049,12 +1049,12 @@ index 299b31ed429c922fcb6122e3c511bd16735e3c71..d0433feeb274f474af04ba1e09f9f75d
 +
 +    private static void newPlayerChunkManagement() {
 +        playerMinChunkLoadRadius = TuinityConfig.getInt("player-chunks.min-load-radius", 2);
-+        playerMaxConcurrentChunkSends = TuinityConfig.getDouble("player-chunks.max-concurrent-sends", 15.0);
++        playerMaxConcurrentChunkSends = TuinityConfig.getDouble("player-chunks.max-concurrent-sends", 5.0);
 +        playerMaxConcurrentChunkLoads = TuinityConfig.getDouble("player-chunks.max-concurrent-loads", -6.0);
 +        playerAutoConfigureSendViewDistance = TuinityConfig.getBoolean("player-chunks.autoconfig-send-distance", true);
 +        // this costs server bandwidth. latest phosphor or starlight on the client fixes mc162253 anyways.
 +        enableMC162253Workaround = TuinityConfig.getBoolean("player-chunks.enable-mc162253-workaround", true);
-+        playerTargetChunkSendRate = TuinityConfig.getDouble("player-chunks.target-chunk-send-rate", 81.0 * 20.0);
++        playerTargetChunkSendRate = TuinityConfig.getDouble("player-chunks.target-chunk-send-rate", -35.0);
 +        playerFrustumPrioritisation = TuinityConfig.getBoolean("player-chunks.enable-frustum-priority", false);
 +    }
 +
@@ -1661,7 +1661,7 @@ index a802c45538943b570ca0daa3a40607dc80e696eb..af01f5d635eada7175b9d7fdb47a6553
                  // Paper end - per player view distance
              }
 diff --git a/src/main/java/net/minecraft/world/level/chunk/Chunk.java b/src/main/java/net/minecraft/world/level/chunk/Chunk.java
-index d6b34c6abebeac8445da3e76f341066952182e2b..df35ae12ecbe88ab396bed9850ef80433ff42fd4 100644
+index d6b34c6abebeac8445da3e76f341066952182e2b..fc07e2014e961da5d97095c4ee6f972e2ece3ec3 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/Chunk.java
 +++ b/src/main/java/net/minecraft/world/level/chunk/Chunk.java
 @@ -406,12 +406,12 @@ public class Chunk implements IChunkAccess {
@@ -1680,7 +1680,7 @@ index d6b34c6abebeac8445da3e76f341066952182e2b..df35ae12ecbe88ab396bed9850ef8043
                      }
                  });
              }
-@@ -419,31 +419,7 @@ public class Chunk implements IChunkAccess {
+@@ -419,31 +419,18 @@ public class Chunk implements IChunkAccess {
  
          // this code handles the chunk sending
          if (!areNeighboursLoaded(bitsetBefore, 1) && areNeighboursLoaded(bitsetAfter, 1)) {
@@ -1709,11 +1709,22 @@ index d6b34c6abebeac8445da3e76f341066952182e2b..df35ae12ecbe88ab396bed9850ef8043
 -                    }
 -                })));
 -            }
-+            chunkMap.playerChunkManager.onChunkSendReady(this.loc.x, this.loc.z); // Tuinity - replace old player chunk loading system
++            // Tuinity start - replace old player chunk loading system
++            chunkProviderServer.serverThreadQueue.execute(() -> {
++                if (!Chunk.this.areNeighboursLoaded(1)) {
++                    return;
++                }
++                Chunk.this.A();
++                if (!Chunk.this.areNeighboursLoaded(1)) {
++                    return;
++                }
++                chunkMap.playerChunkManager.onChunkSendReady(this.loc.x, this.loc.z);
++            });
++            // Tuinity end - replace old player chunk loading system
          }
          // Paper end - no-tick view distance
      }
-@@ -1027,6 +1003,7 @@ public class Chunk implements IChunkAccess {
+@@ -1027,6 +1014,7 @@ public class Chunk implements IChunkAccess {
          // Paper end - neighbour cache
          org.bukkit.Server server = this.world.getServer();
          ((WorldServer)this.world).getChunkProvider().addLoadedChunk(this); // Paper

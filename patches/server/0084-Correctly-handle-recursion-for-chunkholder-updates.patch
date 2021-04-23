@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 21 Mar 2021 17:32:47 -0700
+Subject: [PATCH] Correctly handle recursion for chunkholder updates
+
+If a chunk ticket level is brought up while unloading it would
+cause a recursive call which would handle the increase but then
+the caller would think the chunk would be unloaded.
+
+diff --git a/src/main/java/net/minecraft/server/level/PlayerChunk.java b/src/main/java/net/minecraft/server/level/PlayerChunk.java
+index d9b134302f739efd93f50e93c8730b474f9a8ccf..63c2f6d3312d9005ef2f821456e3946f3a9a0c3b 100644
+--- a/src/main/java/net/minecraft/server/level/PlayerChunk.java
++++ b/src/main/java/net/minecraft/server/level/PlayerChunk.java
+@@ -599,8 +599,10 @@ public class PlayerChunk {
+         this.ticketLevel = i;
+     }
+ 
++    protected long updateCount; // Tuinity - correctly handle recursion
+     protected void a(PlayerChunkMap playerchunkmap) {
+         com.tuinity.tuinity.util.TickThread.ensureTickThread("Async ticket level update"); // Tuinity
++        long updateCount = ++this.updateCount; // Tuinity - correctly handle recursion
+         ChunkStatus chunkstatus = getChunkStatus(this.oldTicketLevel);
+         ChunkStatus chunkstatus1 = getChunkStatus(this.ticketLevel);
+         boolean flag = this.oldTicketLevel <= PlayerChunkMap.GOLDEN_TICKET;
+@@ -630,6 +632,12 @@ public class PlayerChunk {
+ 
+             // Run callback right away if the future was already done
+             playerchunkmap.callbackExecutor.run();
++            // Tuinity start - correctly handle recursion
++            if (this.updateCount != updateCount) {
++                // something else updated ticket level for us.
++                return;
++            }
++            // Tuinity end - correctly handle recursion
+         }
+         // CraftBukkit end
+         CompletableFuture completablefuture;
