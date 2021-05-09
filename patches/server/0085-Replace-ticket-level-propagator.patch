@@ -15,7 +15,7 @@ will be more effective, since more time will be allocated
 to actually processing chunk tasks vs the ticket level updates.
 
 diff --git a/src/main/java/net/minecraft/server/level/ChunkMapDistance.java b/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
-index db8532c42fcb2e96f4b3491352d1b9a25a8efe49..b713ff9cae31e075c9df39de52ce4515cb1e8622 100644
+index db8532c42fcb2e96f4b3491352d1b9a25a8efe49..01874718d8c8ba316f919b1d4ccc5d8f2640277c 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
 @@ -8,6 +8,7 @@ import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
@@ -139,18 +139,21 @@ index db8532c42fcb2e96f4b3491352d1b9a25a8efe49..b713ff9cae31e075c9df39de52ce4515
 -            if (!this.l.isEmpty()) {
 -                LongIterator longiterator = this.l.iterator();
 +        // Tuinity start - replace level propagator
-+        if (!this.ticketLevelUpdates.isEmpty()) {
++        ticket_update_loop:
++        while (!this.ticketLevelUpdates.isEmpty()) {
++            flag = true;
+ 
+-                while (longiterator.hasNext()) {
+-                    long j = longiterator.nextLong();
 +            boolean oldPolling = this.pollingPendingChunkUpdates;
 +            this.pollingPendingChunkUpdates = true;
 +            try {
-+                for (java.util.Iterator<Long2IntMap.Entry> iterator = this.ticketLevelUpdates.long2IntEntrySet().fastIterator(); iterator.hasNext(); ) {
++                for (java.util.Iterator<Long2IntMap.Entry> iterator = this.ticketLevelUpdates.long2IntEntrySet().fastIterator(); iterator.hasNext();) {
 +                    Long2IntMap.Entry entry = iterator.next();
 +                    long key = entry.getLongKey();
 +                    int newLevel = entry.getIntValue();
 +                    PlayerChunk chunk = this.getUpdatingChunk(key);
- 
--                while (longiterator.hasNext()) {
--                    long j = longiterator.nextLong();
++
 +                    if (chunk == null && newLevel > PlayerChunkMap.GOLDEN_TICKET) {
 +                        // not loaded and it shouldn't be loaded!
 +                        continue;
@@ -202,31 +205,29 @@ index db8532c42fcb2e96f4b3491352d1b9a25a8efe49..b713ff9cae31e075c9df39de52ce4515
 +
 +                    chunk.handleLevelUpdate(playerchunkmap);
 +                    if (recursiveCheck != this.ticketLevelUpdateCount) {
-+                        if (!this.ticketLevelUpdates.isEmpty()) {
-+                            throw new IllegalStateException("Recursive call should have processed updates");
-+                        }
-+                        break;
++                        // back to the start, we must create player chunks and update the ticket level fields before
++                        // processing the actual level updates
++                        continue ticket_update_loop;
                      }
                  }
  
 -                this.l.clear();
+-            }
 +                for (;;) {
 +                    if (recursiveCheck != this.ticketLevelUpdateCount) {
-+                        break;
++                        continue ticket_update_loop;
 +                    }
 +                    PlayerChunk pendingUpdate = this.pendingChunkUpdates.poll();
 +                    if (pendingUpdate == null) {
 +                        break;
 +                    }
-+
+ 
+-            return flag;
 +                    pendingUpdate.handleLevelUpdate(playerchunkmap);
 +                }
 +            } finally {
 +                this.pollingPendingChunkUpdates = oldPolling;
-             }
- 
--            return flag;
-+            return true;
++            }
          }
 +
 +        return flag;
