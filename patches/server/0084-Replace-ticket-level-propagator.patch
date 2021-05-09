@@ -15,7 +15,7 @@ will be more effective, since more time will be allocated
 to actually processing chunk tasks vs the ticket level updates.
 
 diff --git a/src/main/java/net/minecraft/server/level/ChunkMapDistance.java b/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
-index db8532c42fcb2e96f4b3491352d1b9a25a8efe49..01874718d8c8ba316f919b1d4ccc5d8f2640277c 100644
+index ad90735b5daa658cdd5467eadcb29183d018b1fd..58e14c174cdf76cdea861fd3d4d1195fa27f888a 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkMapDistance.java
 @@ -8,6 +8,7 @@ import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
@@ -158,20 +158,18 @@ index db8532c42fcb2e96f4b3491352d1b9a25a8efe49..01874718d8c8ba316f919b1d4ccc5d8f
 +                        // not loaded and it shouldn't be loaded!
 +                        continue;
 +                    }
++
++                    int currentLevel = chunk == null ? PlayerChunkMap.GOLDEN_TICKET + 1 : chunk.getTicketLevel();
++
++                    if (currentLevel == newLevel) {
++                        // nothing to do
++                        continue;
++                    }
  
 -                    if (this.e(j).stream().anyMatch((ticket) -> {
 -                        return ticket.getTicketType() == TicketType.PLAYER;
 -                    })) {
 -                        PlayerChunk playerchunk = playerchunkmap.getUpdatingChunk(j);
-+                    int currentLevel = chunk == null ? PlayerChunkMap.GOLDEN_TICKET + 1 : chunk.getTicketLevel();
- 
--                        if (playerchunk == null) {
--                            throw new IllegalStateException();
-+                    if (currentLevel == newLevel) {
-+                        // nothing to do
-+                        continue;
-+                    }
-+
 +                    this.updateTicketLevel(key, newLevel, chunk, currentLevel);
 +                }
 +
@@ -180,7 +178,9 @@ index db8532c42fcb2e96f4b3491352d1b9a25a8efe49..01874718d8c8ba316f919b1d4ccc5d8f
 +                    long key = this.ticketLevelUpdates.firstLongKey();
 +                    int newLevel = this.ticketLevelUpdates.removeFirstInt();
 +                    PlayerChunk chunk = this.getUpdatingChunk(key);
-+
+ 
+-                        if (playerchunk == null) {
+-                            throw new IllegalStateException();
 +                    if (chunk == null) {
 +                        if (newLevel <= PlayerChunkMap.GOLDEN_TICKET) {
 +                            throw new IllegalStateException("Expected chunk holder to be created");
