@@ -10,7 +10,7 @@ hoping that at least then we don't swap chunks, and maybe recover
 them all.
 
 diff --git a/src/main/java/net/minecraft/util/worldupdate/WorldUpgrader.java b/src/main/java/net/minecraft/util/worldupdate/WorldUpgrader.java
-index a4970654496c52fcd02c5c055ff5ac551bd19da3..6725b31a5183d5af7f8f7566ed21eb61797ef4c9 100644
+index dca2e9e45116df22d8c95d1be8f0a7e3c2d2b6b1..cb394ec310712cc97d65afe068284b277d7f0483 100644
 --- a/src/main/java/net/minecraft/util/worldupdate/WorldUpgrader.java
 +++ b/src/main/java/net/minecraft/util/worldupdate/WorldUpgrader.java
 @@ -235,7 +235,7 @@ public class WorldUpgrader {
@@ -55,7 +55,7 @@ index 4eaf497d048324a85ce49fc1c6e9559991c20df7..2d6b14345d4fcc803b011235e9798d5d
          nbttagcompound1.setString("Status", ichunkaccess.getChunkStatus().d());
          ChunkConverter chunkconverter = ichunkaccess.p();
 diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/IChunkLoader.java b/src/main/java/net/minecraft/world/level/chunk/storage/IChunkLoader.java
-index 890362d28ab9cb760c73fe5014e144fb08ada6b8..3c532d3996dfc734ec07181701280b6072bff55f 100644
+index e20b9e6c46093d48d5fa5eb3006087d4e998c205..dd8c307bdd5ad2927734eb098413b0245e2c30a1 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/storage/IChunkLoader.java
 +++ b/src/main/java/net/minecraft/world/level/chunk/storage/IChunkLoader.java
 @@ -39,7 +39,7 @@ public class IChunkLoader implements AutoCloseable {
@@ -741,10 +741,10 @@ index c96eac4b0b519b2807153fa5a8ebf5a020a2b140..b5c8d9b17c2d5e229db5b48448709194
          int j = 0;
  
 diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCache.java b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCache.java
-index ebb0d6988f87013ea5d523ab4a1b31cb669ccc43..68cdbe184cd2e490595900d988c64f2011e47495 100644
+index 74d826853389b8e01ffe2b076cf2b179d29da216..6ef54d8929814172427cb0dba5dc7711f6be69d1 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCache.java
 +++ b/src/main/java/net/minecraft/world/level/chunk/storage/RegionFileCache.java
-@@ -22,12 +22,43 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -22,8 +22,15 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
      public final Long2ObjectLinkedOpenHashMap<RegionFile> cache = new Long2ObjectLinkedOpenHashMap();
      private final File b;
      private final boolean c;
@@ -760,35 +760,7 @@ index ebb0d6988f87013ea5d523ab4a1b31cb669ccc43..68cdbe184cd2e490595900d988c64f20
          this.b = file;
          this.c = flag;
      }
- 
-+    // Tuinity start
-+    public static ChunkCoordIntPair getRegionFileCoordinates(File file) {
-+        String fileName = file.getName();
-+        if (!fileName.startsWith("r.") || !fileName.endsWith(".mca")) {
-+            return null;
-+        }
-+
-+        String[] split = fileName.split("\\.");
-+
-+        if (split.length != 4) {
-+            return null;
-+        }
-+
-+        try {
-+            int x = Integer.parseInt(split[1]);
-+            int z = Integer.parseInt(split[2]);
-+
-+            return new ChunkCoordIntPair(x << 5, z << 5);
-+        } catch (NumberFormatException ex) {
-+            return null;
-+        }
-+    }
-+    // Tuinity end
-+
- 
-     // Paper start
-     public synchronized RegionFile getRegionFileIfLoaded(ChunkCoordIntPair chunkcoordintpair) { // Paper - synchronize for async io
-@@ -61,9 +92,9 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -83,9 +90,9 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
                  this.b.mkdirs();
              }
  
@@ -800,7 +772,7 @@ index ebb0d6988f87013ea5d523ab4a1b31cb669ccc43..68cdbe184cd2e490595900d988c64f20
  
              this.cache.putAndMoveToFirst(i, regionfile1);
              // Paper start
-@@ -152,6 +183,13 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -174,6 +181,13 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
              return null;
          }
          // CraftBukkit end
@@ -814,7 +786,7 @@ index ebb0d6988f87013ea5d523ab4a1b31cb669ccc43..68cdbe184cd2e490595900d988c64f20
          try { // Paper
          DataInputStream datainputstream = regionfile.a(chunkcoordintpair);
          // Paper start
-@@ -167,6 +205,17 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
+@@ -189,6 +203,17 @@ public class RegionFileCache implements AutoCloseable { // Paper - no final
          try {
              if (datainputstream != null) {
                  nbttagcompound = NBTCompressedStreamTools.a((DataInput) datainputstream);
