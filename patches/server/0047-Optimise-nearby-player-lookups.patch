@@ -26,7 +26,7 @@ index 37c3617979da7839ad89883d9800c14c34e8b19b..e3dc57282a559f783c027780740e8089
      // Paper end - optimise isOutsideOfRange
      // Paper start - optimize chunk status progression without jumping through thread pool
 diff --git a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
-index 3b727fcb05074dea7cc1689e8589d4f93d5ccceb..7897fe870234ddef12926d855a3f060f9a72b2ba 100644
+index b1f2841bed5b913cbfb8c18d7ee1c05a64d3e252..42907d6a9f48818d758b5518c70440cd3c411eca 100644
 --- a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
 @@ -250,6 +250,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -97,7 +97,7 @@ index 3b727fcb05074dea7cc1689e8589d4f93d5ccceb..7897fe870234ddef12926d855a3f060f
      // Paper start - Chunk Prioritization
      public void queueHolderUpdate(PlayerChunk playerchunk) {
 diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
-index fe32a457754d1dfcc37f7bf7ee6dd200ba7e323c..31276fe09f0dc0bf59b97d45b2404e39478663bb 100644
+index 551eb37e15aaedd4ebf9552e9ba029e9d488ac31..daa452d61ff31383f9b40c4f8a40ac4f980e87a8 100644
 --- a/src/main/java/net/minecraft/server/level/WorldServer.java
 +++ b/src/main/java/net/minecraft/server/level/WorldServer.java
 @@ -414,6 +414,107 @@ public class WorldServer extends World implements GeneratorAccessSeed {
@@ -328,13 +328,13 @@ index 24771c3522ea74ac12058591137eafc21adf3762..af0636659e1c1c92408d55f81cbd6346
          } else if (worldserver.getSpawn().a((IPosition) (new Vec3D((double) blockposition_mutableblockposition.getX() + 0.5D, (double) blockposition_mutableblockposition.getY(), (double) blockposition_mutableblockposition.getZ() + 0.5D)), 24.0D)) {
              return false;
 diff --git a/src/main/java/net/minecraft/world/level/World.java b/src/main/java/net/minecraft/world/level/World.java
-index 23db2bad910795b1335e247521d383c2dd87a23b..a802c45538943b570ca0daa3a40607dc80e696eb 100644
+index cd15f9b17f7fb01428196dba5c50259217b5ad2c..c77b00f30e8edbfcebdc48363de4d5a346abc690 100644
 --- a/src/main/java/net/minecraft/world/level/World.java
 +++ b/src/main/java/net/minecraft/world/level/World.java
-@@ -183,6 +183,65 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
-         return typeKey;
+@@ -191,6 +191,63 @@ public abstract class World implements GeneratorAccess, AutoCloseable {
+         });
      }
- 
+     // Paper end - fix and optimise world upgrading
 +    // Tuinity start - optimise checkDespawn
 +    public final List<EntityPlayer> getNearbyPlayers(@Nullable Entity source, double sourceX, double sourceY, double sourceZ, double maxRange, @Nullable Predicate<Entity> predicate) {
 +        Chunk chunk;
@@ -391,12 +391,10 @@ index 23db2bad910795b1335e247521d383c2dd87a23b..a802c45538943b570ca0daa3a40607dc
 +    public @Nullable EntityHuman a(double d0, double d1, double d2, double d3, @Nullable Predicate<Entity> predicate) {
 +        return this.getNearestPlayer(null, d0, d1, d2, d3, predicate);
 +    }
-+
 +    // Tuinity end - optimise checkDespawn
-+
+ 
      protected World(WorldDataMutable worlddatamutable, ResourceKey<World> resourcekey, final DimensionManager dimensionmanager, Supplier<GameProfilerFiller> supplier, boolean flag, boolean flag1, long i, org.bukkit.generator.ChunkGenerator gen, org.bukkit.World.Environment env, java.util.concurrent.Executor executor) { // Paper
          this.spigotConfig = new org.spigotmc.SpigotWorldConfig(((net.minecraft.world.level.storage.WorldDataServer) worlddatamutable).getName()); // Spigot
-         this.paperConfig = new com.destroystokyo.paper.PaperWorldConfig(((net.minecraft.world.level.storage.WorldDataServer) worlddatamutable).getName(), this.spigotConfig); // Paper
 diff --git a/src/main/java/net/minecraft/world/level/chunk/Chunk.java b/src/main/java/net/minecraft/world/level/chunk/Chunk.java
 index eb1e4a6c89b79fa1e2ec367eba441970c694f2d1..86d326d40a2957a12dc800560487af4bd272cdcb 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/Chunk.java
