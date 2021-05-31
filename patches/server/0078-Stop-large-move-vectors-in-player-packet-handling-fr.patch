@@ -7,10 +7,10 @@ Subject: [PATCH] Stop large move vectors in player packet handling from
 Looks like we need to check three vectors, not two. fun.
 
 diff --git a/src/main/java/net/minecraft/server/network/PlayerConnection.java b/src/main/java/net/minecraft/server/network/PlayerConnection.java
-index 2cc940d2dd00623cc5819a9d975efd00b91455ae..a4f7e57283950074005869e0098fe665e85286ca 100644
+index 3418e8ce835b8b0a7434f6f56688bfbe6df88c26..8513795943497ca80232e7d47066a6944c2f45ec 100644
 --- a/src/main/java/net/minecraft/server/network/PlayerConnection.java
 +++ b/src/main/java/net/minecraft/server/network/PlayerConnection.java
-@@ -542,6 +542,12 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -550,6 +550,12 @@ public class PlayerConnection implements PacketListenerPlayIn {
                  double currDeltaZ = toZ - fromZ;
                  double d10 = Math.max(d6 * d6 + d7 * d7 + d8 * d8, (currDeltaX * currDeltaX + currDeltaY * currDeltaY + currDeltaZ * currDeltaZ) - 1);
                  // Paper end - fix large move vectors killing the server
@@ -23,7 +23,7 @@ index 2cc940d2dd00623cc5819a9d975efd00b91455ae..a4f7e57283950074005869e0098fe665
  
  
                  // CraftBukkit start - handle custom speeds and skipped ticks
-@@ -588,9 +594,9 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -596,9 +602,9 @@ public class PlayerConnection implements PacketListenerPlayIn {
                  //boolean flag = worldserver.getCubes(entity, entity.getBoundingBox().shrink(0.0625D)); // Tuinity - replace with different checks
                  AxisAlignedBB oldBox = entity.getBoundingBox(); // Tuinity - copy from player movement packet
  
@@ -36,7 +36,7 @@ index 2cc940d2dd00623cc5819a9d975efd00b91455ae..a4f7e57283950074005869e0098fe665
                  entity.move(EnumMoveType.PLAYER, new Vec3D(d6, d7, d8));
                  boolean didCollide = toX != entity.locX() || toY != entity.locY() || toZ != entity.locZ(); // Tuinity - needed here as the difference in Y can be reset - also note: this is only a guess at whether collisions took place, floating point errors can make this true when it shouldn't be...
                  double d11 = d7;
-@@ -1300,6 +1306,12 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1308,6 +1314,12 @@ public class PlayerConnection implements PacketListenerPlayIn {
                          double currDeltaZ = toZ - prevZ;
                          double d11 = Math.max(d7 * d7 + d8 * d8 + d9 * d9, (currDeltaX * currDeltaX + currDeltaY * currDeltaY + currDeltaZ * currDeltaZ) - 1);
                          // Paper end - fix large move vectors killing the server
@@ -49,7 +49,7 @@ index 2cc940d2dd00623cc5819a9d975efd00b91455ae..a4f7e57283950074005869e0098fe665
  
                          if (this.player.isSleeping()) {
                              if (d11 > 1.0D) {
-@@ -1351,9 +1363,9 @@ public class PlayerConnection implements PacketListenerPlayIn {
+@@ -1359,9 +1371,9 @@ public class PlayerConnection implements PacketListenerPlayIn {
  
                              AxisAlignedBB axisalignedbb = this.player.getBoundingBox(); // Tuinity - diff on change, should be old AABB
  
