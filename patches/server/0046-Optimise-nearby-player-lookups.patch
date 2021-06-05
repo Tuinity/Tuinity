@@ -26,7 +26,7 @@ index 37c3617979da7839ad89883d9800c14c34e8b19b..e3dc57282a559f783c027780740e8089
      // Paper end - optimise isOutsideOfRange
      // Paper start - optimize chunk status progression without jumping through thread pool
 diff --git a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
-index aaf6668050e754cddb977f3bc0897a5df71ac696..76993a8601b251ecce2880820cf5a00496c17f19 100644
+index aaf6668050e754cddb977f3bc0897a5df71ac696..13956f6645ae5a0c19ff3f002a76005193db849b 100644
 --- a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
 +++ b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
 @@ -250,6 +250,12 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
@@ -34,7 +34,7 @@ index aaf6668050e754cddb977f3bc0897a5df71ac696..76993a8601b251ecce2880820cf5a004
      public final com.destroystokyo.paper.util.misc.PlayerAreaMap playerViewDistanceNoTickMap;
      // Paper end - no-tick view distance
 +    // Tuinity start - optimise checkDespawn
-+    public static final int GENERAL_AREA_MAP_SQUARE_RADIUS = 38;
++    public static final int GENERAL_AREA_MAP_SQUARE_RADIUS = 40;
 +    public static final double GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE = 16.0 * (GENERAL_AREA_MAP_SQUARE_RADIUS - 1);
 +    public static final double GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE_SQUARED = GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE * GENERAL_AREA_MAP_ACCEPTABLE_SEARCH_RANGE;
 +    public final com.destroystokyo.paper.util.misc.PlayerAreaMap playerGeneralAreaMap;
@@ -286,7 +286,7 @@ index 7c9ed41ae67bce0e5e45b9c091180ca3c99668fc..a7f2304acf8ee0a15d6eae8c42060e00
          Iterator iterator = this.getPlayers().iterator();
  
 diff --git a/src/main/java/net/minecraft/world/level/SpawnerCreature.java b/src/main/java/net/minecraft/world/level/SpawnerCreature.java
-index 24771c3522ea74ac12058591137eafc21adf3762..b3c73c6b4cffa20813355c5f2132fe3eaa134007 100644
+index 24771c3522ea74ac12058591137eafc21adf3762..70c110e7e04352edc687dc39f7d939460a4c1e96 100644
 --- a/src/main/java/net/minecraft/world/level/SpawnerCreature.java
 +++ b/src/main/java/net/minecraft/world/level/SpawnerCreature.java
 @@ -250,7 +250,7 @@ public final class SpawnerCreature {
@@ -294,7 +294,7 @@ index 24771c3522ea74ac12058591137eafc21adf3762..b3c73c6b4cffa20813355c5f2132fe3e
                              double d0 = (double) l + 0.5D;
                              double d1 = (double) i1 + 0.5D;
 -                            EntityHuman entityhuman = worldserver.a(d0, (double) i, d1, -1.0D, false);
-+                            EntityHuman entityhuman = worldserver.a(d0, (double) i, d1, 576.0D, false); // Tuinity - copied from below method for range, for the love of god we do not need to fucking find the closet player outside of this range - limiting range lets us use the distance map
++                            EntityHuman entityhuman = (!(ichunkaccess instanceof Chunk)) ? worldserver.a(d0, (double) i, d1, -1.0D, false) : ((Chunk)ichunkaccess).findNearestPlayer(d0, i, d1, 576.0D, net.minecraft.world.entity.IEntitySelector.notSpectator());  // Tuinity - use chunk's player cache to optimize search in range
  
                              if (entityhuman != null) {
                                  double d2 = entityhuman.h(d0, (double) i, d1);
