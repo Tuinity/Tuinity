@@ -286,35 +286,15 @@ index 7c9ed41ae67bce0e5e45b9c091180ca3c99668fc..a7f2304acf8ee0a15d6eae8c42060e00
          Iterator iterator = this.getPlayers().iterator();
  
 diff --git a/src/main/java/net/minecraft/world/level/SpawnerCreature.java b/src/main/java/net/minecraft/world/level/SpawnerCreature.java
-index 24771c3522ea74ac12058591137eafc21adf3762..af0636659e1c1c92408d55f81cbd634691bc216c 100644
+index 24771c3522ea74ac12058591137eafc21adf3762..70c110e7e04352edc687dc39f7d939460a4c1e96 100644
 --- a/src/main/java/net/minecraft/world/level/SpawnerCreature.java
 +++ b/src/main/java/net/minecraft/world/level/SpawnerCreature.java
-@@ -209,16 +209,16 @@ public final class SpawnerCreature {
-         BlockPosition blockposition = getRandomPosition(worldserver, chunk);
- 
-         if (blockposition.getY() >= 1) {
--            return spawnMobsInternal(enumcreaturetype, worldserver, (IChunkAccess) chunk, blockposition, spawnercreature_c, spawnercreature_a, maxSpawns, trackEntity);
-+            return spawnMobsInternal(enumcreaturetype, worldserver, chunk, blockposition, spawnercreature_c, spawnercreature_a, maxSpawns, trackEntity); // Tuinity - pass actual chunk
-         }
-         return 0; // Paper
-     }
- 
-     public static void a(EnumCreatureType enumcreaturetype, WorldServer worldserver, IChunkAccess ichunkaccess, BlockPosition blockposition, SpawnerCreature.c spawnercreature_c, SpawnerCreature.a spawnercreature_a) {
-         // Paper start - add maxSpawns parameter and return spawned mobs
--        spawnMobsInternal(enumcreaturetype, worldserver, ichunkaccess, blockposition, spawnercreature_c, spawnercreature_a, Integer.MAX_VALUE, null);
-+        spawnMobsInternal(enumcreaturetype, worldserver, ichunkaccess instanceof Chunk ? (Chunk) ichunkaccess : worldserver.getChunkAtWorldCoords(blockposition), blockposition, spawnercreature_c, spawnercreature_a, Integer.MAX_VALUE, null); // Tuinity - convert to chunk
-     }
--    public static int spawnMobsInternal(EnumCreatureType enumcreaturetype, WorldServer worldserver, IChunkAccess ichunkaccess, BlockPosition blockposition, SpawnerCreature.c spawnercreature_c, SpawnerCreature.a spawnercreature_a, int maxSpawns, Consumer<Entity> trackEntity) {
-+    public static int spawnMobsInternal(EnumCreatureType enumcreaturetype, WorldServer worldserver, Chunk ichunkaccess, BlockPosition blockposition, SpawnerCreature.c spawnercreature_c, SpawnerCreature.a spawnercreature_a, int maxSpawns, Consumer<Entity> trackEntity) { // Tuinity - require chunk
-         // Paper end - add maxSpawns parameter and return spawned mobs
-         StructureManager structuremanager = worldserver.getStructureManager();
-         ChunkGenerator chunkgenerator = worldserver.getChunkProvider().getChunkGenerator();
 @@ -250,7 +250,7 @@ public final class SpawnerCreature {
                              blockposition_mutableblockposition.d(l, i, i1);
                              double d0 = (double) l + 0.5D;
                              double d1 = (double) i1 + 0.5D;
 -                            EntityHuman entityhuman = worldserver.a(d0, (double) i, d1, -1.0D, false);
-+                            EntityHuman entityhuman = ichunkaccess.findNearestPlayer(d0, i, d1, 576.0D, net.minecraft.world.entity.IEntitySelector.notSpectator());  // Tuinity - use chunk's player cache to optimize search in range
++                            EntityHuman entityhuman = (!(ichunkaccess instanceof Chunk)) ? worldserver.a(d0, (double) i, d1, -1.0D, false) : ((Chunk)ichunkaccess).findNearestPlayer(d0, i, d1, 576.0D, net.minecraft.world.entity.IEntitySelector.notSpectator());  // Tuinity - use chunk's player cache to optimize search in range
  
                              if (entityhuman != null) {
                                  double d2 = entityhuman.h(d0, (double) i, d1);
