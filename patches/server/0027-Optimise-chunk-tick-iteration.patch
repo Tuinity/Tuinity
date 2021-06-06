@@ -6,7 +6,7 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
-index bc8114715f09496efa8aec8426c53542fd444c12..3560ac0c554b8e60c1bc961766bcf942ba6dd963 100644
+index a691b60f5573701c17f8744d86f45dbf94c95de1..8d08bd4fb759218706f65c4620d26865d85b14d0 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
 @@ -47,6 +47,12 @@ import net.minecraft.world.level.storage.WorldData;
@@ -22,10 +22,10 @@ index bc8114715f09496efa8aec8426c53542fd444c12..3560ac0c554b8e60c1bc961766bcf942
  public class ChunkProviderServer extends IChunkProvider {
  
      private static final List<ChunkStatus> b = ChunkStatus.a(); public static final List<ChunkStatus> getPossibleChunkStatuses() { return ChunkProviderServer.b; } // Paper - OBFHELPER
-@@ -1007,19 +1013,23 @@ public class ChunkProviderServer extends IChunkProvider {
-             //List<PlayerChunk> list = Lists.newArrayList(this.playerChunkMap.f()); // Paper
+@@ -1008,19 +1014,23 @@ public class ChunkProviderServer extends IChunkProvider {
              //Collections.shuffle(list); // Paper
              // Paper - moved up
+             this.world.timings.chunkTicks.startTiming(); // Paper
 -            final int[] chunksTicked = {0}; this.playerChunkMap.forEachVisibleChunk((playerchunk) -> { // Paper - safe iterator incase chunk loads, also no wrapping
 -                Optional<Chunk> optional = ((Either) playerchunk.a().getNow(PlayerChunk.UNLOADED_CHUNK)).left();
 -
@@ -54,7 +54,7 @@ index bc8114715f09496efa8aec8426c53542fd444c12..3560ac0c554b8e60c1bc961766bcf942
                          ChunkCoordIntPair chunkcoordintpair = playerchunk.i();
  
                          if (!this.playerChunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false)) { // Paper - optimise isOutsideOfRange
-@@ -1035,7 +1045,11 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -1036,7 +1046,11 @@ public class ChunkProviderServer extends IChunkProvider {
                          }
                      }
                  }
@@ -64,6 +64,6 @@ index bc8114715f09496efa8aec8426c53542fd444c12..3560ac0c554b8e60c1bc961766bcf942
 +                iterator.finishedIterating();
 +            }
 +            // Tuinity end - optimise chunk tick iteration
+             this.world.timings.chunkTicks.stopTiming(); // Paper
              this.world.getMethodProfiler().enter("customSpawners");
              if (flag1) {
-                 try (co.aikar.timings.Timing ignored = this.world.timings.miscMobSpawning.startTiming()) { // Paper - timings
