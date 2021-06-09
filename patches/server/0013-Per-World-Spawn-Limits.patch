@@ -6,10 +6,10 @@ Subject: [PATCH] Per World Spawn Limits
 This patch is licensed under the MIT license. See /licenses/MIT.md.
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index 6edc8765df8644426613c40557d890620060fab1..fdc56a5080ab2f7331431ee1f5976ba669b725ac 100644
+index 189f4b912960ae3d611a344f99eeb0ad9af82f5d..a725ced3e0b5f800335bf6e0fbc47cbc2206358e 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-@@ -269,6 +269,23 @@ public final class TuinityConfig {
+@@ -325,6 +325,22 @@ public final class TuinityConfig {
              final int threads = this.getInt("tick-threads", -1);
              this.threads = threads == -1 ? TuinityConfig.tickThreads : threads;
          }*/
@@ -23,33 +23,43 @@ index 6edc8765df8644426613c40557d890620060fab1..fdc56a5080ab2f7331431ee1f5976ba6
 +        private void perWorldSpawnLimit() {
 +            final String path = "spawn-limits";
 +
-+            this.spawnLimitMonsters = this.getInt(path + ".monsters", -1);
-+            this.spawnLimitAnimals = this.getInt(path + ".animals", -1);
-+            this.spawnLimitWaterAmbient = this.getInt(path + ".water-ambient", -1);
-+            this.spawnLimitWaterAnimals = this.getInt(path + ".water-animals", -1);
-+            this.spawnLimitAmbient = this.getInt(path + ".ambient", -1);
++            this.spawnLimitMonsters = this.getIntRaw(path + ".monsters", -1);
++            this.spawnLimitAnimals = this.getIntRaw(path + ".animals", -1);
++            this.spawnLimitWaterAmbient = this.getIntRaw(path + ".water-ambient", -1);
++            this.spawnLimitWaterAnimals = this.getIntRaw(path + ".water-animals", -1);
++            this.spawnLimitAmbient = this.getIntRaw(path + ".ambient", -1);
 +        }
-+
      }
  
  }
 \ No newline at end of file
 diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-index 9948af982f4965bcbbbfa2362e20575823b39361..d312d316ddb7ed59ad918ef2582f98e055c486c3 100644
+index 41ef459b6574f5abf24e51280210f16322b6a0ed..8a81022634d11a050243d39e128c9f50b0d09a51 100644
 --- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
 +++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
-@@ -353,6 +353,14 @@ public class CraftWorld implements World {
+@@ -353,13 +353,20 @@ public class CraftWorld implements World {
          this.generator = gen;
  
          environment = env;
-+
-+        //Tuinity start - per world spawn limits
-+        monsterSpawn = world.tuinityConfig.spawnLimitMonsters;
-+        animalSpawn = world.tuinityConfig.spawnLimitAnimals;
-+        waterAmbientSpawn = world.tuinityConfig.spawnLimitWaterAmbient;
-+        waterAnimalSpawn = world.tuinityConfig.spawnLimitWaterAnimals;
-+        ambientSpawn = world.tuinityConfig.spawnLimitAmbient;
-+        //Tuinity end
++        // Tuinity start - per world spawn limits
++        this.monsterSpawn = world.tuinityConfig.spawnLimitMonsters;
++        this.animalSpawn = world.tuinityConfig.spawnLimitAnimals;
++        this.waterAmbientSpawn = world.tuinityConfig.spawnLimitWaterAmbient;
++        this.waterAnimalSpawn = world.tuinityConfig.spawnLimitWaterAnimals;
++        this.ambientSpawn = world.tuinityConfig.spawnLimitAmbient;
+         // Paper start - per world spawn limits
+-        this.monsterSpawn = this.world.paperConfig.spawnLimitMonsters;
+-        this.animalSpawn = this.world.paperConfig.spawnLimitAnimals;
+-        this.waterAnimalSpawn = this.world.paperConfig.spawnLimitWaterAnimals;
+-        this.waterAmbientSpawn = this.world.paperConfig.spawnLimitWaterAmbient;
+-        this.ambientSpawn = this.world.paperConfig.spawnLimitAmbient;
++        if (this.monsterSpawn == -1) this.monsterSpawn = this.world.paperConfig.spawnLimitMonsters;
++        if (this.animalSpawn == -1) this.animalSpawn = this.world.paperConfig.spawnLimitAnimals;
++        if (this.waterAnimalSpawn == -1) this.waterAnimalSpawn = this.world.paperConfig.spawnLimitWaterAnimals;
++        if (this.waterAmbientSpawn == -1) this.waterAmbientSpawn = this.world.paperConfig.spawnLimitWaterAmbient;
++        if (this.ambientSpawn == -1) this.ambientSpawn = this.world.paperConfig.spawnLimitAmbient;
+         // Paper end
++        // Tuinity end - per world spawn limits
      }
  
      @Override
