@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Thu, 10 Jun 2021 14:36:00 -0700
+Subject: [PATCH] Optimise BlockSoil nearby water lookup
+
+Apparently the abstract block iteration was taking about
+75% of the method call.
+
+diff --git a/src/main/java/net/minecraft/world/level/block/BlockSoil.java b/src/main/java/net/minecraft/world/level/block/BlockSoil.java
+index 3bedb1c6a0f221c7b40ee0a50f676e8b05bd37a7..ac830ea21e639652908fe82a253853b26b412e4d 100644
+--- a/src/main/java/net/minecraft/world/level/block/BlockSoil.java
++++ b/src/main/java/net/minecraft/world/level/block/BlockSoil.java
+@@ -139,19 +139,28 @@ public class BlockSoil extends Block {
+     }
+ 
+     private static boolean a(IWorldReader iworldreader, BlockPosition blockposition) {
+-        Iterator iterator = BlockPosition.a(blockposition.b(-4, 0, -4), blockposition.b(4, 1, 4)).iterator();
+-
+-        BlockPosition blockposition1;
+-
+-        do {
+-            if (!iterator.hasNext()) {
+-                return false;
++        // Tuinity start - remove abstract block iteration
++        int xOff = blockposition.getX();
++        int yOff = blockposition.getY();
++        int zOff = blockposition.getZ();
++
++        for (int dz = -4; dz <= 4; ++dz) {
++            int z = dz + zOff;
++            for (int dx = -4; dx <= 4; ++dx) {
++                int x = xOff + dx;
++                for (int dy = 0; dy <= 1; ++dy) {
++                    int y = dy + yOff;
++                    net.minecraft.world.level.chunk.Chunk chunk = (net.minecraft.world.level.chunk.Chunk)iworldreader.getChunkAt(x >> 4, z >> 4);
++                    net.minecraft.world.level.material.Fluid fluid = chunk.getBlockData(x, y, z).getFluid();
++                    if (fluid.isTagged(TagsFluid.WATER)) {
++                        return true;
++                    }
++                }
+             }
++        }
+ 
+-            blockposition1 = (BlockPosition) iterator.next();
+-        } while (!iworldreader.getFluid(blockposition1).a((Tag) TagsFluid.WATER));
+-
+-        return true;
++        return false;
++        // Tuinity end - remove abstract block iteration
+     }
+ 
+     @Override
+diff --git a/src/main/java/net/minecraft/world/level/material/Fluid.java b/src/main/java/net/minecraft/world/level/material/Fluid.java
+index 147e628bd562da4cf6f07218724a9d6c79d26e38..1a6120dff8236e83575ed07017844d1bf98b6fda 100644
+--- a/src/main/java/net/minecraft/world/level/material/Fluid.java
++++ b/src/main/java/net/minecraft/world/level/material/Fluid.java
+@@ -72,6 +72,7 @@ public final class Fluid extends IBlockDataHolder<FluidType, Fluid> {
+         return this.getType().b(this);
+     }
+ 
++    public final boolean isTagged(Tag<FluidType> tag) { return this.a(tag); } // Tuinity - OBFHELPER
+     public boolean a(Tag<FluidType> tag) {
+         return this.getType().a(tag);
+     }
