@@ -883,10 +883,10 @@ index 0f6b534a4c789a2f09f6c4624e5d58b99c7ed0e6..fea852674098fe411841d8e5ebeace7d
          this.generatingStatus = chunkstatus;
          this.writeRadiusCutoff = i;
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
-index ff7484f439aa05c58809dce81a5252ccc81d5d59..372733ac088210e0d264d5ec730d87d6f783fe43 100644
+index ff7484f439aa05c58809dce81a5252ccc81d5d59..98e5db7b9f33b07068e98b21302a10d4f142899c 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
 +++ b/src/main/java/net/minecraft/world/entity/Entity.java
-@@ -398,6 +398,47 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, n
+@@ -398,6 +398,50 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, n
      }
      // Tuinity end
  
@@ -898,6 +898,7 @@ index ff7484f439aa05c58809dce81a5252ccc81d5d59..372733ac088210e0d264d5ec730d87d6
 +
 +    private static final java.util.Map<Class<? extends Entity>, Boolean> cachedOverrides = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 +    {
++        /* // Goodbye, broken on reobf...
 +        Boolean hardCollides = cachedOverrides.get(this.getClass());
 +        if (hardCollides == null) {
 +            try {
@@ -916,8 +917,10 @@ index ff7484f439aa05c58809dce81a5252ccc81d5d59..372733ac088210e0d264d5ec730d87d6
 +                // shouldn't happen, just explode
 +                throw new RuntimeException(thr);
 +            }
-+        }
-+        this.hardCollides = hardCollides.booleanValue();
++        } */
++        this.hardCollides = this instanceof Boat
++            || this instanceof net.minecraft.world.entity.monster.Shulker
++            || this instanceof net.minecraft.world.entity.vehicle.AbstractMinecart;
 +    }
 +
 +    public final boolean hardCollides() {
@@ -934,17 +937,17 @@ index ff7484f439aa05c58809dce81a5252ccc81d5d59..372733ac088210e0d264d5ec730d87d6
      public Entity(EntityType<?> type, Level world) {
          this.id = Entity.ENTITY_COUNTER.incrementAndGet();
          this.passengers = ImmutableList.of();
-@@ -2255,11 +2296,11 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, n
+@@ -2255,11 +2299,11 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, n
          return InteractionResult.PASS;
      }
  
 -    public boolean canCollideWith(Entity other) {
-+    public boolean canCollideWith(Entity other) { // Tuinity - diff on change, hard colliding entities override this
++    public boolean canCollideWith(Entity other) { // Tuinity - diff on change, hard colliding entities override this - TODO CHECK ON UPDATE - AbstractMinecart/Boat override
          return other.canBeCollidedWith() && !this.isPassengerOfSameVehicle(other);
      }
  
 -    public boolean canBeCollidedWith() {
-+    public boolean canBeCollidedWith() { // Tuinity - diff on change, hard colliding entities override this
++    public boolean canBeCollidedWith() { // Tuinity - diff on change, hard colliding entities override this TODO CHECK ON UPDATE - Boat/Shulker override
          return false;
      }
  
