@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 21 Mar 2021 17:32:47 -0700
+Subject: [PATCH] Correctly handle recursion for chunkholder updates
+
+If a chunk ticket level is brought up while unloading it would
+cause a recursive call which would handle the increase but then
+the caller would think the chunk would be unloaded.
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+index 3af57d4a02177b0bc863b3a23ef44b5eb41a2816..f4d3a5557f5696bc8c60741172a66ceedbc69daf 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
++++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+@@ -612,8 +612,10 @@ public class ChunkHolder {
+         playerchunkmap.onFullChunkStatusChange(this.pos, playerchunk_state);
+     }
+ 
++    protected long updateCount; // Tuinity - correctly handle recursion
+     protected void updateFutures(ChunkMap chunkStorage, Executor executor) {
+         com.tuinity.tuinity.util.TickThread.ensureTickThread("Async ticket level update"); // Tuinity
++        long updateCount = ++this.updateCount; // Tuinity - correctly handle recursion
+         ChunkStatus chunkstatus = ChunkHolder.getStatus(this.oldTicketLevel);
+         ChunkStatus chunkstatus1 = ChunkHolder.getStatus(this.ticketLevel);
+         boolean flag = this.oldTicketLevel <= ChunkMap.MAX_CHUNK_DISTANCE;
+@@ -643,6 +645,12 @@ public class ChunkHolder {
+ 
+             // Run callback right away if the future was already done
+             chunkStorage.callbackExecutor.run();
++            // Tuinity start - correctly handle recursion
++            if (this.updateCount != updateCount) {
++                // something else updated ticket level for us.
++                return;
++            }
++            // Tuinity end - correctly handle recursion
+         }
+         // CraftBukkit end
+         CompletableFuture completablefuture;

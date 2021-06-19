@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Wed, 10 Jun 2020 15:17:15 -0700
+Subject: [PATCH] Rework PlayerChunk main thread checks
+
+These need to fail instead of continuing, as hiding these errors
+the way paper has is just going to allow unexpected reordering
+of callbacks.
+
+For example, thanks to this patch incorrect future
+completion (completion of the world gen future,
+PlayerChunkMap#b(PlayerChunk, ChunkStatus)) was detected and fixed.
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..3af57d4a02177b0bc863b3a23ef44b5eb41a2816 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
++++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+@@ -613,6 +613,7 @@ public class ChunkHolder {
+     }
+ 
+     protected void updateFutures(ChunkMap chunkStorage, Executor executor) {
++        com.tuinity.tuinity.util.TickThread.ensureTickThread("Async ticket level update"); // Tuinity
+         ChunkStatus chunkstatus = ChunkHolder.getStatus(this.oldTicketLevel);
+         ChunkStatus chunkstatus1 = ChunkHolder.getStatus(this.ticketLevel);
+         boolean flag = this.oldTicketLevel <= ChunkMap.MAX_CHUNK_DISTANCE;
+@@ -622,7 +623,8 @@ public class ChunkHolder {
+         // CraftBukkit start
+         // ChunkUnloadEvent: Called before the chunk is unloaded: isChunkLoaded is still true and chunk can still be modified by plugins.
+         if (playerchunk_state.isOrAfter(ChunkHolder.FullChunkStatus.BORDER) && !playerchunk_state1.isOrAfter(ChunkHolder.FullChunkStatus.BORDER)) {
+-            this.getStatusFutureUncheckedMain(ChunkStatus.FULL).thenAccept((either) -> { // Paper - ensure main
++            this.getFutureIfPresentUnchecked(ChunkStatus.FULL).thenAccept((either) -> { // Paper - ensure main // Tuinity - is always on main
++                com.tuinity.tuinity.util.TickThread.ensureTickThread("Async full status chunk future completion"); // Tuinity
+                 LevelChunk chunk = (LevelChunk)either.left().orElse(null);
+                 if (chunk != null) {
+                     chunkStorage.callbackExecutor.execute(() -> {
+@@ -687,7 +689,8 @@ public class ChunkHolder {
+             this.fullChunkFuture = chunkStorage.prepareAccessibleChunk(this);
+             this.scheduleFullChunkPromotion(chunkStorage, this.fullChunkFuture, executor, ChunkHolder.FullChunkStatus.BORDER);
+             // Paper start - cache ticking ready status
+-            ensureMain(this.fullChunkFuture).thenAccept(either -> { // Paper - ensure main
++            this.fullChunkFuture.thenAccept(either -> { // Paper - ensure main // Tuinity - always fired on main
++                com.tuinity.tuinity.util.TickThread.ensureTickThread("Async full chunk future completion"); // Tuinity
+                 final Optional<LevelChunk> left = either.left();
+                 if (left.isPresent() && ChunkHolder.this.fullChunkCreateCount == expectCreateCount) {
+                     // note: Here is a very good place to add callbacks to logic waiting on this.
+@@ -718,7 +721,8 @@ public class ChunkHolder {
+             this.tickingChunkFuture = chunkStorage.prepareTickingChunk(this);
+             this.scheduleFullChunkPromotion(chunkStorage, this.tickingChunkFuture, executor, ChunkHolder.FullChunkStatus.TICKING);
+             // Paper start - cache ticking ready status
+-            ensureMain(this.tickingChunkFuture).thenAccept(either -> { // Paper - ensure main
++            this.tickingChunkFuture.thenAccept(either -> { // Paper - ensure main // Tuinity - always completed on main
++                com.tuinity.tuinity.util.TickThread.ensureTickThread("Async ticking chunk future completion"); // Tuinity
+                 either.ifLeft(chunk -> {
+                     // note: Here is a very good place to add callbacks to logic waiting on this.
+                     ChunkHolder.this.isTickingReady = true;
+@@ -757,7 +761,8 @@ public class ChunkHolder {
+             this.entityTickingChunkFuture = chunkStorage.prepareEntityTickingChunk(this.pos);
+             this.scheduleFullChunkPromotion(chunkStorage, this.entityTickingChunkFuture, executor, ChunkHolder.FullChunkStatus.ENTITY_TICKING);
+             // Paper start - cache ticking ready status
+-            ensureMain(this.entityTickingChunkFuture).thenAccept(either -> { // Paper ensureMain
++            this.entityTickingChunkFuture.thenAccept(either -> { // Paper ensureMain // Tuinity - always completed on main
++                com.tuinity.tuinity.util.TickThread.ensureTickThread("Async entity ticking chunk future completion"); // Tuinity
+                 either.ifLeft(chunk -> {
+                     ChunkHolder.this.isEntityTickingReady = true;
+                     // Tuinity start - entity ticking chunk set
+@@ -807,7 +812,8 @@ public class ChunkHolder {
+         // CraftBukkit start
+         // ChunkLoadEvent: Called after the chunk is loaded: isChunkLoaded returns true and chunk is ready to be modified by plugins.
+         if (!playerchunk_state.isOrAfter(ChunkHolder.FullChunkStatus.BORDER) && playerchunk_state1.isOrAfter(ChunkHolder.FullChunkStatus.BORDER)) {
+-            this.getStatusFutureUncheckedMain(ChunkStatus.FULL).thenAccept((either) -> { // Paper - ensure main
++            this.getFutureIfPresentUnchecked(ChunkStatus.FULL).thenAccept((either) -> { // Paper - ensure main // Tuinity - is always on main
++                com.tuinity.tuinity.util.TickThread.ensureTickThread("Async full status chunk future completion"); // Tuinity
+                 LevelChunk chunk = (LevelChunk)either.left().orElse(null);
+                 if (chunk != null) {
+                     chunkStorage.callbackExecutor.execute(() -> {
+diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
+index 836cc9b6e4f4fe29d6e2fcb3572bc3d4c2d4ee7a..1f8836fbc0f92cd95e6a8469603dbd1b53c67f7f 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
+@@ -1360,7 +1360,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+                 this.releaseLightTicket(chunkcoordintpair);
+                 return CompletableFuture.completedFuture(Either.right(playerchunk_failure));
+             });
+-        }, executor);
++        }, executor).thenComposeAsync((either) -> { // Tuinity start - force competion on the main thread
++            return CompletableFuture.completedFuture(either);
++        }, this.mainInvokingExecutor);
++        // Tuinity end - force competion on the main thread
+     }
+ 
+     protected void releaseLightTicket(ChunkPos pos) {

@@ -1,12 +1,12 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Spottedleaf <Spottedleaf@users.noreply.github.com>
-Date: Sat, 18 May 2019 12:25:19 -0700
+Date: Wed, 16 Jun 2021 19:32:15 -0700
 Subject: [PATCH] Util patch
 
 
 diff --git a/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..5ea5b3933725d80dd193e815ac507ee51ee17630
+index 0000000000000000000000000000000000000000..49dc783a312ed62415d28cdd801dad6a96f3cc16
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/chunk/SingleThreadChunkRegionManager.java
 @@ -0,0 +1,477 @@
@@ -17,8 +17,8 @@ index 0000000000000000000000000000000000000000..5ea5b3933725d80dd193e815ac507ee5
 +import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 +import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 +import net.minecraft.server.MCUtil;
-+import net.minecraft.server.level.WorldServer;
-+import net.minecraft.world.level.ChunkCoordIntPair;
++import net.minecraft.server.level.ServerLevel;
++import net.minecraft.world.level.ChunkPos;
 +import java.util.ArrayList;
 +import java.util.Arrays;
 +import java.util.Iterator;
@@ -31,7 +31,7 @@ index 0000000000000000000000000000000000000000..5ea5b3933725d80dd193e815ac507ee5
 +    protected final int regionSectionChunkSize;
 +    public final int regionChunkShift; // log2(REGION_CHUNK_SIZE)
 +
-+    public final WorldServer world;
++    public final ServerLevel world;
 +    public final String name;
 +
 +    protected final Long2ObjectOpenHashMap<RegionSection> regionsBySection = new Long2ObjectOpenHashMap<>();
@@ -41,7 +41,7 @@ index 0000000000000000000000000000000000000000..5ea5b3933725d80dd193e815ac507ee5
 +    protected final Supplier<RegionData> regionDataSupplier;
 +    protected final Supplier<RegionSectionData> regionSectionDataSupplier;
 +
-+    public SingleThreadChunkRegionManager(final WorldServer world, final int minSectionRecalcCount,
++    public SingleThreadChunkRegionManager(final ServerLevel world, final int minSectionRecalcCount,
 +                                          final double maxDeadRegionPercent, final int sectionMergeRadius,
 +                                          final int regionSectionChunkShift,
 +                                          final String name, final Supplier<RegionData> regionDataSupplier,
@@ -417,7 +417,7 @@ index 0000000000000000000000000000000000000000..5ea5b3933725d80dd193e815ac507ee5
 +            final long bitset = this.chunksBitset[index >>> 6]; // index / Long.SIZE
 +            final long after = this.chunksBitset[index >>> 6] = bitset | (1L << (index & (Long.SIZE - 1)));
 +            if (after == bitset) {
-+                throw new IllegalStateException("Cannot add a chunk to a section which already has the chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
++                throw new IllegalStateException("Cannot add a chunk to a section which already has the chunk! RegionSection: " + this + ", global chunk: " + new ChunkPos(chunkX, chunkZ).toString());
 +            }
 +            if (++this.chunkCount != 1) {
 +                return;
@@ -430,7 +430,7 @@ index 0000000000000000000000000000000000000000..5ea5b3933725d80dd193e815ac507ee5
 +            final long before = this.chunksBitset[index >>> 6]; // index / Long.SIZE
 +            final long bitset = this.chunksBitset[index >>> 6] = before & ~(1L << (index & (Long.SIZE - 1)));
 +            if (before == bitset) {
-+                throw new IllegalStateException("Cannot remove a chunk from a section which does not have that chunk! RegionSection: " + this + ", global chunk: " + new ChunkCoordIntPair(chunkX, chunkZ).toString());
++                throw new IllegalStateException("Cannot remove a chunk from a section which does not have that chunk! RegionSection: " + this + ", global chunk: " + new ChunkPos(chunkX, chunkZ).toString());
 +            }
 +            if (--this.chunkCount != 0) {
 +                return;
@@ -441,7 +441,7 @@ index 0000000000000000000000000000000000000000..5ea5b3933725d80dd193e815ac507ee5
 +        @Override
 +        public String toString() {
 +            return "RegionSection{" +
-+                    "regionCoordinate=" + new ChunkCoordIntPair(this.regionCoordinate).toString() + "," +
++                    "regionCoordinate=" + new ChunkPos(this.regionCoordinate).toString() + "," +
 +                    "chunkCount=" + this.chunkCount + "," +
 +                    "chunksBitset=" + toString(this.chunksBitset) + "," +
 +                    "hash=" + this.hashCode() +
@@ -450,7 +450,7 @@ index 0000000000000000000000000000000000000000..5ea5b3933725d80dd193e815ac507ee5
 +
 +        public String toStringWithRegion() {
 +            return "RegionSection{" +
-+                    "regionCoordinate=" + new ChunkCoordIntPair(this.regionCoordinate).toString() + "," +
++                    "regionCoordinate=" + new ChunkPos(this.regionCoordinate).toString() + "," +
 +                    "chunkCount=" + this.chunkCount + "," +
 +                    "chunksBitset=" + toString(this.chunksBitset) + "," +
 +                    "hash=" + this.hashCode() + "," +
@@ -487,7 +487,386 @@ index 0000000000000000000000000000000000000000..5ea5b3933725d80dd193e815ac507ee5
 +
 +    }
 +}
-\ No newline at end of file
+diff --git a/src/main/java/com/tuinity/tuinity/util/CachedLists.java b/src/main/java/com/tuinity/tuinity/util/CachedLists.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..5f4179ba2581ab80e8810811fc96df7d553d5653
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/util/CachedLists.java
+@@ -0,0 +1,8 @@
++package com.tuinity.tuinity.util;
++
++public final class CachedLists {
++
++    public static void reset() {
++
++    }
++}
+diff --git a/src/main/java/com/tuinity/tuinity/util/CoordinateUtils.java b/src/main/java/com/tuinity/tuinity/util/CoordinateUtils.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..f84060952c947d79bf2dffc61c96a300e8d7fac2
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/util/CoordinateUtils.java
+@@ -0,0 +1,128 @@
++package com.tuinity.tuinity.util;
++
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.SectionPos;
++import net.minecraft.util.Mth;
++import net.minecraft.world.entity.Entity;
++import net.minecraft.world.level.ChunkPos;
++
++public final class CoordinateUtils {
++
++    // dx, dz are relative to the target chunk
++    // dx, dz in [-radius, radius]
++    public static int getNeighbourMappedIndex(final int dx, final int dz, final int radius) {
++        return (dx + radius) + (2 * radius + 1)*(dz + radius);
++    }
++
++    // the chunk keys are compatible with vanilla
++
++    public static long getChunkKey(final BlockPos pos) {
++        return ((long)(pos.getZ() >> 4) << 32) | ((pos.getX() >> 4) & 0xFFFFFFFFL);
++    }
++
++    public static long getChunkKey(final Entity entity) {
++        return ((Mth.lfloor(entity.getZ()) >> 4) << 32) | ((Mth.lfloor(entity.getX()) >> 4) & 0xFFFFFFFFL);
++    }
++
++    public static long getChunkKey(final ChunkPos pos) {
++        return ((long)pos.z << 32) | (pos.x & 0xFFFFFFFFL);
++    }
++
++    public static long getChunkKey(final SectionPos pos) {
++        return ((long)pos.getZ() << 32) | (pos.getX() & 0xFFFFFFFFL);
++    }
++
++    public static long getChunkKey(final int x, final int z) {
++        return ((long)z << 32) | (x & 0xFFFFFFFFL);
++    }
++
++    public static int getChunkX(final long chunkKey) {
++        return (int)chunkKey;
++    }
++
++    public static int getChunkZ(final long chunkKey) {
++        return (int)(chunkKey >>> 32);
++    }
++
++    public static int getChunkCoordinate(final double blockCoordinate) {
++        return Mth.floor(blockCoordinate) >> 4;
++    }
++
++    // the section keys are compatible with vanilla's
++
++    static final int SECTION_X_BITS = 22;
++    static final long SECTION_X_MASK = (1L << SECTION_X_BITS) - 1;
++    static final int SECTION_Y_BITS = 20;
++    static final long SECTION_Y_MASK = (1L << SECTION_Y_BITS) - 1;
++    static final int SECTION_Z_BITS = 22;
++    static final long SECTION_Z_MASK = (1L << SECTION_Z_BITS) - 1;
++    // format is y,z,x (in order of LSB to MSB)
++    static final int SECTION_Y_SHIFT = 0;
++    static final int SECTION_Z_SHIFT = SECTION_Y_SHIFT + SECTION_Y_BITS;
++    static final int SECTION_X_SHIFT = SECTION_Z_SHIFT + SECTION_X_BITS;
++    static final int SECTION_TO_BLOCK_SHIFT = 4;
++
++    public static long getChunkSectionKey(final int x, final int y, final int z) {
++        return ((x & SECTION_X_MASK) << SECTION_X_SHIFT)
++                | ((y & SECTION_Y_MASK) << SECTION_Y_SHIFT)
++                | ((z & SECTION_Z_MASK) << SECTION_Z_SHIFT);
++    }
++
++    public static long getChunkSectionKey(final SectionPos pos) {
++        return ((pos.getX() & SECTION_X_MASK) << SECTION_X_SHIFT)
++                | ((pos.getY() & SECTION_Y_MASK) << SECTION_Y_SHIFT)
++                | ((pos.getZ() & SECTION_Z_MASK) << SECTION_Z_SHIFT);
++    }
++
++    public static long getChunkSectionKey(final ChunkPos pos, final int y) {
++        return ((pos.x & SECTION_X_MASK) << SECTION_X_SHIFT)
++                | ((y & SECTION_Y_MASK) << SECTION_Y_SHIFT)
++                | ((pos.z & SECTION_Z_MASK) << SECTION_Z_SHIFT);
++    }
++
++    public static long getChunkSectionKey(final BlockPos pos) {
++        return (((long)pos.getX() << (SECTION_X_SHIFT - SECTION_TO_BLOCK_SHIFT)) & (SECTION_X_MASK << SECTION_X_SHIFT)) |
++                ((pos.getY() >> SECTION_TO_BLOCK_SHIFT) & (SECTION_Y_MASK << SECTION_Y_SHIFT)) |
++                (((long)pos.getZ() << (SECTION_Z_SHIFT - SECTION_TO_BLOCK_SHIFT)) & (SECTION_Z_MASK << SECTION_Z_SHIFT));
++    }
++
++    public static long getChunkSectionKey(final Entity entity) {
++        return ((Mth.lfloor(entity.getX()) << (SECTION_X_SHIFT - SECTION_TO_BLOCK_SHIFT)) & (SECTION_X_MASK << SECTION_X_SHIFT)) |
++                ((Mth.lfloor(entity.getY()) >> SECTION_TO_BLOCK_SHIFT) & (SECTION_Y_MASK << SECTION_Y_SHIFT)) |
++                ((Mth.lfloor(entity.getZ()) << (SECTION_Z_SHIFT - SECTION_TO_BLOCK_SHIFT)) & (SECTION_Z_MASK << SECTION_Z_SHIFT));
++    }
++
++    public static int getChunkSectionX(final long key) {
++        return (int)(key << (Long.SIZE - (SECTION_X_SHIFT + SECTION_X_BITS)) >> (Long.SIZE - SECTION_X_BITS));
++    }
++
++    public static int getChunkSectionY(final long key) {
++        return (int)(key << (Long.SIZE - (SECTION_Y_SHIFT + SECTION_Y_BITS)) >> (Long.SIZE - SECTION_Y_BITS));
++    }
++
++    public static int getChunkSectionZ(final long key) {
++        return (int)(key << (Long.SIZE - (SECTION_Z_SHIFT + SECTION_Z_BITS)) >> (Long.SIZE - SECTION_Z_BITS));
++    }
++
++    // the block coordinates are not necessarily compatible with vanilla's
++
++    public static int getBlockCoordinate(final double blockCoordinate) {
++        return Mth.floor(blockCoordinate);
++    }
++
++    public static long getBlockKey(final int x, final int y, final int z) {
++        return ((long)x & 0x7FFFFFF) | (((long)z & 0x7FFFFFF) << 27) | ((long)y << 54);
++    }
++
++    public static long getBlockKey(final BlockPos pos) {
++        return ((long)pos.getX() & 0x7FFFFFF) | (((long)pos.getZ() & 0x7FFFFFF) << 27) | ((long)pos.getY() << 54);
++    }
++
++    public static long getBlockKey(final Entity entity) {
++        return ((long)entity.getX() & 0x7FFFFFF) | (((long)entity.getZ() & 0x7FFFFFF) << 27) | ((long)entity.getY() << 54);
++    }
++
++    private CoordinateUtils() {
++        throw new RuntimeException();
++    }
++}
+diff --git a/src/main/java/com/tuinity/tuinity/util/IntegerUtil.java b/src/main/java/com/tuinity/tuinity/util/IntegerUtil.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..695444a510e616180734f5fd284f1a00a2d73ea6
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/util/IntegerUtil.java
+@@ -0,0 +1,226 @@
++package com.tuinity.tuinity.util;
++
++public final class IntegerUtil {
++
++    public static final int HIGH_BIT_U32 = Integer.MIN_VALUE;
++    public static final long HIGH_BIT_U64 = Long.MIN_VALUE;
++
++    public static int ceilLog2(final int value) {
++        return Integer.SIZE - Integer.numberOfLeadingZeros(value - 1); // see doc of numberOfLeadingZeros
++    }
++
++    public static long ceilLog2(final long value) {
++        return Long.SIZE - Long.numberOfLeadingZeros(value - 1); // see doc of numberOfLeadingZeros
++    }
++
++    public static int floorLog2(final int value) {
++        // xor is optimized subtract for 2^n -1
++        // note that (2^n -1) - k = (2^n -1) ^ k for k <= (2^n - 1)
++        return (Integer.SIZE - 1) ^ Integer.numberOfLeadingZeros(value); // see doc of numberOfLeadingZeros
++    }
++
++    public static int floorLog2(final long value) {
++        // xor is optimized subtract for 2^n -1
++        // note that (2^n -1) - k = (2^n -1) ^ k for k <= (2^n - 1)
++        return (Long.SIZE - 1) ^ Long.numberOfLeadingZeros(value); // see doc of numberOfLeadingZeros
++    }
++
++    public static int roundCeilLog2(final int value) {
++        // optimized variant of 1 << (32 - leading(val - 1))
++        // given
++        // 1 << n = HIGH_BIT_32 >>> (31 - n) for n [0, 32)
++        // 1 << (32 - leading(val - 1)) = HIGH_BIT_32 >>> (31 - (32 - leading(val - 1)))
++        // HIGH_BIT_32 >>> (31 - (32 - leading(val - 1)))
++        // HIGH_BIT_32 >>> (31 - 32 + leading(val - 1))
++        // HIGH_BIT_32 >>> (-1 + leading(val - 1))
++        return HIGH_BIT_U32 >>> (Integer.numberOfLeadingZeros(value - 1) - 1);
++    }
++
++    public static long roundCeilLog2(final long value) {
++        // see logic documented above
++        return HIGH_BIT_U64 >>> (Long.numberOfLeadingZeros(value - 1) - 1);
++    }
++
++    public static int roundFloorLog2(final int value) {
++        // optimized variant of 1 << (31 - leading(val))
++        // given
++        // 1 << n = HIGH_BIT_32 >>> (31 - n) for n [0, 32)
++        // 1 << (31 - leading(val)) = HIGH_BIT_32 >> (31 - (31 - leading(val)))
++        // HIGH_BIT_32 >> (31 - (31 - leading(val)))
++        // HIGH_BIT_32 >> (31 - 31 + leading(val))
++        return HIGH_BIT_U32 >>> Integer.numberOfLeadingZeros(value);
++    }
++
++    public static long roundFloorLog2(final long value) {
++        // see logic documented above
++        return HIGH_BIT_U64 >>> Long.numberOfLeadingZeros(value);
++    }
++
++    public static boolean isPowerOfTwo(final int n) {
++        // 2^n has one bit
++        // note: this rets true for 0 still
++        return IntegerUtil.getTrailingBit(n) == n;
++    }
++
++    public static boolean isPowerOfTwo(final long n) {
++        // 2^n has one bit
++        // note: this rets true for 0 still
++        return IntegerUtil.getTrailingBit(n) == n;
++    }
++
++    public static int getTrailingBit(final int n) {
++        return -n & n;
++    }
++
++    public static long getTrailingBit(final long n) {
++        return -n & n;
++    }
++
++    public static int trailingZeros(final int n) {
++        return Integer.numberOfTrailingZeros(n);
++    }
++
++    public static int trailingZeros(final long n) {
++        return Long.numberOfTrailingZeros(n);
++    }
++
++    // from hacker's delight (signed division magic value)
++    public static int getDivisorMultiple(final long numbers) {
++        return (int)(numbers >>> 32);
++    }
++
++    // from hacker's delight (signed division magic value)
++    public static int getDivisorShift(final long numbers) {
++        return (int)numbers;
++    }
++
++    // copied from hacker's delight (signed division magic value)
++    // http://www.hackersdelight.org/hdcodetxt/magic.c.txt
++    public static long getDivisorNumbers(final int d) {
++        final int ad = IntegerUtil.branchlessAbs(d);
++
++        if (ad < 2) {
++            throw new IllegalArgumentException("|number| must be in [2, 2^31 -1], not: " + d);
++        }
++
++        final int two31 = 0x80000000;
++        final long mask = 0xFFFFFFFFL; // mask for enforcing unsigned behaviour
++
++        int p = 31;
++
++        // all these variables are UNSIGNED!
++        int t = two31 + (d >>> 31);
++        int anc = t - 1 - t%ad;
++        int q1 = (int)((two31 & mask)/(anc & mask));
++        int r1 = two31 - q1*anc;
++        int q2 = (int)((two31 & mask)/(ad & mask));
++        int r2 = two31 - q2*ad;
++        int delta;
++
++        do {
++            p = p + 1;
++            q1 = 2*q1;                        // Update q1 = 2**p/|nc|.
++            r1 = 2*r1;                        // Update r1 = rem(2**p, |nc|).
++            if ((r1 & mask) >= (anc & mask)) {// (Must be an unsigned comparison here)
++                q1 = q1 + 1;
++                r1 = r1 - anc;
++            }
++            q2 = 2*q2;                       // Update q2 = 2**p/|d|.
++            r2 = 2*r2;                       // Update r2 = rem(2**p, |d|).
++            if ((r2 & mask) >= (ad & mask)) {// (Must be an unsigned comparison here)
++                q2 = q2 + 1;
++                r2 = r2 - ad;
++            }
++            delta = ad - r2;
++        } while ((q1 & mask) < (delta & mask) || (q1 == delta && r1 == 0));
++
++        int magicNum = q2 + 1;
++        if (d < 0) {
++            magicNum = -magicNum;
++        }
++        int shift = p - 32;
++        return ((long)magicNum << 32) | shift;
++    }
++
++    public static int branchlessAbs(final int val) {
++        // -n = -1 ^ n + 1
++        final int mask = val >> (Integer.SIZE - 1); // -1 if < 0, 0 if >= 0
++        return (mask ^ val) - mask; // if val < 0, then (0 ^ val) - 0 else (-1 ^ val) + 1
++    }
++
++    public static long branchlessAbs(final long val) {
++        // -n = -1 ^ n + 1
++        final long mask = val >> (Long.SIZE - 1); // -1 if < 0, 0 if >= 0
++        return (mask ^ val) - mask; // if val < 0, then (0 ^ val) - 0 else (-1 ^ val) + 1
++    }
++
++    //https://github.com/skeeto/hash-prospector for hash functions
++
++    //score = ~590.47984224483832
++    public static int hash0(int x) {
++        x *= 0x36935555;
++        x ^= x >>> 16;
++        return x;
++    }
++
++    //score = ~310.01596637036749
++    public static int hash1(int x) {
++        x ^= x >>> 15;
++        x *= 0x356aaaad;
++        x ^= x >>> 17;
++        return x;
++    }
++
++    public static int hash2(int x) {
++        x ^= x >>> 16;
++        x *= 0x7feb352d;
++        x ^= x >>> 15;
++        x *= 0x846ca68b;
++        x ^= x >>> 16;
++        return x;
++    }
++
++    public static int hash3(int x) {
++        x ^= x >>> 17;
++        x *= 0xed5ad4bb;
++        x ^= x >>> 11;
++        x *= 0xac4c1b51;
++        x ^= x >>> 15;
++        x *= 0x31848bab;
++        x ^= x >>> 14;
++        return x;
++    }
++
++    //score = ~365.79959673201887
++    public static long hash1(long x) {
++        x ^= x >>> 27;
++        x *= 0xb24924b71d2d354bL;
++        x ^= x >>> 28;
++        return x;
++    }
++
++    //h2 hash
++    public static long hash2(long x) {
++        x ^= x >>> 32;
++        x *= 0xd6e8feb86659fd93L;
++        x ^= x >>> 32;
++        x *= 0xd6e8feb86659fd93L;
++        x ^= x >>> 32;
++        return x;
++    }
++
++    public static long hash3(long x) {
++        x ^= x >>> 45;
++        x *= 0xc161abe5704b6c79L;
++        x ^= x >>> 41;
++        x *= 0xe3e5389aedbc90f7L;
++        x ^= x >>> 56;
++        x *= 0x1f9aba75a52db073L;
++        x ^= x >>> 53;
++        return x;
++    }
++
++    private IntegerUtil() {
++        throw new RuntimeException();
++    }
++}
 diff --git a/src/main/java/com/tuinity/tuinity/util/IntervalledCounter.java b/src/main/java/com/tuinity/tuinity/util/IntervalledCounter.java
 new file mode 100644
 index 0000000000000000000000000000000000000000..d2c7d2c7920324d7207225ed19484e804368489d
@@ -594,17 +973,68 @@ index 0000000000000000000000000000000000000000..d2c7d2c7920324d7207225ed19484e80
 +        return tail >= head ? (tail - head) : (tail + (this.times.length - head));
 +    }
 +}
+diff --git a/src/main/java/com/tuinity/tuinity/util/WorldUtil.java b/src/main/java/com/tuinity/tuinity/util/WorldUtil.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..958b3aff3dda64323456d7e0ef0346a72d43f3f1
+--- /dev/null
++++ b/src/main/java/com/tuinity/tuinity/util/WorldUtil.java
+@@ -0,0 +1,46 @@
++package com.tuinity.tuinity.util;
++
++import net.minecraft.world.level.LevelHeightAccessor;
++
++public final class WorldUtil {
++
++    // min, max are inclusive
++
++    public static int getMaxSection(final LevelHeightAccessor world) {
++        return world.getMaxSection() - 1; // getMaxSection() is exclusive
++    }
++
++    public static int getMinSection(final LevelHeightAccessor world) {
++        return world.getMinSection();
++    }
++
++    public static int getMaxLightSection(final LevelHeightAccessor world) {
++        return getMaxSection(world) + 1;
++    }
++
++    public static int getMinLightSection(final LevelHeightAccessor world) {
++        return getMinSection(world) - 1;
++    }
++
++
++
++    public static int getTotalSections(final LevelHeightAccessor world) {
++        return getMaxSection(world) - getMinSection(world) + 1;
++    }
++
++    public static int getTotalLightSections(final LevelHeightAccessor world) {
++        return getMaxLightSection(world) - getMinLightSection(world) + 1;
++    }
++
++    public static int getMinBlockY(final LevelHeightAccessor world) {
++        return getMinSection(world) << 4;
++    }
++
++    public static int getMaxBlockY(final LevelHeightAccessor world) {
++        return (getMaxSection(world) << 4) | 15;
++    }
++
++    private WorldUtil() {
++        throw new RuntimeException();
++    }
++}
 diff --git a/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..be408aebbccbda46e8aa82ef337574137cfa0096
+index 0000000000000000000000000000000000000000..98a1be343d81d6431476fea6a68014def8ce923b
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/maplist/IteratorSafeOrderedReferenceSet.java
-@@ -0,0 +1,335 @@
+@@ -0,0 +1,334 @@
 +package com.tuinity.tuinity.util.maplist;
 +
 +import it.unimi.dsi.fastutil.objects.Reference2IntLinkedOpenHashMap;
 +import it.unimi.dsi.fastutil.objects.Reference2IntMap;
-+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 +import org.bukkit.Bukkit;
 +import java.util.Arrays;
 +import java.util.NoSuchElementException;
@@ -937,19 +1367,16 @@ index 0000000000000000000000000000000000000000..be408aebbccbda46e8aa82ef33757413
 +}
 diff --git a/src/main/java/com/tuinity/tuinity/util/misc/Delayed26WayDistancePropagator3D.java b/src/main/java/com/tuinity/tuinity/util/misc/Delayed26WayDistancePropagator3D.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..9cc49e8e4ad841df2b38dc37ec761bf360f5a357
+index 0000000000000000000000000000000000000000..b8fa9cd9bce312fc85b90e17094241216c620a9e
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/misc/Delayed26WayDistancePropagator3D.java
-@@ -0,0 +1,300 @@
+@@ -0,0 +1,297 @@
 +package com.tuinity.tuinity.util.misc;
 +
-+import it.unimi.dsi.fastutil.HashCommon;
-+import it.unimi.dsi.fastutil.bytes.ByteArrayFIFOQueue;
++import com.tuinity.tuinity.util.CoordinateUtils;
 +import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
-+import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;
 +import it.unimi.dsi.fastutil.longs.LongIterator;
 +import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
-+import net.minecraft.server.MCUtil;
 +
 +public final class Delayed26WayDistancePropagator3D {
 +
@@ -989,11 +1416,11 @@ index 0000000000000000000000000000000000000000..9cc49e8e4ad841df2b38dc37ec761bf3
 +    }
 +
 +    public int getLevel(final int x, final int y, final int z) {
-+        return this.levels.get(MCUtil.getSectionKey(x, y, z));
++        return this.levels.get(CoordinateUtils.getChunkSectionKey(x, y, z));
 +    }
 +
 +    public void setSource(final int x, final int y, final int z, final int level) {
-+        this.setSource(MCUtil.getSectionKey(x, y, z), level);
++        this.setSource(CoordinateUtils.getChunkSectionKey(x, y, z), level);
 +    }
 +
 +    public void setSource(final long coordinate, final int level) {
@@ -1013,7 +1440,7 @@ index 0000000000000000000000000000000000000000..9cc49e8e4ad841df2b38dc37ec761bf3
 +    }
 +
 +    public void removeSource(final int x, final int y, final int z) {
-+        this.removeSource(MCUtil.getSectionKey(x, y, z));
++        this.removeSource(CoordinateUtils.getChunkSectionKey(x, y, z));
 +    }
 +
 +    public void removeSource(final long coordinate) {
@@ -1148,9 +1575,9 @@ index 0000000000000000000000000000000000000000..9cc49e8e4ad841df2b38dc37ec761bf3
 +
 +                // propagate to neighbours
 +                final byte neighbourLevel = (byte)(level - 1);
-+                final int x = MCUtil.getSectionX(coordinate);
-+                final int y = MCUtil.getSectionY(coordinate);
-+                final int z = MCUtil.getSectionZ(coordinate);
++                final int x = CoordinateUtils.getChunkSectionX(coordinate);
++                final int y = CoordinateUtils.getChunkSectionY(coordinate);
++                final int z = CoordinateUtils.getChunkSectionZ(coordinate);
 +
 +                for (int dy = -1; dy <= 1; ++dy) {
 +                    for (int dz = -1; dz <= 1; ++dz) {
@@ -1163,7 +1590,7 @@ index 0000000000000000000000000000000000000000..9cc49e8e4ad841df2b38dc37ec761bf3
 +                            // sure we can check the neighbour level in the map right now and avoid a propagation,
 +                            // but then we would still have to recheck it when popping the value off of the queue!
 +                            // so just avoid the double lookup
-+                            final long neighbourCoordinate = MCUtil.getSectionKey(dx + x, dy + y, dz + z);
++                            final long neighbourCoordinate = CoordinateUtils.getChunkSectionKey(dx + x, dy + y, dz + z);
 +                            this.addToIncreaseWorkQueue(neighbourCoordinate, neighbourLevel);
 +                        }
 +                    }
@@ -1214,9 +1641,9 @@ index 0000000000000000000000000000000000000000..9cc49e8e4ad841df2b38dc37ec761bf3
 +
 +                // propagate to neighbours
 +                final byte neighbourLevel = (byte)(level - 1);
-+                final int x = MCUtil.getSectionX(coordinate);
-+                final int y = MCUtil.getSectionY(coordinate);
-+                final int z = MCUtil.getSectionZ(coordinate);
++                final int x = CoordinateUtils.getChunkSectionX(coordinate);
++                final int y = CoordinateUtils.getChunkSectionY(coordinate);
++                final int z = CoordinateUtils.getChunkSectionZ(coordinate);
 +
 +                for (int dy = -1; dy <= 1; ++dy) {
 +                    for (int dz = -1; dz <= 1; ++dz) {
@@ -1229,7 +1656,7 @@ index 0000000000000000000000000000000000000000..9cc49e8e4ad841df2b38dc37ec761bf3
 +                            // sure we can check the neighbour level in the map right now and avoid a propagation,
 +                            // but then we would still have to recheck it when popping the value off of the queue!
 +                            // so just avoid the double lookup
-+                            final long neighbourCoordinate = MCUtil.getSectionKey(dx + x, dy + y, dz + z);
++                            final long neighbourCoordinate = CoordinateUtils.getChunkSectionKey(dx + x, dy + y, dz + z);
 +                            this.addToRemoveWorkQueue(neighbourCoordinate, neighbourLevel);
 +                        }
 +                    }
@@ -1965,79 +2392,24 @@ index 0000000000000000000000000000000000000000..cdd3c4032c1d6b34a10ba415bd4d0e37
 +        }
 +    }
 +}
-diff --git a/src/main/java/net/minecraft/server/MCUtil.java b/src/main/java/net/minecraft/server/MCUtil.java
-index 1d72af9cace7aa8f1d20c7c1c5be621f533e2dad..006e7076932f6be576a64da09c4d84ca4a15f5dd 100644
---- a/src/main/java/net/minecraft/server/MCUtil.java
-+++ b/src/main/java/net/minecraft/server/MCUtil.java
-@@ -238,6 +238,63 @@ public final class MCUtil {
-         return getBlockKey(getBlockCoordinate(entity.locX()), getBlockCoordinate(entity.locY()), getBlockCoordinate(entity.locZ()));
-     }
+diff --git a/src/main/java/net/minecraft/server/Main.java b/src/main/java/net/minecraft/server/Main.java
+index 075f6da0244c3f61e05094f0040a9be7cbe60b15..9d5f17e0d350d7a792a11e399b5cfb3f25db6fef 100644
+--- a/src/main/java/net/minecraft/server/Main.java
++++ b/src/main/java/net/minecraft/server/Main.java
+@@ -57,7 +57,7 @@ import org.apache.logging.log4j.Logger;
+ // CraftBukkit start
+ import net.minecraft.SharedConstants;
  
-+    // Tuinity start
-+
-+    static final int SECTION_X_BITS = 22;
-+    static final long SECTION_X_MASK = (1L << SECTION_X_BITS) - 1;
-+    static final int SECTION_Y_BITS = 20;
-+    static final long SECTION_Y_MASK = (1L << SECTION_Y_BITS) - 1;
-+    static final int SECTION_Z_BITS = 22;
-+    static final long SECTION_Z_MASK = (1L << SECTION_Z_BITS) - 1;
-+    // format is y,z,x (in order of LSB to MSB)
-+    static final int SECTION_Y_SHIFT = 0;
-+    static final int SECTION_Z_SHIFT = SECTION_Y_SHIFT + SECTION_Y_BITS;
-+    static final int SECTION_X_SHIFT = SECTION_Z_SHIFT + SECTION_X_BITS;
-+    static final int SECTION_TO_BLOCK_SHIFT = 4;
-+
-+    public static long getSectionKey(final int x, final int y, final int z) {
-+        return ((x & SECTION_X_MASK) << SECTION_X_SHIFT)
-+                | ((y & SECTION_Y_MASK) << SECTION_Y_SHIFT)
-+                | ((z & SECTION_Z_MASK) << SECTION_Z_SHIFT);
-+    }
-+
-+    public static long getSectionKey(final net.minecraft.core.SectionPosition pos) {
-+        return ((pos.getX() & SECTION_X_MASK) << SECTION_X_SHIFT)
-+                | ((pos.getY() & SECTION_Y_MASK) << SECTION_Y_SHIFT)
-+                | ((pos.getZ() & SECTION_Z_MASK) << SECTION_Z_SHIFT);
-+    }
-+
-+    public static long getSectionKey(final ChunkCoordIntPair pos, final int y) {
-+        return ((pos.x & SECTION_X_MASK) << SECTION_X_SHIFT)
-+                | ((y & SECTION_Y_MASK) << SECTION_Y_SHIFT)
-+                | ((pos.z & SECTION_Z_MASK) << SECTION_Z_SHIFT);
-+    }
-+
-+    public static long getSectionKey(final BlockPosition pos) {
-+        return (((long)pos.getX() << (SECTION_X_SHIFT - SECTION_TO_BLOCK_SHIFT)) & (SECTION_X_MASK << SECTION_X_SHIFT)) |
-+                ((pos.getY() >> SECTION_TO_BLOCK_SHIFT) & (SECTION_Y_MASK << SECTION_Y_SHIFT)) |
-+                (((long)pos.getZ() << (SECTION_Z_SHIFT - SECTION_TO_BLOCK_SHIFT)) & (SECTION_Z_MASK << SECTION_Z_SHIFT));
-+    }
-+
-+    public static long getSectionKey(final Entity entity) {
-+        return ((MCUtil.fastFloor(entity.locX()) & SECTION_X_MASK) << SECTION_X_SHIFT)
-+                | ((MCUtil.fastFloor(entity.locY()) & SECTION_Y_MASK) << SECTION_Y_SHIFT)
-+                | ((MCUtil.fastFloor(entity.locZ()) & SECTION_Z_MASK) << SECTION_Z_SHIFT);
-+    }
-+
-+    public static int getSectionX(final long key) {
-+        return (int)(key << (Long.SIZE - (SECTION_X_SHIFT + SECTION_X_BITS)) >> (Long.SIZE - SECTION_X_BITS));
-+    }
-+
-+    public static int getSectionY(final long key) {
-+        return (int)(key << (Long.SIZE - (SECTION_Y_SHIFT + SECTION_Y_BITS)) >> (Long.SIZE - SECTION_Y_BITS));
-+    }
-+
-+    public static int getSectionZ(final long key) {
-+        return (int)(key << (Long.SIZE - (SECTION_Z_SHIFT + SECTION_Z_BITS)) >> (Long.SIZE - SECTION_Z_BITS));
-+    }
-+    // Tuinity end
-+
-     // assumes the sets have the same comparator, and if this comparator is null then assume T is Comparable
-     public static <T> void mergeSortedSets(final java.util.function.Consumer<T> consumer, final java.util.Comparator<? super T> comparator, final java.util.SortedSet<T>...sets) {
-         final ObjectRBTreeSet<T> all = new ObjectRBTreeSet<>(comparator);
+-public class Main { // 
++public class Main { //
+ 
+     private static final Logger LOGGER = LogManager.getLogger();
+ 
 diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
-index da66369c63e60e6e0328392b2eb98579613be63e..200ec8ad168e5b5e3672a4284e851b06fcc706b0 100644
+index 5da8bffd35f9fc0cdd7ac54def2c27045c5c1406..62dc96958b38c54ac979f17c23a4def45e91b78c 100644
 --- a/src/main/java/net/minecraft/server/MinecraftServer.java
 +++ b/src/main/java/net/minecraft/server/MinecraftServer.java
-@@ -268,6 +268,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -297,6 +297,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
      public org.bukkit.command.RemoteConsoleCommandSender remoteConsole;
      //public ConsoleReader reader; // Paper
      public static int currentTick = 0; // Paper - Further improve tick loop
@@ -2045,291 +2417,97 @@ index da66369c63e60e6e0328392b2eb98579613be63e..200ec8ad168e5b5e3672a4284e851b06
      public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
      public int autosavePeriod;
      public boolean serverAutoSave = false; // Paper
-@@ -1102,6 +1103,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
-                         this.lastOverloadTime = this.nextTick;
+@@ -1150,6 +1151,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+                         this.lastOverloadWarning = this.nextTickTime;
                      }
  
 +                    ++MinecraftServer.currentTickLong; // Tuinity
-                     if ( ++MinecraftServer.currentTick % SAMPLE_INTERVAL == 0 )
+                     if ( ++MinecraftServer.currentTick % MinecraftServer.SAMPLE_INTERVAL == 0 )
                      {
                          final long diff = curTime - tickSection;
-@@ -1488,6 +1490,11 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+@@ -1457,6 +1459,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         }
+         // Paper end
+ 
++        com.tuinity.tuinity.util.CachedLists.reset(); // Tuinity
+         // Paper start
+         long endTime = System.nanoTime();
+         long remaining = (TICK_TIME - (endTime - lastTick)) - catchupTime;
+@@ -1549,6 +1552,11 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
                  midTickLoadChunks(); // Paper
                  worldserver.timings.doTick.startTiming(); // Spigot
-                 worldserver.doTick(booleansupplier);
+                 worldserver.tick(shouldKeepTicking);
 +                // Tuinity start
-+                for (final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager regionManager : worldserver.getChunkProvider().playerChunkMap.regionManagers) {
++                for (final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager regionManager : worldserver.getChunkSource().chunkMap.regionManagers) {
 +                    regionManager.recalculateRegions();
 +                }
 +                // Tuinity end
                  worldserver.timings.doTick.stopTiming(); // Spigot
                  midTickLoadChunks(); // Paper
              } catch (Throwable throwable) {
-diff --git a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
-index 4a71f9a8a57ed123b31c725a8bd5f94ab0e2174d..f660cc2bfd420fcdea6ded9ad1e34263ed6657d6 100644
---- a/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
-+++ b/src/main/java/net/minecraft/server/level/ChunkProviderServer.java
-@@ -137,7 +137,7 @@ public class ChunkProviderServer extends IChunkProvider {
-         return (Chunk)this.getChunkAt(x, z, ChunkStatus.FULL, true);
-     }
- 
--    private long chunkFutureAwaitCounter;
-+    long chunkFutureAwaitCounter; // Tuinity - private -> package private
- 
-     public void getEntityTickingChunkAsync(int x, int z, java.util.function.Consumer<Chunk> onLoad) {
-         if (Thread.currentThread() != this.serverThread) {
-@@ -226,6 +226,165 @@ public class ChunkProviderServer extends IChunkProvider {
-     }
-     // Paper end - rewrite ticklistserver
- 
-+    // Tuinity start
-+    // this will try to avoid chunk neighbours for lighting
-+    public final IChunkAccess getFullStatusChunkAt(int chunkX, int chunkZ) {
-+        Chunk ifLoaded = this.getChunkAtIfLoadedImmediately(chunkX, chunkZ);
-+        if (ifLoaded != null) {
-+            return ifLoaded;
-+        }
-+
-+        IChunkAccess empty = this.getChunkAt(chunkX, chunkZ, ChunkStatus.EMPTY, true);
-+        if (empty != null && empty.getChunkStatus() == ChunkStatus.FULL) {
-+            return empty;
-+        }
-+        return this.getChunkAt(chunkX, chunkZ, ChunkStatus.FULL, true);
-+    }
-+
-+    public final IChunkAccess getFullStatusChunkAtIfLoaded(int chunkX, int chunkZ) {
-+        Chunk ifLoaded = this.getChunkAtIfLoadedImmediately(chunkX, chunkZ);
-+        if (ifLoaded != null) {
-+            return ifLoaded;
-+        }
-+
-+        IChunkAccess ret = this.getChunkAtImmediately(chunkX, chunkZ);
-+        if (ret != null && ret.getChunkStatus() == ChunkStatus.FULL) {
-+            return ret;
-+        } else {
-+            return null;
-+        }
-+    }
-+
-+    void getChunkAtAsynchronously(int chunkX, int chunkZ, int ticketLevel,
-+                                  java.util.function.Consumer<IChunkAccess> consumer) {
-+        this.getChunkAtAsynchronously(chunkX, chunkZ, ticketLevel, (PlayerChunk playerChunk) -> {
-+            if (ticketLevel <= 33) {
-+                return (CompletableFuture)playerChunk.getFullChunkFuture();
-+            } else {
-+                return playerChunk.getOrCreateFuture(PlayerChunk.getChunkStatus(ticketLevel), ChunkProviderServer.this.playerChunkMap);
-+            }
-+        }, consumer);
-+    }
-+
-+    void getChunkAtAsynchronously(int chunkX, int chunkZ, int ticketLevel,
-+                                  java.util.function.Function<PlayerChunk, CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>>> function,
-+                                  java.util.function.Consumer<IChunkAccess> consumer) {
-+        if (Thread.currentThread() != this.serverThread) {
-+            throw new IllegalStateException();
-+        }
-+        ChunkCoordIntPair chunkPos = new ChunkCoordIntPair(chunkX, chunkZ);
-+        Long identifier = Long.valueOf(this.chunkFutureAwaitCounter++);
-+        this.addTicketAtLevel(TicketType.FUTURE_AWAIT, chunkPos, ticketLevel, identifier);
-+        this.tickDistanceManager();
-+
-+        PlayerChunk chunk = this.playerChunkMap.getUpdatingChunk(chunkPos.pair());
-+
-+        if (chunk == null) {
-+            throw new IllegalStateException("Expected playerchunk " + chunkPos + " in world '" + this.world.getWorld().getName() + "'");
-+        }
-+
-+        CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> future = function.apply(chunk);
-+
-+        future.whenCompleteAsync((either, throwable) -> {
-+            try {
-+                if (throwable != null) {
-+                    if (throwable instanceof ThreadDeath) {
-+                        throw (ThreadDeath)throwable;
-+                    }
-+                    MinecraftServer.LOGGER.fatal("Failed to complete future await for chunk " + chunkPos.toString() + " in world '" + ChunkProviderServer.this.world.getWorld().getName() + "'", throwable);
-+                } else if (either.right().isPresent()) {
-+                    MinecraftServer.LOGGER.fatal("Failed to complete future await for chunk " + chunkPos.toString() + " in world '" + ChunkProviderServer.this.world.getWorld().getName() + "': " + either.right().get().toString());
-+                }
-+
-+                try {
-+                    if (consumer != null) {
-+                        consumer.accept(either == null ? null : either.left().orElse(null)); // indicate failure to the callback.
-+                    }
-+                } catch (Throwable thr) {
-+                    if (thr instanceof ThreadDeath) {
-+                        throw (ThreadDeath)thr;
-+                    }
-+                    MinecraftServer.LOGGER.fatal("Load callback for future await failed " + chunkPos.toString() + " in world '" + ChunkProviderServer.this.world.getWorld().getName() + "'", thr);
-+                    return;
-+                }
-+            } finally {
-+                // due to odd behaviour with CB unload implementation we need to have these AFTER the load callback.
-+                ChunkProviderServer.this.addTicketAtLevel(TicketType.UNKNOWN, chunkPos, ticketLevel, chunkPos);
-+                ChunkProviderServer.this.removeTicketAtLevel(TicketType.FUTURE_AWAIT, chunkPos, ticketLevel, identifier);
-+            }
-+        }, this.serverThreadQueue);
-+    }
-+
-+    void chunkLoadAccept(int chunkX, int chunkZ, IChunkAccess chunk, java.util.function.Consumer<IChunkAccess> consumer) {
-+        try {
-+            consumer.accept(chunk);
-+        } catch (Throwable throwable) {
-+            if (throwable instanceof ThreadDeath) {
-+                throw (ThreadDeath)throwable;
-+            }
-+            MinecraftServer.LOGGER.error("Load callback for chunk " + chunkX + "," + chunkZ + " in world '" + this.world.getWorld().getName() + "' threw an exception", throwable);
-+        }
-+    }
-+
-+    public final void getChunkAtAsynchronously(int chunkX, int chunkZ, ChunkStatus status, boolean gen, boolean allowSubTicketLevel, java.util.function.Consumer<IChunkAccess> onLoad) {
-+        // try to fire sync
-+        int chunkStatusTicketLevel = 33 + ChunkStatus.getTicketLevelOffset(status);
-+        PlayerChunk playerChunk = this.playerChunkMap.getUpdatingChunk(MCUtil.getCoordinateKey(chunkX, chunkZ));
-+        if (playerChunk != null) {
-+            ChunkStatus holderStatus = playerChunk.getChunkHolderStatus();
-+            IChunkAccess immediate = playerChunk.getAvailableChunkNow();
-+            if (immediate != null) {
-+                if (allowSubTicketLevel ? immediate.getChunkStatus().isAtLeastStatus(status) : (playerChunk.getTicketLevel() <= chunkStatusTicketLevel && holderStatus != null && holderStatus.isAtLeastStatus(status))) {
-+                    this.chunkLoadAccept(chunkX, chunkZ, immediate, onLoad);
-+                    return;
-+                } else {
-+                    if (gen || (!allowSubTicketLevel && immediate.getChunkStatus().isAtLeastStatus(status))) {
-+                        this.getChunkAtAsynchronously(chunkX, chunkZ, chunkStatusTicketLevel, onLoad);
-+                        return;
-+                    } else {
-+                        this.chunkLoadAccept(chunkX, chunkZ, null, onLoad);
-+                        return;
-+                    }
-+                }
-+            }
-+        }
-+
-+        // need to fire async
-+
-+        if (gen && !allowSubTicketLevel) {
-+            this.getChunkAtAsynchronously(chunkX, chunkZ, chunkStatusTicketLevel, onLoad);
-+            return;
-+        }
-+
-+        this.getChunkAtAsynchronously(chunkX, chunkZ, MCUtil.getTicketLevelFor(ChunkStatus.EMPTY), (IChunkAccess chunk) -> {
-+            if (chunk == null) {
-+                throw new IllegalStateException("Chunk cannot be null");
-+            }
-+
-+            if (!chunk.getChunkStatus().isAtLeastStatus(status)) {
-+                if (gen) {
-+                    this.getChunkAtAsynchronously(chunkX, chunkZ, chunkStatusTicketLevel, onLoad);
-+                    return;
-+                } else {
-+                    ChunkProviderServer.this.chunkLoadAccept(chunkX, chunkZ, null, onLoad);
-+                    return;
-+                }
-+            } else {
-+                if (allowSubTicketLevel) {
-+                    ChunkProviderServer.this.chunkLoadAccept(chunkX, chunkZ, chunk, onLoad);
-+                    return;
-+                } else {
-+                    this.getChunkAtAsynchronously(chunkX, chunkZ, chunkStatusTicketLevel, onLoad);
-+                    return;
-+                }
-+            }
-+        });
-+    }
-+
-+    final com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<Chunk> tickingChunks = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
-+    final com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<Chunk> entityTickingChunks = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
-+    // Tuinity end
-+
-     public ChunkProviderServer(WorldServer worldserver, Convertable.ConversionSession convertable_conversionsession, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, ChunkGenerator chunkgenerator, int i, boolean flag, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier) {
-         this.world = worldserver;
-         this.serverThreadQueue = new ChunkProviderServer.a(worldserver);
-@@ -624,8 +783,8 @@ public class ChunkProviderServer extends IChunkProvider {
-         return !this.a(playerchunk, k);
-     }
- 
--    @Override
--    public IBlockAccess c(int i, int j) {
-+    public final IBlockAccess getFeaturesReadyChunk(int x, int z) { return this.c(x, z); } // Tuinity - OBFHELPER
-+    @Override public IBlockAccess c(int i, int j) { // Tuinity - OBFHELPER
-         long k = ChunkCoordIntPair.pair(i, j);
-         PlayerChunk playerchunk = this.getChunk(k);
- 
-diff --git a/src/main/java/net/minecraft/server/level/PlayerChunk.java b/src/main/java/net/minecraft/server/level/PlayerChunk.java
-index a323b76f68c273a73cb3f20167a668b2100f4944..f7deb4fe98ef9900acb276c7680d5a2da9661e8f 100644
---- a/src/main/java/net/minecraft/server/level/PlayerChunk.java
-+++ b/src/main/java/net/minecraft/server/level/PlayerChunk.java
-@@ -534,6 +534,7 @@ public class PlayerChunk {
-         // Paper end - per player view distance
-     }
- 
-+    public final CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> getOrCreateFuture(ChunkStatus chunkstatus, PlayerChunkMap playerchunkmap) { return this.a(chunkstatus, playerchunkmap); } // Tuinity - OBFHELPER
-     public CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> a(ChunkStatus chunkstatus, PlayerChunkMap playerchunkmap) {
-         int i = chunkstatus.c();
-         CompletableFuture<Either<IChunkAccess, PlayerChunk.Failure>> completablefuture = (CompletableFuture) this.statusFutures.get(i);
-@@ -704,6 +705,9 @@ public class PlayerChunk {
+diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+index 84f179b5df2e7106913bd17e5f9e5fdd484bce10..0ed29894b0961f29af49f9ce4298f734fd5e424a 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
++++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+@@ -726,6 +726,9 @@ public class ChunkHolder {
                      // Paper start - rewrite ticklistserver
-                     PlayerChunk.this.chunkMap.world.onChunkSetTicking(PlayerChunk.this.location.x, PlayerChunk.this.location.z);
+                     ChunkHolder.this.chunkMap.level.onChunkSetTicking(ChunkHolder.this.pos.x, ChunkHolder.this.pos.z);
                      // Paper end - rewrite ticklistserver
 +                    // Tuinity start - ticking chunk set
-+                    PlayerChunk.this.chunkMap.world.getChunkProvider().tickingChunks.add(tickingChunk);
++                    ChunkHolder.this.chunkMap.level.getChunkSource().tickingChunks.add(chunk);
 +                    // Tuinity end - ticking chunk set
- 
-                 }
+                 });
              });
-@@ -714,6 +718,12 @@ public class PlayerChunk {
+             // Paper end
+@@ -735,6 +738,12 @@ public class ChunkHolder {
          if (flag4 && !flag5) {
-             this.tickingFuture.complete(PlayerChunk.UNLOADED_CHUNK); this.isTickingReady = false; // Paper - cache chunk ticking stage
-             this.tickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
+             this.tickingChunkFuture.complete(ChunkHolder.UNLOADED_LEVEL_CHUNK); this.isTickingReady = false; // Paper - cache chunk ticking stage
+             this.tickingChunkFuture = ChunkHolder.UNLOADED_LEVEL_CHUNK_FUTURE;
 +            // Tuinity start - ticking chunk set
-+            Chunk chunkIfCached = this.getFullChunkIfCached();
++            LevelChunk chunkIfCached = this.getFullChunkUnchecked();
 +            if (chunkIfCached != null) {
-+                this.chunkMap.world.getChunkProvider().tickingChunks.remove(chunkIfCached);
++                this.chunkMap.level.getChunkSource().tickingChunks.remove(chunkIfCached);
 +            }
 +            // Tuinity end - ticking chunk set
          }
  
-         boolean flag6 = playerchunk_state.isAtLeast(PlayerChunk.State.ENTITY_TICKING);
-@@ -731,7 +741,9 @@ public class PlayerChunk {
-                     Chunk entityTickingChunk = either.left().get();
-                     PlayerChunk.this.isEntityTickingReady = true;
- 
--
+         boolean flag6 = playerchunk_state.isOrAfter(ChunkHolder.FullChunkStatus.ENTITY_TICKING);
+@@ -751,6 +760,9 @@ public class ChunkHolder {
+             ensureMain(this.entityTickingChunkFuture).thenAccept(either -> { // Paper ensureMain
+                 either.ifLeft(chunk -> {
+                     ChunkHolder.this.isEntityTickingReady = true;
 +                    // Tuinity start - entity ticking chunk set
-+                    PlayerChunk.this.chunkMap.world.getChunkProvider().entityTickingChunks.add(entityTickingChunk);
++                    ChunkHolder.this.chunkMap.level.getChunkSource().entityTickingChunks.add(chunk);
 +                    // Tuinity end - entity ticking chunk set
- 
- 
-                 }
-@@ -743,6 +755,12 @@ public class PlayerChunk {
+                 });
+             });
+             // Paper end
+@@ -760,6 +772,12 @@ public class ChunkHolder {
          if (flag6 && !flag7) {
-             this.entityTickingFuture.complete(PlayerChunk.UNLOADED_CHUNK); this.isEntityTickingReady = false; // Paper - cache chunk ticking stage
-             this.entityTickingFuture = PlayerChunk.UNLOADED_CHUNK_FUTURE;
+             this.entityTickingChunkFuture.complete(ChunkHolder.UNLOADED_LEVEL_CHUNK); this.isEntityTickingReady = false; // Paper - cache chunk ticking stage
+             this.entityTickingChunkFuture = ChunkHolder.UNLOADED_LEVEL_CHUNK_FUTURE;
 +            // Tuinity start - entity ticking chunk set
-+            Chunk chunkIfCached = this.getFullChunkIfCached();
++            LevelChunk chunkIfCached = this.getFullChunkUnchecked();
 +            if (chunkIfCached != null) {
-+                this.chunkMap.world.getChunkProvider().entityTickingChunks.remove(chunkIfCached);
++                this.chunkMap.level.getChunkSource().entityTickingChunks.remove(chunkIfCached);
 +            }
 +            // Tuinity end - entity ticking chunk set
          }
  
-         // Paper start - raise IO/load priority if priority changes, use our preferred priority
-diff --git a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
-index 6835401bd7863bbd655502547a9fd4ae0f298da1..e7f9df8a4bd56d0809af87ec5ecd453b56025519 100644
---- a/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
-+++ b/src/main/java/net/minecraft/server/level/PlayerChunkMap.java
-@@ -332,6 +332,36 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+         if (!playerchunk_state1.isOrAfter(playerchunk_state)) {
+diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
+index 7f7bc04a30a0422b2d589adb488082c0aa5326dc..378062d6259ca5a87a50d10ad0a277fb56620b58 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
+@@ -337,6 +337,36 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+         // Paper end - no-tick view distance
      }
      // Paper end
- 
 +    // Tuinity start
 +    public final List<com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager> regionManagers = new java.util.ArrayList<>();
 +    public final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager dataRegionManager;
 +
 +    public static final class DataRegionData implements com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionData {
-+
-+
-+
 +    }
 +
 +    public static final class DataRegionSectionData implements com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSectionData {
@@ -2350,103 +2528,287 @@ index 6835401bd7863bbd655502547a9fd4ae0f298da1..e7f9df8a4bd56d0809af87ec5ecd453b
 +            final DataRegionData newRegionData = (DataRegionData)newRegion.regionData;
 +        }
 +    }
-+    // Tuiniy end
 +
-     private final java.util.concurrent.ExecutorService lightThread;
-     public PlayerChunkMap(WorldServer worldserver, Convertable.ConversionSession convertable_conversionsession, DataFixer datafixer, DefinedStructureManager definedstructuremanager, Executor executor, IAsyncTaskHandler<Runnable> iasynctaskhandler, ILightAccess ilightaccess, ChunkGenerator chunkgenerator, WorldLoadListener worldloadlistener, Supplier<WorldPersistentData> supplier, int i, boolean flag) {
-         super(new File(convertable_conversionsession.a(worldserver.getDimensionKey()), "region"), datafixer, flag);
-@@ -499,6 +529,10 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                 PlayerChunkMap.this.sendChunk(player, new ChunkCoordIntPair(rangeX, rangeZ), null, true, false); // unloaded, loaded
++    public final ChunkHolder getUnloadingChunkHolder(int chunkX, int chunkZ) {
++        return this.pendingUnloads.get(com.tuinity.tuinity.util.CoordinateUtils.getChunkKey(chunkX, chunkZ));
++    }
++    // Tuiniy end
+ 
+     public ChunkMap(ServerLevel world, LevelStorageSource.LevelStorageAccess session, DataFixer dataFixer, StructureManager structureManager, Executor executor, BlockableEventLoop<Runnable> mainThreadExecutor, LightChunkGetter chunkProvider, ChunkGenerator chunkGenerator, ChunkProgressListener worldGenerationProgressListener, ChunkStatusUpdateListener chunkStatusChangeListener, Supplier<DimensionDataStorage> persistentStateManagerFactory, int viewDistance, boolean dsync) {
+         super(new File(session.getDimensionPath(world.dimension()), "region"), dataFixer, dsync);
+@@ -500,6 +530,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+                 ChunkMap.this.updateChunkTracking(player, new ChunkPos(rangeX, rangeZ), null, true, false); // unloaded, loaded
              });
          // Paper end - no-tick view distance
 +        // Tuinity start
-+        this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager(this.world, 2, (1.0 / 3.0), 1, 6, "Data", DataRegionData::new, DataRegionSectionData::new);
++        this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager(this.level, 2, (1.0 / 3.0), 1, 6, "Data", DataRegionData::new, DataRegionSectionData::new);
 +        this.regionManagers.add(this.dataRegionManager);
 +        // Tuinity end
      }
+ 
      // Paper start - Chunk Prioritization
-     public void queueHolderUpdate(PlayerChunk playerchunk) {
-@@ -833,6 +867,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                     playerchunk.a(j);
+@@ -866,6 +900,11 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+                     holder.setTicketLevel(level);
                  } else {
-                     playerchunk = new PlayerChunk(new ChunkCoordIntPair(i), j, this.lightEngine, this.p, this);
+                     holder = new ChunkHolder(new ChunkPos(pos), level, this.level, this.lightEngine, this.queueSorter, this);
 +                    // Tuinity start
 +                    for (int index = 0, len = this.regionManagers.size(); index < len; ++index) {
-+                        this.regionManagers.get(index).addChunk(playerchunk.location.x, playerchunk.location.z);
++                        this.regionManagers.get(index).addChunk(holder.pos.x, holder.pos.z);
 +                    }
 +                    // Tuinity end
                  }
  
-                 this.updatingChunks.put(i, playerchunk);
-@@ -1075,7 +1114,14 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
+                 this.updatingChunkMap.put(pos, holder);
+@@ -1097,7 +1136,13 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
              if (completablefuture1 != completablefuture) {
-                 this.a(i, playerchunk);
+                 this.scheduleUnload(pos, holder);
              } else {
--                if (this.pendingUnload.remove(i, playerchunk) && ichunkaccess != null) {
+-                if (this.pendingUnloads.remove(pos, holder) && ichunkaccess != null) {
 +                // Tuinity start
 +                boolean removed;
-+                if ((removed = this.pendingUnload.remove(i, playerchunk)) && ichunkaccess != null) { // Tuinity end
-+                    // Tuinity start
++                if ((removed = this.pendingUnloads.remove(pos, holder)) && ichunkaccess != null) {
 +                    for (int index = 0, len = this.regionManagers.size(); index < len; ++index) {
-+                        this.regionManagers.get(index).removeChunk(playerchunk.location.x, playerchunk.location.z);
++                        this.regionManagers.get(index).removeChunk(holder.pos.x, holder.pos.z);
 +                    }
 +                    // Tuinity end
-                     if (ichunkaccess instanceof Chunk) {
-                         ((Chunk) ichunkaccess).setLoaded(false);
+                     if (ichunkaccess instanceof LevelChunk) {
+                         ((LevelChunk) ichunkaccess).setLoaded(false);
                      }
-@@ -1098,7 +1144,13 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-                     this.lightEngine.a(ichunkaccess.getPos());
-                     this.lightEngine.queueUpdate();
-                     this.worldLoadListener.a(ichunkaccess.getPos(), (ChunkStatus) null);
--                }
+@@ -1122,7 +1167,12 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+                     this.lightEngine.updateChunkStatus(ichunkaccess.getPos());
+                     this.lightEngine.tryScheduleUpdate();
+                     this.progressListener.onStatusChange(ichunkaccess.getPos(), (ChunkStatus) null);
 +                } else if (removed) { // Tuinity start
-+                    // Tuinity start
 +                    for (int index = 0, len = this.regionManagers.size(); index < len; ++index) {
-+                        this.regionManagers.get(index).removeChunk(playerchunk.location.x, playerchunk.location.z);
++                        this.regionManagers.get(index).removeChunk(holder.pos.x, holder.pos.z);
 +                    }
-+                    // Tuinity end
-+                } // Tuinity end
+                 }
++                // Tuinity end
  
              }
          };
-@@ -1773,6 +1825,11 @@ public class PlayerChunkMap extends IChunkLoader implements PlayerChunk.d {
-         return chunkHolder == null ? null : chunkHolder.getAvailableChunkNow();
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index 82d3cfb2d346a8b929e9469ae09369f6a639f81d..06d198bd3c77bb7b9e7be0262e47d98205ae6812 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -48,6 +48,7 @@ import net.minecraft.world.level.storage.LevelStorageSource;
+ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap; // Paper
+ 
+ public class ServerChunkCache extends ChunkSource {
++    public static final org.apache.logging.log4j.Logger LOGGER = org.apache.logging.log4j.LogManager.getLogger(); // Tuinity
+ 
+     public static final List<ChunkStatus> CHUNK_STATUSES = ChunkStatus.getStatusList();
+     private final DistanceManager distanceManager;
+@@ -139,7 +140,7 @@ public class ServerChunkCache extends ChunkSource {
+         return (LevelChunk)this.getChunk(x, z, ChunkStatus.FULL, true);
      }
-     // Paper end
+ 
+-    private long chunkFutureAwaitCounter;
++    long chunkFutureAwaitCounter; // Tuinity - private -> package private
+ 
+     public void getEntityTickingChunkAsync(int x, int z, java.util.function.Consumer<LevelChunk> onLoad) {
+         if (Thread.currentThread() != this.mainThread) {
+@@ -227,6 +228,166 @@ public class ServerChunkCache extends ChunkSource {
+     }
+     // Paper end - rewrite ticklistserver
+ 
 +    // Tuinity start
-+    public PlayerChunk getUnloadingPlayerChunk(int chunkX, int chunkZ) {
-+        return this.pendingUnload.get(ChunkCoordIntPair.pair(chunkX, chunkZ));
++    // this will try to avoid chunk neighbours for lighting
++    public final ChunkAccess getFullStatusChunkAt(int chunkX, int chunkZ) {
++        LevelChunk ifLoaded = this.getChunkAtIfLoadedImmediately(chunkX, chunkZ);
++        if (ifLoaded != null) {
++            return ifLoaded;
++        }
++
++        ChunkAccess empty = this.getChunk(chunkX, chunkZ, ChunkStatus.EMPTY, true);
++        if (empty != null && empty.getStatus().isOrAfter(ChunkStatus.FULL)) {
++            return empty;
++        }
++        return this.getChunk(chunkX, chunkZ, ChunkStatus.FULL, true);
 +    }
++
++    public final ChunkAccess getFullStatusChunkAtIfLoaded(int chunkX, int chunkZ) {
++        LevelChunk ifLoaded = this.getChunkAtIfLoadedImmediately(chunkX, chunkZ);
++        if (ifLoaded != null) {
++            return ifLoaded;
++        }
++
++        ChunkAccess ret = this.getChunkAtImmediately(chunkX, chunkZ);
++        if (ret != null && ret.getStatus().isOrAfter(ChunkStatus.FULL)) {
++            return ret;
++        } else {
++            return null;
++        }
++    }
++
++    void getChunkAtAsynchronously(int chunkX, int chunkZ, int ticketLevel,
++                                  java.util.function.Consumer<ChunkAccess> consumer) {
++        this.getChunkAtAsynchronously(chunkX, chunkZ, ticketLevel, (ChunkHolder chunkHolder) -> {
++            if (ticketLevel <= 33) {
++                return (CompletableFuture)chunkHolder.getFullChunkFuture();
++            } else {
++                return chunkHolder.getOrScheduleFuture(ChunkHolder.getStatus(ticketLevel), ServerChunkCache.this.chunkMap);
++            }
++        }, consumer);
++    }
++
++    void getChunkAtAsynchronously(int chunkX, int chunkZ, int ticketLevel,
++                                  java.util.function.Function<ChunkHolder, CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>>> function,
++                                  java.util.function.Consumer<ChunkAccess> consumer) {
++        if (Thread.currentThread() != this.mainThread) {
++            throw new IllegalStateException();
++        }
++
++        ChunkPos chunkPos = new ChunkPos(chunkX, chunkZ);
++        Long identifier = Long.valueOf(this.chunkFutureAwaitCounter++);
++        this.addTicketAtLevel(TicketType.FUTURE_AWAIT, chunkPos, ticketLevel, identifier);
++        this.runDistanceManagerUpdates();
++
++        ChunkHolder chunk = this.chunkMap.getUpdatingChunkIfPresent(chunkPos.toLong());
++
++        if (chunk == null) {
++            throw new IllegalStateException("Expected playerchunk " + chunkPos + " in world '" + this.level.getWorld().getName() + "'");
++        }
++
++        CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> future = function.apply(chunk);
++
++        future.whenCompleteAsync((either, throwable) -> {
++            try {
++                if (throwable != null) {
++                    if (throwable instanceof ThreadDeath) {
++                        throw (ThreadDeath)throwable;
++                    }
++                    LOGGER.fatal("Failed to complete future await for chunk " + chunkPos.toString() + " in world '" + ServerChunkCache.this.level.getWorld().getName() + "'", throwable);
++                } else if (either.right().isPresent()) {
++                    LOGGER.fatal("Failed to complete future await for chunk " + chunkPos.toString() + " in world '" + ServerChunkCache.this.level.getWorld().getName() + "': " + either.right().get().toString());
++                }
++
++                try {
++                    if (consumer != null) {
++                        consumer.accept(either == null ? null : either.left().orElse(null)); // indicate failure to the callback.
++                    }
++                } catch (Throwable thr) {
++                    if (thr instanceof ThreadDeath) {
++                        throw (ThreadDeath)thr;
++                    }
++                    LOGGER.fatal("Load callback for future await failed " + chunkPos.toString() + " in world '" + ServerChunkCache.this.level.getWorld().getName() + "'", thr);
++                    return;
++                }
++            } finally {
++                // due to odd behaviour with CB unload implementation we need to have these AFTER the load callback.
++                ServerChunkCache.this.addTicketAtLevel(TicketType.UNKNOWN, chunkPos, ticketLevel, chunkPos);
++                ServerChunkCache.this.removeTicketAtLevel(TicketType.FUTURE_AWAIT, chunkPos, ticketLevel, identifier);
++            }
++        }, this.mainThreadProcessor);
++    }
++
++    void chunkLoadAccept(int chunkX, int chunkZ, ChunkAccess chunk, java.util.function.Consumer<ChunkAccess> consumer) {
++        try {
++            consumer.accept(chunk);
++        } catch (Throwable throwable) {
++            if (throwable instanceof ThreadDeath) {
++                throw (ThreadDeath)throwable;
++            }
++            LOGGER.error("Load callback for chunk " + chunkX + "," + chunkZ + " in world '" + this.level.getWorld().getName() + "' threw an exception", throwable);
++        }
++    }
++
++    public final void getChunkAtAsynchronously(int chunkX, int chunkZ, ChunkStatus status, boolean gen, boolean allowSubTicketLevel, java.util.function.Consumer<ChunkAccess> onLoad) {
++        // try to fire sync
++        int chunkStatusTicketLevel = 33 + ChunkStatus.getDistance(status);
++        ChunkHolder playerChunk = this.chunkMap.getUpdatingChunkIfPresent(com.tuinity.tuinity.util.CoordinateUtils.getChunkKey(chunkX, chunkZ));
++        if (playerChunk != null) {
++            ChunkStatus holderStatus = playerChunk.getChunkHolderStatus();
++            ChunkAccess immediate = playerChunk.getAvailableChunkNow();
++            if (immediate != null) {
++                if (allowSubTicketLevel ? immediate.getStatus().isOrAfter(status) : (playerChunk.getTicketLevel() <= chunkStatusTicketLevel && holderStatus != null && holderStatus.isOrAfter(status))) {
++                    this.chunkLoadAccept(chunkX, chunkZ, immediate, onLoad);
++                    return;
++                } else {
++                    if (gen || (!allowSubTicketLevel && immediate.getStatus().isOrAfter(status))) {
++                        this.getChunkAtAsynchronously(chunkX, chunkZ, chunkStatusTicketLevel, onLoad);
++                        return;
++                    } else {
++                        this.chunkLoadAccept(chunkX, chunkZ, null, onLoad);
++                        return;
++                    }
++                }
++            }
++        }
++
++        // need to fire async
++
++        if (gen && !allowSubTicketLevel) {
++            this.getChunkAtAsynchronously(chunkX, chunkZ, chunkStatusTicketLevel, onLoad);
++            return;
++        }
++
++        this.getChunkAtAsynchronously(chunkX, chunkZ, net.minecraft.server.MCUtil.getTicketLevelFor(ChunkStatus.EMPTY), (ChunkAccess chunk) -> {
++            if (chunk == null) {
++                throw new IllegalStateException("Chunk cannot be null");
++            }
++
++            if (!chunk.getStatus().isOrAfter(status)) {
++                if (gen) {
++                    this.getChunkAtAsynchronously(chunkX, chunkZ, chunkStatusTicketLevel, onLoad);
++                    return;
++                } else {
++                    ServerChunkCache.this.chunkLoadAccept(chunkX, chunkZ, null, onLoad);
++                    return;
++                }
++            } else {
++                if (allowSubTicketLevel) {
++                    ServerChunkCache.this.chunkLoadAccept(chunkX, chunkZ, chunk, onLoad);
++                    return;
++                } else {
++                    this.getChunkAtAsynchronously(chunkX, chunkZ, chunkStatusTicketLevel, onLoad);
++                    return;
++                }
++            }
++        });
++    }
++
++    final com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<LevelChunk> tickingChunks = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
++    final com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<LevelChunk> entityTickingChunks = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>(4096, 0.75f, 4096, 0.15, true);
 +    // Tuinity end
- 
- 
-     // Paper start - async io
-diff --git a/src/main/java/net/minecraft/server/level/WorldServer.java b/src/main/java/net/minecraft/server/level/WorldServer.java
-index f68a252378a94c8fcab622d2d89d738aceab45a4..afee018d10d0dbc31f1201477084e315953c67a0 100644
---- a/src/main/java/net/minecraft/server/level/WorldServer.java
-+++ b/src/main/java/net/minecraft/server/level/WorldServer.java
-@@ -168,6 +168,7 @@ import org.bukkit.event.server.MapInitializeEvent;
++
+     public ServerChunkCache(ServerLevel world, LevelStorageSource.LevelStorageAccess session, DataFixer dataFixer, StructureManager structureManager, Executor workerExecutor, ChunkGenerator chunkGenerator, int viewDistance, boolean flag, ChunkProgressListener worldGenerationProgressListener, ChunkStatusUpdateListener chunkstatusupdatelistener, Supplier<DimensionDataStorage> supplier) {
+         this.level = world;
+         this.mainThreadProcessor = new ServerChunkCache.MainThreadExecutor(world);
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index b3312fa2fd218ffcfaa61d98584003c97fbda4ce..191dbc22559f1ecfcb48bf60fbb7cb5c9e38c58a 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -115,6 +115,7 @@ import net.minecraft.world.level.block.EntityBlock;
+ import net.minecraft.world.level.block.entity.BlockEntity;
+ import net.minecraft.world.level.block.entity.TickingBlockEntity;
+ import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.world.level.chunk.ChunkAccess;
+ import net.minecraft.world.level.chunk.ChunkGenerator;
+ import net.minecraft.world.level.chunk.LevelChunk;
+ import net.minecraft.world.level.chunk.LevelChunkSection;
+@@ -165,6 +166,7 @@ import org.bukkit.event.server.MapInitializeEvent;
  import org.bukkit.event.weather.LightningStrikeEvent;
  import org.bukkit.event.world.TimeSkipEvent;
  // CraftBukkit end
 +import it.unimi.dsi.fastutil.ints.IntArrayList; // Tuinity
  
- public class WorldServer extends World implements GeneratorAccessSeed {
+ public class ServerLevel extends net.minecraft.world.level.Level implements WorldGenLevel {
  
-@@ -319,6 +320,96 @@ public class WorldServer extends World implements GeneratorAccessSeed {
+@@ -304,6 +306,95 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+         }
      }
      // Paper end - rewrite ticklistserver
- 
 +    // Tuinity start
-+    public final boolean areChunksLoadedForMove(AxisAlignedBB axisalignedbb) {
++    public final boolean areChunksLoadedForMove(AABB axisalignedbb) {
 +        // copied code from collision methods, so that we can guarantee that they wont load chunks (we don't override
 +        // ICollisionAccess methods for VoxelShapes)
 +        // be more strict too, add a block (dumb plugins in move events?)
-+        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 3;
-+        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 3;
++        int minBlockX = Mth.floor(axisalignedbb.minX - 1.0E-7D) - 3;
++        int maxBlockX = Mth.floor(axisalignedbb.maxX + 1.0E-7D) + 3;
 +
-+        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 3;
-+        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 3;
++        int minBlockZ = Mth.floor(axisalignedbb.minZ - 1.0E-7D) - 3;
++        int maxBlockZ = Mth.floor(axisalignedbb.maxZ + 1.0E-7D) + 3;
 +
 +        int minChunkX = minBlockX >> 4;
 +        int maxChunkX = maxBlockX >> 4;
@@ -2454,7 +2816,7 @@ index f68a252378a94c8fcab622d2d89d738aceab45a4..afee018d10d0dbc31f1201477084e315
 +        int minChunkZ = minBlockZ >> 4;
 +        int maxChunkZ = maxBlockZ >> 4;
 +
-+        ChunkProviderServer chunkProvider = this.getChunkProvider();
++        ServerChunkCache chunkProvider = this.getChunkSource();
 +
 +        for (int cx = minChunkX; cx <= maxChunkX; ++cx) {
 +            for (int cz = minChunkZ; cz <= maxChunkZ; ++cz) {
@@ -2467,22 +2829,22 @@ index f68a252378a94c8fcab622d2d89d738aceab45a4..afee018d10d0dbc31f1201477084e315
 +        return true;
 +    }
 +
-+    public final void loadChunksForMoveAsync(AxisAlignedBB axisalignedbb, double toX, double toZ,
-+                                             java.util.function.Consumer<List<IChunkAccess>> onLoad) {
-+        if (Thread.currentThread() != this.serverThread) {
-+            this.getChunkProvider().serverThreadQueue.execute(() -> {
++    public final void loadChunksForMoveAsync(AABB axisalignedbb, double toX, double toZ,
++                                             java.util.function.Consumer<List<ChunkAccess>> onLoad) {
++        if (Thread.currentThread() != this.thread) {
++            this.getChunkSource().mainThreadProcessor.execute(() -> {
 +                this.loadChunksForMoveAsync(axisalignedbb, toX, toZ, onLoad);
 +            });
 +            return;
 +        }
-+        List<IChunkAccess> ret = new java.util.ArrayList<>();
++        List<ChunkAccess> ret = new java.util.ArrayList<>();
 +        IntArrayList ticketLevels = new IntArrayList();
 +
-+        int minBlockX = MathHelper.floor(axisalignedbb.minX - 1.0E-7D) - 3;
-+        int maxBlockX = MathHelper.floor(axisalignedbb.maxX + 1.0E-7D) + 3;
++        int minBlockX = Mth.floor(axisalignedbb.minX - 1.0E-7D) - 3;
++        int maxBlockX = Mth.floor(axisalignedbb.maxX + 1.0E-7D) + 3;
 +
-+        int minBlockZ = MathHelper.floor(axisalignedbb.minZ - 1.0E-7D) - 3;
-+        int maxBlockZ = MathHelper.floor(axisalignedbb.maxZ + 1.0E-7D) + 3;
++        int minBlockZ = Mth.floor(axisalignedbb.minZ - 1.0E-7D) - 3;
++        int maxBlockZ = Mth.floor(axisalignedbb.maxZ + 1.0E-7D) + 3;
 +
 +        int minChunkX = minBlockX >> 4;
 +        int maxChunkX = maxBlockX >> 4;
@@ -2490,16 +2852,16 @@ index f68a252378a94c8fcab622d2d89d738aceab45a4..afee018d10d0dbc31f1201477084e315
 +        int minChunkZ = minBlockZ >> 4;
 +        int maxChunkZ = maxBlockZ >> 4;
 +
-+        ChunkProviderServer chunkProvider = this.getChunkProvider();
++        ServerChunkCache chunkProvider = this.getChunkSource();
 +
 +        int requiredChunks = (maxChunkX - minChunkX + 1) * (maxChunkZ - minChunkZ + 1);
 +        int[] loadedChunks = new int[1];
 +
 +        Long holderIdentifier = Long.valueOf(chunkProvider.chunkFutureAwaitCounter++);
 +
-+        java.util.function.Consumer<IChunkAccess> consumer = (IChunkAccess chunk) -> {
++        java.util.function.Consumer<ChunkAccess> consumer = (ChunkAccess chunk) -> {
 +            if (chunk != null) {
-+                int ticketLevel = Math.max(33, chunkProvider.playerChunkMap.getUpdatingChunk(chunk.getPos().pair()).getTicketLevel());
++                int ticketLevel = Math.max(33, chunkProvider.chunkMap.getUpdatingChunkIfPresent(chunk.getPos().toLong()).getTicketLevel());
 +                ret.add(chunk);
 +                ticketLevels.add(ticketLevel);
 +                chunkProvider.addTicketAtLevel(TicketType.FUTURE_AWAIT, chunk.getPos(), ticketLevel, holderIdentifier);
@@ -2509,7 +2871,7 @@ index f68a252378a94c8fcab622d2d89d738aceab45a4..afee018d10d0dbc31f1201477084e315
 +                    onLoad.accept(java.util.Collections.unmodifiableList(ret));
 +                } finally {
 +                    for (int i = 0, len = ret.size(); i < len; ++i) {
-+                        ChunkCoordIntPair chunkPos = ret.get(i).getPos();
++                        ChunkPos chunkPos = ret.get(i).getPos();
 +                        int ticketLevel = ticketLevels.getInt(i);
 +
 +                        chunkProvider.addTicketAtLevel(TicketType.UNKNOWN, chunkPos, ticketLevel, chunkPos);
@@ -2521,120 +2883,117 @@ index f68a252378a94c8fcab622d2d89d738aceab45a4..afee018d10d0dbc31f1201477084e315
 +
 +        for (int cx = minChunkX; cx <= maxChunkX; ++cx) {
 +            for (int cz = minChunkZ; cz <= maxChunkZ; ++cz) {
-+                chunkProvider.getChunkAtAsynchronously(cx, cz, ChunkStatus.FULL, true, false, consumer);
++                chunkProvider.getChunkAtAsynchronously(cx, cz, net.minecraft.world.level.chunk.ChunkStatus.FULL, true, false, consumer);
 +            }
 +        }
 +    }
 +    // Tuinity end
-+
+ 
      // Add env and gen to constructor, WorldData -> WorldDataServer
-     public WorldServer(MinecraftServer minecraftserver, Executor executor, Convertable.ConversionSession convertable_conversionsession, IWorldDataServer iworlddataserver, ResourceKey<World> resourcekey, DimensionManager dimensionmanager, WorldLoadListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<MobSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
-         super(iworlddataserver, resourcekey, dimensionmanager, minecraftserver::getMethodProfiler, false, flag, i, gen, env, executor); // Paper pass executor
+     public ServerLevel(MinecraftServer minecraftserver, Executor executor, LevelStorageSource.LevelStorageAccess convertable_conversionsession, ServerLevelData iworlddataserver, ResourceKey<net.minecraft.world.level.Level> resourcekey, DimensionType dimensionmanager, ChunkProgressListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<CustomSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
-index 6e1304f7169c11f67c573b2c8dc11825bcc7da0d..7cb70daddfeb27949230fdd829232786a4748118 100644
+index af90013d48e2dd827e045e2fc0f7f5be0dbaa33f..ff7484f439aa05c58809dce81a5252ccc81d5d59 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
 +++ b/src/main/java/net/minecraft/world/entity/Entity.java
-@@ -299,6 +299,14 @@ public abstract class Entity implements INamableTileEntity, ICommandListener, ne
+@@ -392,6 +392,12 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, n
      }
-     // CraftBukkit end
+     // Paper end - make end portalling safe
  
 +    // Tuinity start
-+    public final AxisAlignedBB getBoundingBoxAt(double x, double y, double z) {
-+        double widthHalf = (double)this.size.width / 2.0;
-+        double height = (double)this.size.height;
-+        return new AxisAlignedBB(x - widthHalf, y, z - widthHalf, x + widthHalf, y + height, z + widthHalf);
++    public final AABB getBoundingBoxAt(double x, double y, double z) {
++        return this.dimensions.makeBoundingBox(x, y, z);
 +    }
 +    // Tuinity end
 +
-     // Paper start - optimise entity tracking
-     final org.spigotmc.TrackingRange.TrackingRangeType trackingRangeType = org.spigotmc.TrackingRange.getTrackingRangeType(this);
+     public Entity(EntityType<?> type, Level world) {
+         this.id = Entity.ENTITY_COUNTER.incrementAndGet();
+         this.passengers = ImmutableList.of();
+diff --git a/src/main/java/net/minecraft/world/level/block/state/BlockBehaviour.java b/src/main/java/net/minecraft/world/level/block/state/BlockBehaviour.java
+index 1179c62695da4dcf02590c97d8da3c6fcdbee9ef..fb88de2bff858317b06fb2b1ef790afe4212e98d 100644
+--- a/src/main/java/net/minecraft/world/level/block/state/BlockBehaviour.java
++++ b/src/main/java/net/minecraft/world/level/block/state/BlockBehaviour.java
+@@ -610,14 +610,14 @@ public abstract class BlockBehaviour {
  
-diff --git a/src/main/java/net/minecraft/world/level/block/state/BlockBase.java b/src/main/java/net/minecraft/world/level/block/state/BlockBase.java
-index 0d26250887f80d0c250bcd6bc7de303362427d3e..7f191b78fabc7d354fb4361a1bd13ebe27e0bd4b 100644
---- a/src/main/java/net/minecraft/world/level/block/state/BlockBase.java
-+++ b/src/main/java/net/minecraft/world/level/block/state/BlockBase.java
-@@ -348,14 +348,14 @@ public abstract class BlockBase {
+     public abstract static class BlockStateBase extends StateHolder<Block, BlockState> {
  
-     public abstract static class BlockData extends IBlockDataHolder<Block, IBlockData> {
- 
--        private final int b;
--        private final boolean e;
-+        private final int b; public final int getEmittedLight() { return this.b; } // Tuinity - OBFHELPER
-+        private final boolean e; public final boolean isTransparentOnSomeFaces() { return this.e; } // Tuinity - OBFHELPER
-         private final boolean f;
-         private final Material g;
-         private final MaterialMapColor h;
-         public final float strength;
-         private final boolean j;
--        private final boolean k;
-+        private final boolean k; public final boolean isOpaque() { return this.k; } // Tuinity - OBFHELPER
-         private final BlockBase.e l;
-         private final BlockBase.e m;
-         private final BlockBase.e n;
-@@ -396,12 +396,20 @@ public abstract class BlockBase {
-         protected Fluid fluid;
+-        private final int lightEmission;
+-        private final boolean useShapeForLightOcclusion;
++        private final int lightEmission; public final int getEmittedLight() { return this.lightEmission; } // Tuinity - OBFHELPER
++        private final boolean useShapeForLightOcclusion; public final boolean isTransparentOnSomeFaces() { return this.useShapeForLightOcclusion; } // Tuinity - OBFHELPER
+         private final boolean isAir;
+         private final Material material;
+         private final MaterialColor materialColor;
+         public final float destroySpeed;
+         private final boolean requiresCorrectToolForDrops;
+-        private final boolean canOcclude;
++        private final boolean canOcclude; public final boolean isOpaque() { return this.canOcclude; } // Tuinity - OBFHELPER
+         private final BlockBehaviour.StatePredicate isRedstoneConductor;
+         private final BlockBehaviour.StatePredicate isSuffocating;
+         private final BlockBehaviour.StatePredicate isViewBlocking;
+@@ -658,12 +658,20 @@ public abstract class BlockBehaviour {
+         protected FluidState fluid;
          // Paper end
  
-+        // Tuinity start - micro the hell out of this call
++        // Tuinity start
 +        protected boolean shapeExceedsCube = true;
 +        public final boolean shapeExceedsCube() {
 +            return this.shapeExceedsCube;
 +        }
 +        // Tuinity end
 +
-         public void a() {
-             this.fluid = this.getBlock().d(this.p()); // Paper - moved from getFluid()
-             this.isTicking = this.getBlock().isTicking(this.p()); // Paper - moved from isTicking()
-             if (!this.getBlock().o()) {
-                 this.a = new BlockBase.BlockData.Cache(this.p());
+         public void initCache() {
+             this.fluid = this.getBlock().getFluidState(this.asState()); // Paper - moved from getFluid()
+             this.isTicking = this.getBlock().isRandomlyTicking(this.asState()); // Paper - moved from isTicking()
+             if (!this.getBlock().hasDynamicShape()) {
+                 this.cache = new BlockBehaviour.BlockStateBase.Cache(this.asState());
              }
-+            this.shapeExceedsCube = this.a == null || this.a.c; // Tuinity - moved from actual method to here
++            this.shapeExceedsCube = this.cache == null || this.cache.largeCollisionShape; // Tuinity - moved from actual method to here
  
          }
  
-@@ -425,10 +433,12 @@ public abstract class BlockBase {
-             return this.a != null ? this.a.g : this.getBlock().b(this.p(), iblockaccess, blockposition);
+@@ -700,7 +708,7 @@ public abstract class BlockBehaviour {
          }
  
-+        public final int getOpacity(IBlockAccess iblockaccess, BlockPosition blockposition) { return this.b(iblockaccess, blockposition); } // Tuinity - OBFHELPER
-         public int b(IBlockAccess iblockaccess, BlockPosition blockposition) {
-             return this.a != null ? this.a.h : this.getBlock().f(this.p(), iblockaccess, blockposition);
-         }
- 
-+        public final VoxelShape getCullingFace(IBlockAccess iblockaccess, BlockPosition blockposition, EnumDirection enumdirection) { return this.a(iblockaccess, blockposition, enumdirection); } // Tuinity - OBFHELPER
-         public VoxelShape a(IBlockAccess iblockaccess, BlockPosition blockposition, EnumDirection enumdirection) {
-             return this.a != null && this.a.i != null ? this.a.i[enumdirection.ordinal()] : VoxelShapes.a(this.c(iblockaccess, blockposition), enumdirection);
-         }
-@@ -438,7 +448,7 @@ public abstract class BlockBase {
-         }
- 
-         public final boolean d() { // Paper
--            return this.a == null || this.a.c;
+         public final boolean hasLargeCollisionShape() { // Paper
+-            return this.cache == null || this.cache.largeCollisionShape;
 +            return this.shapeExceedsCube; // Tuinity - moved into shape cache init
          }
  
-         public final boolean e() { // Paper
-diff --git a/src/main/java/net/minecraft/world/level/levelgen/HeightMap.java b/src/main/java/net/minecraft/world/level/levelgen/HeightMap.java
-index aed66330b0f42eb8c8fbbebdb36f190db8e3b6b9..79214a93c533839d0c560a1e4f5904c62265590e 100644
---- a/src/main/java/net/minecraft/world/level/levelgen/HeightMap.java
-+++ b/src/main/java/net/minecraft/world/level/levelgen/HeightMap.java
-@@ -109,6 +109,7 @@ public class HeightMap {
-         }
+         public final boolean useShapeForLightOcclusion() { // Paper
+diff --git a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+index d40c0d8be1b0153d62021b8bcb6e8b37fd0acb4e..025540a62e805816cb93307c472bf0de64e2b01f 100644
+--- a/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
++++ b/src/main/java/org/bukkit/craftbukkit/util/UnsafeList.java
+@@ -119,6 +119,32 @@ public class UnsafeList<E> extends AbstractList<E> implements List<E>, RandomAcc
+         return this.indexOf(o) >= 0;
      }
  
-+    public final int get(int x, int z) { return this.a(x, z); } // Tuinity - OBFHELPER
-     public int a(int i, int j) {
-         return this.a(c(i, j));
-     }
-diff --git a/src/main/java/net/minecraft/world/phys/shapes/VoxelShapes.java b/src/main/java/net/minecraft/world/phys/shapes/VoxelShapes.java
-index 858d4689e618c72250447adb61e0bcc3c156f8f3..38fde2e10adf06bf5c5141d17d82ba125b372cd7 100644
---- a/src/main/java/net/minecraft/world/phys/shapes/VoxelShapes.java
-+++ b/src/main/java/net/minecraft/world/phys/shapes/VoxelShapes.java
-@@ -324,6 +324,7 @@ public final class VoxelShapes {
-         }
-     }
- 
-+    public static boolean combinationOccludes(VoxelShape voxelshape, VoxelShape voxelshape1) { return b(voxelshape, voxelshape1); } // Tuinity - OBFHELPER
-     public static boolean b(VoxelShape voxelshape, VoxelShape voxelshape1) {
-         return voxelshape != b() && voxelshape1 != b() ? (voxelshape.isEmpty() && voxelshape1.isEmpty() ? false : !c(b(), b(voxelshape, voxelshape1, OperatorBoolean.OR), OperatorBoolean.ONLY_FIRST)) : true;
-     }
++    // Tuinity start
++    protected transient int maxSize;
++    public void setSize(int size) {
++        if (this.maxSize < this.size) {
++            this.maxSize = this.size;
++        }
++        this.size = size;
++    }
++
++    public void completeReset() {
++        if (this.data != null) {
++            Arrays.fill(this.data, 0, Math.max(this.size, this.maxSize), null);
++        }
++        this.size = 0;
++        this.maxSize = 0;
++        if (this.iterPool != null) {
++            for (Iterator temp : this.iterPool) {
++                if (temp == null) {
++                    continue;
++                }
++                ((Itr)temp).valid = false;
++            }
++        }
++    }
++    // Tuinity end
++
+     @Override
+     public void clear() {
+         // Create new array to reset memory usage to initial capacity

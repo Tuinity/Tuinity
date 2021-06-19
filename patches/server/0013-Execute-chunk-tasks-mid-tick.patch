@@ -1,0 +1,330 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Mon, 6 Apr 2020 04:20:44 -0700
+Subject: [PATCH] Execute chunk tasks mid-tick
+
+This will help the server load chunks if tick times are high.
+
+diff --git a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
+index da13ff17609b7bc8076d9297edf8decf01a2ed88..b4c69d39eee19339b1de295151d7ed3bf61635c1 100644
+--- a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
++++ b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
+@@ -312,6 +312,7 @@ public final class PaperTickList<T> extends ServerTickList<T> { // extend to avo
+                     toTick.tickState = STATE_SCHEDULED;
+                     this.addToNotTickingReady(toTick);
+                 }
++                MinecraftServer.getServer().executeMidTickTasks(); // Tuinity - exec chunk tasks during world tick
+             } catch (final Throwable thr) {
+                 // start copy from TickListServer // TODO check on update
+                 CrashReport crashreport = CrashReport.forThrowable(thr, "Exception while ticking");
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index b7e2a30895c98f3f79bd2bda6f5ccea35e76e6a4..5ae6a94542c1b6a5130567ab817360d8b2c2f33e 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -332,6 +332,76 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         return s0;
+     }
+ 
++    // Tuinity start - execute chunk tasks mid tick
++    static final long CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME = 25L * 1000L; // 25us
++    static final long MAX_CHUNK_EXEC_TIME = 1000L; // 1us
++
++    static final long TASK_EXECUTION_FAILURE_BACKOFF = 5L * 1000L; // 5us
++
++    private static long lastMidTickExecute;
++    private static long lastMidTickExecuteFailure;
++
++    private boolean tickMidTickTasks() {
++        // give all worlds a fair chance at by targetting them all.
++        // if we execute too many tasks, that's fine - we have logic to correctly handle overuse of allocated time.
++        boolean executed = false;
++        for (ServerLevel world : this.getAllLevels()) {
++            long currTime = System.nanoTime();
++            if (currTime - world.lastMidTickExecuteFailure <= TASK_EXECUTION_FAILURE_BACKOFF) {
++                continue;
++            }
++            if (!world.getChunkSource().pollTask()) {
++                // we need to back off if this fails
++                world.lastMidTickExecuteFailure = currTime;
++            } else {
++                executed = true;
++            }
++        }
++
++        return executed;
++    }
++
++    public final void executeMidTickTasks() {
++        org.spigotmc.AsyncCatcher.catchOp("mid tick chunk task execution");
++        long startTime = System.nanoTime();
++        if ((startTime - lastMidTickExecute) <= CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME || (startTime - lastMidTickExecuteFailure) <= TASK_EXECUTION_FAILURE_BACKOFF) {
++            // it's shown to be bad to constantly hit the queue (chunk loads slow to a crawl), even if no tasks are executed.
++            // so, backoff to prevent this
++            return;
++        }
++
++        co.aikar.timings.MinecraftTimings.midTickChunkTasks.startTiming();
++        try {
++            for (;;) {
++                boolean moreTasks = this.tickMidTickTasks();
++                long currTime = System.nanoTime();
++                long diff = currTime - startTime;
++
++                if (!moreTasks || diff >= MAX_CHUNK_EXEC_TIME) {
++                    if (!moreTasks) {
++                        lastMidTickExecuteFailure = currTime;
++                    }
++
++                    // note: negative values reduce the time
++                    long overuse = diff - MAX_CHUNK_EXEC_TIME;
++                    if (overuse >= (10L * 1000L * 1000L)) { // 10ms
++                        // make sure something like a GC or dumb plugin doesn't screw us over...
++                        overuse = 10L * 1000L * 1000L; // 10ms
++                    }
++
++                    double overuseCount = (double)overuse/(double)MAX_CHUNK_EXEC_TIME;
++                    long extraSleep = (long)Math.round(overuseCount*CHUNK_TASK_QUEUE_BACKOFF_MIN_TIME);
++
++                    lastMidTickExecute = currTime + extraSleep;
++                    return;
++                }
++            }
++        } finally {
++            co.aikar.timings.MinecraftTimings.midTickChunkTasks.stopTiming();
++        }
++    }
++    // Tuinity end - execute chunk tasks mid tick
++
+     public MinecraftServer(OptionSet options, DataPackConfig datapackconfiguration, Thread thread, RegistryAccess.RegistryHolder iregistrycustom_dimension, LevelStorageSource.LevelStorageAccess convertable_conversionsession, WorldData savedata, PackRepository resourcepackrepository, Proxy proxy, DataFixer datafixer, ServerResources datapackresources, @Nullable MinecraftSessionService minecraftsessionservice, @Nullable GameProfileRepository gameprofilerepository, @Nullable GameProfileCache usercache, ChunkProgressListenerFactory worldloadlistenerfactory) {
+         super("Server");
+         SERVER = this; // Paper - better singleton
+@@ -1167,7 +1237,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+                         // Paper end
+                         tickSection = curTime;
+                     }
+-                    midTickChunksTasksRan = 0; // Paper
++                    // Tuinity - replace logic
+                     // Spigot end
+ 
+                     if (this.debugCommandProfilerDelayStart) {
+@@ -1278,22 +1348,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         });
+     }
+ 
+-    // Paper start
+-    public int midTickChunksTasksRan = 0;
+-    private long midTickLastRan = 0;
+-    public void midTickLoadChunks() {
+-        if (!isSameThread() || System.nanoTime() - midTickLastRan < 1000000) {
+-            // only check once per 0.25ms incase this code is called in a hot method
+-            return;
+-        }
+-        try (co.aikar.timings.Timing ignored = co.aikar.timings.MinecraftTimings.midTickChunkTasks.startTiming()) {
+-            for (ServerLevel value : this.getAllLevels()) {
+-                value.getChunkSource().mainThreadProcessor.midTickLoadChunks();
+-            }
+-            midTickLastRan = System.nanoTime();
+-        }
+-    }
+-    // Paper end
++    // Tuinity - replace logic
+ 
+     @Override
+     public TickTask wrapRunnable(Runnable runnable) {
+@@ -1320,6 +1375,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+ 
+     private boolean pollTaskInternal() {
+         if (super.pollTask()) {
++            this.executeMidTickTasks(); // Tuinity - execute chunk tasks mid tick
+             return true;
+         } else {
+             if (this.haveTime()) {
+@@ -1396,7 +1452,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+         // Paper start - move oversleep into full server tick
+         isOversleep = true;MinecraftTimings.serverOversleep.startTiming();
+         this.managedBlock(() -> {
+-            midTickLoadChunks(); // will only do loads since we are still considered !canSleepForTick
++            // Tuinity - replace logic
+             return !this.canOversleep();
+         });
+         isOversleep = false;MinecraftTimings.serverOversleep.stopTiming();
+@@ -1487,16 +1543,16 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+     }
+ 
+     public void tickChildren(BooleanSupplier shouldKeepTicking) {
+-        midTickLoadChunks(); // Paper
++        // Tuinity - replace logic
+         MinecraftTimings.bukkitSchedulerTimer.startTiming(); // Spigot // Paper
+         this.server.getScheduler().mainThreadHeartbeat(this.tickCount); // CraftBukkit
+         MinecraftTimings.bukkitSchedulerTimer.stopTiming(); // Spigot // Paper
+-        midTickLoadChunks(); // Paper
++        // Tuinity - replace logic
+         this.profiler.push("commandFunctions");
+         MinecraftTimings.commandFunctionsTimer.startTiming(); // Spigot // Paper
+         this.getFunctions().tick();
+         MinecraftTimings.commandFunctionsTimer.stopTiming(); // Spigot // Paper
+-        midTickLoadChunks(); // Paper
++        // Tuinity - replace logic
+         this.profiler.popPush("levels");
+         Iterator iterator = this.getAllLevels().iterator();
+ 
+@@ -1507,7 +1563,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             this.processQueue.remove().run();
+         }
+         MinecraftTimings.processQueueTimer.stopTiming(); // Spigot
+-        midTickLoadChunks(); // Paper
++        // Tuinity - replace logic
+         MinecraftTimings.timeUpdateTimer.startTiming(); // Spigot // Paper
+         // Send time updates to everyone, it will get the right time from the world the player is in.
+         // Paper start - optimize time updates
+@@ -1550,7 +1606,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+             this.profiler.push("tick");
+ 
+             try {
+-                midTickLoadChunks(); // Paper
++                // Tuinity - replace logic
+                 worldserver.timings.doTick.startTiming(); // Spigot
+                 worldserver.tick(shouldKeepTicking);
+                 // Tuinity start
+@@ -1559,7 +1615,7 @@ public abstract class MinecraftServer extends ReentrantBlockableEventLoop<TickTa
+                 }
+                 // Tuinity end
+                 worldserver.timings.doTick.stopTiming(); // Spigot
+-                midTickLoadChunks(); // Paper
++                // Tuinity - replace logic
+             } catch (Throwable throwable) {
+                 // Spigot Start
+                 CrashReport crashreport;
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index f6508f6c1529de8feabaa793711d7dfbfcb84474..724cd714a70ba30923b1cd64b614d341506d3a33 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -906,7 +906,7 @@ public class ServerChunkCache extends ChunkSource {
+         this.level.getProfiler().push("purge");
+         this.level.timings.doChunkMap.startTiming(); // Spigot
+         this.distanceManager.purgeStaleTickets();
+-        this.level.getServer().midTickLoadChunks(); // Paper
++        // Tuinity - replace logic
+         this.runDistanceManagerUpdates();
+         this.level.timings.doChunkMap.stopTiming(); // Spigot
+         this.level.getProfiler().popPush("chunks");
+@@ -916,7 +916,7 @@ public class ServerChunkCache extends ChunkSource {
+         this.level.timings.doChunkUnload.startTiming(); // Spigot
+         this.level.getProfiler().popPush("unload");
+         this.chunkMap.tick(booleansupplier);
+-        this.level.getServer().midTickLoadChunks(); // Paper
++        // Tuinity - replace logic
+         this.level.timings.doChunkUnload.stopTiming(); // Spigot
+         this.level.getProfiler().pop();
+         this.clearCache();
+@@ -1014,7 +1014,7 @@ public class ServerChunkCache extends ChunkSource {
+                         chunk.setInhabitedTime(chunk.getInhabitedTime() + j);
+                         if (flag1 && (this.spawnEnemies || this.spawnFriendlies) && this.level.getWorldBorder().isWithinBounds(chunk.getPos()) && !this.chunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, true)) { // Spigot // Paper - optimise isOutsideOfRange
+                             NaturalSpawner.spawnForChunk(this.level, chunk, spawnercreature_d, this.spawnFriendlies, this.spawnEnemies, flag2);
+-                            if (chunksTicked++ % 10 == 0) this.level.getServer().midTickLoadChunks(); // Paper // Tuinity
++                            if ((chunksTicked++ & 1) == 0) net.minecraft.server.MinecraftServer.getServer().executeMidTickTasks(); // Paper // Tuinity
+                         }
+ 
+                         // this.level.timings.doTickTiles.startTiming(); // Spigot // Paper
+@@ -1186,40 +1186,7 @@ public class ServerChunkCache extends ChunkSource {
+             super.doRunTask(task);
+         }
+ 
+-        // Paper start
+-        private long lastMidTickChunkTask = 0;
+-        public boolean pollChunkLoadTasks() {
+-            if (com.destroystokyo.paper.io.chunk.ChunkTaskManager.pollChunkWaitQueue() || ServerChunkCache.this.level.asyncChunkTaskManager.pollNextChunkTask()) {
+-                try {
+-                    ServerChunkCache.this.runDistanceManagerUpdates();
+-                } finally {
+-                    // from below: process pending Chunk loadCallback() and unloadCallback() after each run task
+-                    chunkMap.callbackExecutor.run();
+-                }
+-                return true;
+-            }
+-            return false;
+-        }
+-        public void midTickLoadChunks() {
+-            net.minecraft.server.MinecraftServer server = ServerChunkCache.this.level.getServer();
+-            // always try to load chunks, restrain generation/other updates only. don't count these towards tick count
+-            //noinspection StatementWithEmptyBody
+-            while (pollChunkLoadTasks()) {}
+-
+-            if (System.nanoTime() - lastMidTickChunkTask < 200000) {
+-                return;
+-            }
+-
+-            for (;server.midTickChunksTasksRan < com.destroystokyo.paper.PaperConfig.midTickChunkTasks && server.haveTime();) {
+-                if (this.pollTask()) {
+-                    server.midTickChunksTasksRan++;
+-                    lastMidTickChunkTask = System.nanoTime();
+-                } else {
+-                    break;
+-                }
+-            }
+-        }
+-        // Paper end
++        // Tuinity - replace logic
+ 
+         @Override
+         // CraftBukkit start - process pending Chunk loadCallback() and unloadCallback() after each run task
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index b928d2c70c21beae2d5a8df35f3df927a878e815..820ee4b11427cfb07d47a79f999da95bef631ed9 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -195,7 +195,9 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+     final Int2ObjectMap<EnderDragonPart> dragonParts;
+     private final StructureFeatureManager structureFeatureManager;
+     private final boolean tickTime;
+-
++    // Tuinity start - execute chunk tasks mid tick
++    public long lastMidTickExecuteFailure;
++    // Tuinity end - execute chunk tasks mid tick
+ 
+     // CraftBukkit start
+     private int tickPosition;
+@@ -683,7 +685,7 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+         }
+         timings.scheduledBlocks.stopTiming(); // Paper
+ 
+-        this.getServer().midTickLoadChunks(); // Paper
++        // Tuinity - replace logic
+         gameprofilerfiller.popPush("raid");
+         this.timings.raids.startTiming(); // Paper - timings
+         this.raids.tick();
+@@ -692,7 +694,7 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+         timings.doSounds.startTiming(); // Spigot
+         this.runBlockEvents();
+         timings.doSounds.stopTiming(); // Spigot
+-        this.getServer().midTickLoadChunks(); // Paper
++        // Tuinity - replace logic
+         this.handlingTick = false;
+         gameprofilerfiller.pop();
+         boolean flag3 = true || !this.players.isEmpty() || !this.getForcedChunks().isEmpty(); // CraftBukkit - this prevents entity cleanup, other issues on servers with no players
+@@ -739,12 +741,12 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+             timings.entityTick.stopTiming(); // Spigot
+             timings.tickEntities.stopTiming(); // Spigot
+             gameprofilerfiller.pop();
+-            this.getServer().midTickLoadChunks(); // Paper
++            // Tuinity - replace logic
+             this.tickBlockEntities();
+         }
+ 
+         gameprofilerfiller.push("entityManagement");
+-        this.getServer().midTickLoadChunks(); // Paper
++        // Tuinity - replace logic
+         this.entityManager.tick();
+         gameprofilerfiller.pop();
+     }
+diff --git a/src/main/java/net/minecraft/world/level/Level.java b/src/main/java/net/minecraft/world/level/Level.java
+index c339456a68ad4ce8da153de3b97e7f4ba08d33c3..beeeed34445b4e08690f7cf1cd31c2c8def54b8f 100644
+--- a/src/main/java/net/minecraft/world/level/Level.java
++++ b/src/main/java/net/minecraft/world/level/Level.java
+@@ -893,6 +893,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+     public <T extends Entity> void guardEntityTick(Consumer<T> tickConsumer, T entity) {
+         try {
+             tickConsumer.accept(entity);
++            MinecraftServer.getServer().executeMidTickTasks(); // Tuinity - execute chunk tasks mid tick
+         } catch (Throwable throwable) {
+             if (throwable instanceof ThreadDeath) throw throwable; // Paper
+             // Paper start - Prevent tile entity and entity crashes

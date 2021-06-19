@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 7 May 2020 05:48:54 -0700
+Subject: [PATCH] Optimise chunk tick iteration
+
+Use a dedicated list of entity ticking chunks to reduce the cost
+
+diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+index 06d198bd3c77bb7b9e7be0262e47d98205ae6812..f6508f6c1529de8feabaa793711d7dfbfcb84474 100644
+--- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
++++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
+@@ -994,12 +994,15 @@ public class ServerChunkCache extends ChunkSource {
+             //Collections.shuffle(list); // Paper
+             // Paper - moved up
+             this.level.timings.chunkTicks.startTiming(); // Paper
+-            final int[] chunksTicked = {0}; this.chunkMap.forEachVisibleChunk((playerchunk) -> { // Paper - safe iterator incase chunk loads, also no wrapping
+-                Optional<LevelChunk> optional = ((Either) playerchunk.getTickingChunkFuture().getNow(ChunkHolder.UNLOADED_LEVEL_CHUNK)).left();
+-
+-                if (optional.isPresent()) {
++            // Tuinity start
++            int chunksTicked = 0;
++            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.Iterator<LevelChunk> iterator = this.entityTickingChunks.iterator();
++            try { while (iterator.hasNext()) {
++                LevelChunk chunk = iterator.next();
++                ChunkHolder playerchunk = chunk.playerChunk;
++                if (playerchunk != null) {
+                     this.level.getProfiler().push("broadcast");
+-                    LevelChunk chunk = (LevelChunk) optional.get();
++                    // Tuinity end
+ 
+                     this.level.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
+                     playerchunk.broadcastChanges(chunk);
+@@ -1011,7 +1014,7 @@ public class ServerChunkCache extends ChunkSource {
+                         chunk.setInhabitedTime(chunk.getInhabitedTime() + j);
+                         if (flag1 && (this.spawnEnemies || this.spawnFriendlies) && this.level.getWorldBorder().isWithinBounds(chunk.getPos()) && !this.chunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, true)) { // Spigot // Paper - optimise isOutsideOfRange
+                             NaturalSpawner.spawnForChunk(this.level, chunk, spawnercreature_d, this.spawnFriendlies, this.spawnEnemies, flag2);
+-                            if (chunksTicked[0]++ % 10 == 0) this.level.getServer().midTickLoadChunks(); // Paper
++                            if (chunksTicked++ % 10 == 0) this.level.getServer().midTickLoadChunks(); // Paper // Tuinity
+                         }
+ 
+                         // this.level.timings.doTickTiles.startTiming(); // Spigot // Paper
+@@ -1019,7 +1022,11 @@ public class ServerChunkCache extends ChunkSource {
+                         // this.level.timings.doTickTiles.stopTiming(); // Spigot // Paper
+                     }
+                 }
+-            });
++            } // Tuinity start - optimise chunk tick iteration
++            } finally {
++                iterator.finishedIterating();
++            }
++            // Tuinity end - optimise chunk tick iteration
+             this.level.timings.chunkTicks.stopTiming(); // Paper
+             this.level.getProfiler().push("customSpawners");
+             if (flag1) {

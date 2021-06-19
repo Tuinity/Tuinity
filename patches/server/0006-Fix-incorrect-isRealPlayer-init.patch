@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Wed, 27 Jan 2021 15:15:01 -0800
+Subject: [PATCH] Fix incorrect isRealPlayer init
+
+Some plugins, namely ProtocolSupport, don't route to where
+paper placed their logic. So it wont correctly set in this case.
+
+Fix by moving it to a different place.
+
+diff --git a/src/main/java/net/minecraft/server/players/PlayerList.java b/src/main/java/net/minecraft/server/players/PlayerList.java
+index d76d8d8db7921d16f87dd162ccd115e351cde106..b6b8f52e8e2b9b4a7eedc52a48d9c22178d76153 100644
+--- a/src/main/java/net/minecraft/server/players/PlayerList.java
++++ b/src/main/java/net/minecraft/server/players/PlayerList.java
+@@ -174,6 +174,7 @@ public abstract class PlayerList {
+     abstract public void loadAndSaveFiles(); // Paper - moved from DedicatedPlayerList constructor
+ 
+     public void placeNewPlayer(Connection connection, ServerPlayer player) {
++        player.isRealPlayer = true; // Paper // Tuinity - this is a better place to write this that works and isn't overriden by plugins
+         ServerPlayer prev = pendingPlayers.put(player.getUUID(), player);// Paper
+         if (prev != null) {
+             disconnectPendingPlayer(prev);
+@@ -717,7 +718,7 @@ public abstract class PlayerList {
+         SocketAddress socketaddress = loginlistener.connection.getRemoteAddress();
+ 
+         ServerPlayer entity = new ServerPlayer(this.server, this.server.getLevel(Level.OVERWORLD), gameprofile);
+-        entity.isRealPlayer = true; // Paper - Chunk priority
++        // Tuinity - some plugins (namely protocolsupport) bypass this logic completely! So this needs to be moved.
+         Player player = entity.getBukkitEntity();
+         PlayerLoginEvent event = new PlayerLoginEvent(player, hostname, ((java.net.InetSocketAddress) socketaddress).getAddress(), ((java.net.InetSocketAddress) loginlistener.connection.getRawAddress()).getAddress());
+ 
