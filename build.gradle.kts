@@ -3,7 +3,7 @@ import io.papermc.paperweight.util.Constants
 plugins {
     java
     id("com.github.johnrengelman.shadow") version "7.0.0" apply false
-    id("io.papermc.paperweight.patcher") version "1.1.3-SNAPSHOT"
+    id("io.papermc.paperweight.patcher") version "1.1.3"
 }
 
 repositories {
