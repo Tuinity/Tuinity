@@ -11,10 +11,10 @@ No it doesn't. So, allowing removal while iteration
 ENSURES only entities MARKED TO TICK are ticked.
 
 diff --git a/src/main/java/net/minecraft/world/level/entity/EntityTickList.java b/src/main/java/net/minecraft/world/level/entity/EntityTickList.java
-index f01182a0ac8a14bcd5b1deb778306e7bf1bf70ed..8747320d61094122d00b8f6fa6723212027beacd 100644
+index f01182a0ac8a14bcd5b1deb778306e7bf1bf70ed..2cfc54a577d0a63a504e24bc54fd763fe51083e5 100644
 --- a/src/main/java/net/minecraft/world/level/entity/EntityTickList.java
 +++ b/src/main/java/net/minecraft/world/level/entity/EntityTickList.java
-@@ -9,54 +9,38 @@ import javax.annotation.Nullable;
+@@ -9,54 +9,40 @@ import javax.annotation.Nullable;
  import net.minecraft.world.entity.Entity;
  
  public class EntityTickList {
@@ -69,14 +69,15 @@ index f01182a0ac8a14bcd5b1deb778306e7bf1bf70ed..8747320d61094122d00b8f6fa6723212
 -                }
 -            } finally {
 -                this.iterated = null;
--            }
--
 +        // Tuinity start - replace with better logic, do not delay removals/additions
 +        // To ensure nothing weird happens with dimension travelling, do not iterate over new entries...
 +        // (by dfl iterator() is configured to not iterate over new entries)
 +        com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.Iterator<Entity> iterator = this.entities.iterator();
 +        try {
-+            action.accept(iterator.next());
++            while (iterator.hasNext()) {
++                action.accept(iterator.next());
+             }
+-
 +        } finally {
 +            iterator.finishedIterating();
          }
