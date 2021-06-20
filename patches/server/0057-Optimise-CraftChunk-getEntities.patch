@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 20 Jun 2021 00:33:29 -0700
+Subject: [PATCH] Optimise CraftChunk#getEntities
+
+Why the fuck was it iterating over every single entity
+in the world
+
+diff --git a/src/main/java/com/tuinity/tuinity/world/ChunkEntitySlices.java b/src/main/java/com/tuinity/tuinity/world/ChunkEntitySlices.java
+index 0305bfd28c36e3b1d75fd0d2aa69634d8d7e00d7..3b812153d18551c00f48e70cb56e28f28c795236 100644
+--- a/src/main/java/com/tuinity/tuinity/world/ChunkEntitySlices.java
++++ b/src/main/java/com/tuinity/tuinity/world/ChunkEntitySlices.java
+@@ -48,6 +48,25 @@ public final class ChunkEntitySlices {
+         this.status = status;
+     }
+ 
++    // Tuinity start - optimise CraftChunk#getEntities
++    public org.bukkit.entity.Entity[] getChunkEntities() {
++        List<org.bukkit.entity.Entity> ret = new java.util.ArrayList<>();
++        final Entity[] entities = this.entities.getRawData();
++        for (int i = 0, size = Math.min(entities.length, this.entities.size()); i < size; ++i) {
++            final Entity entity = entities[i];
++            if (entity == null) {
++                continue;
++            }
++            final org.bukkit.entity.Entity bukkit = entity.getBukkitEntity();
++            if (bukkit != null && bukkit.isValid()) {
++                ret.add(bukkit);
++            }
++        }
++
++        return ret.toArray(new org.bukkit.entity.Entity[0]);
++    }
++    // Tuinity end - optimise CraftChunk#getEntities
++
+     public boolean isEmpty() {
+         return this.entities.size() == 0;
+     }
+diff --git a/src/main/java/net/minecraft/world/level/Level.java b/src/main/java/net/minecraft/world/level/Level.java
+index 7a6b1586609eae063bd7dab5db8ff0582311c739..cba8f4acfe87b2eb073ae0bb2892d28353c792fa 100644
+--- a/src/main/java/net/minecraft/world/level/Level.java
++++ b/src/main/java/net/minecraft/world/level/Level.java
+@@ -200,6 +200,16 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+     // Tuinity start
+     protected final com.tuinity.tuinity.world.EntitySliceManager entitySliceManager;
+ 
++    // Tuinity start - optimise CraftChunk#getEntities
++    public org.bukkit.entity.Entity[] getChunkEntities(int chunkX, int chunkZ) {
++        com.tuinity.tuinity.world.ChunkEntitySlices slices = this.entitySliceManager.getChunk(chunkX, chunkZ);
++        if (slices == null) {
++            return new org.bukkit.entity.Entity[0];
++        }
++        return slices.getChunkEntities();
++    }
++    // Tuinity end - optimise CraftChunk#getEntities
++
+     @Override
+     public List<Entity> getHardCollidingEntities(Entity except, AABB box, Predicate<? super Entity> predicate) {
+         List<Entity> ret = new java.util.ArrayList<>();
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftChunk.java b/src/main/java/org/bukkit/craftbukkit/CraftChunk.java
+index 91145e3dff181ab3a8da3fc30378e672fa58e713..45f0c36f0a178b6bb9049aeb64782d9a44437d67 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftChunk.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftChunk.java
+@@ -111,10 +111,7 @@ public class CraftChunk implements Chunk {
+         }
+ 
+         Location location = new Location(null, 0, 0, 0);
+-        return this.getWorld().getEntities().stream().filter((entity) -> {
+-            entity.getLocation(location);
+-            return location.getBlockX() >> 4 == this.x && location.getBlockZ() >> 4 == this.z;
+-        }).toArray(Entity[]::new);
++        return ((CraftWorld)this.getWorld()).getHandle().getChunkEntities(this.x, this.z); // Tuinity - optimise this... jesus christ, iterating over all entities?
+     }
+ 
+     @Override
