@@ -6,7 +6,7 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-index 06d198bd3c77bb7b9e7be0262e47d98205ae6812..f6508f6c1529de8feabaa793711d7dfbfcb84474 100644
+index 06d198bd3c77bb7b9e7be0262e47d98205ae6812..eaa6d10c04946874faf48b8e46753ebebc8cdb60 100644
 --- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
 +++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
 @@ -994,12 +994,15 @@ public class ServerChunkCache extends ChunkSource {
@@ -30,7 +30,12 @@ index 06d198bd3c77bb7b9e7be0262e47d98205ae6812..f6508f6c1529de8feabaa793711d7dfb
  
                      this.level.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
                      playerchunk.broadcastChanges(chunk);
-@@ -1011,7 +1014,7 @@ public class ServerChunkCache extends ChunkSource {
+@@ -1007,11 +1010,11 @@ public class ServerChunkCache extends ChunkSource {
+                     this.level.getProfiler().pop();
+                     ChunkPos chunkcoordintpair = chunk.getPos();
+ 
+-                    if (this.level.isPositionEntityTicking(chunkcoordintpair) && !this.chunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false)) { // Paper - optimise isOutsideOfRange
++                    if ((true || this.level.isPositionEntityTicking(chunkcoordintpair)) && !this.chunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false)) { // Paper - optimise isOutsideOfRange // Tuinity - we only iterate entity ticking chunks
                          chunk.setInhabitedTime(chunk.getInhabitedTime() + j);
                          if (flag1 && (this.spawnEnemies || this.spawnFriendlies) && this.level.getWorldBorder().isWithinBounds(chunk.getPos()) && !this.chunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, true)) { // Spigot // Paper - optimise isOutsideOfRange
                              NaturalSpawner.spawnForChunk(this.level, chunk, spawnercreature_d, this.spawnFriendlies, this.spawnEnemies, flag2);
