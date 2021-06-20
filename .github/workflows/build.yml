@@ -1,0 +1,37 @@
+name: Build Tuinity
+on: [ push, pull_request ]
+jobs:
+  build:
+    # Only run on PRs if the source branch is on someone else's repo
+    if: ${{ github.event_name != 'pull_request' || github.repository != github.event.pull_request.head.repo.full_name }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [ 16 ]
+      fail-fast: true
+    steps:
+      - name: Checkout Git Repository
+        uses: actions/checkout@v2
+      - name: Validate Gradle Wrapper
+        uses: gradle/wrapper-validation-action@v1
+      - name: Set up JDK
+        uses: actions/setup-java@v2
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'adopt'
+      - name: Configure Git
+        run: |
+          git config --global user.email "no-reply@github.com"
+          git config --global user.name "Github Actions"
+      - name: Patch Tuinity
+        run: |
+          ./gradlew applyPatches --stacktrace --no-daemon
+      - name: Build Tuinity
+        run: |
+          ./gradlew build --stacktrace --no-daemon
+          ./gradlew paperclipJar --stacktrace --no-daemon
+      - name: Archive Tuinity Paperclip
+        uses: actions/upload-artifact@v2
+        with:
+          name: Tuinity
+          path: tuinity-paperclip.jar
