@@ -1,20 +1,18 @@
+import io.papermc.paperweight.util.Constants
+
 plugins {
     java
     id("com.github.johnrengelman.shadow") version "7.0.0" apply false
-    id("io.papermc.paperweight.patcher") version "1.0.4"
+    id("io.papermc.paperweight.patcher") version "1.1.3-SNAPSHOT"
 }
 
 repositories {
     mavenCentral()
     maven("https://papermc.io/repo/repository/maven-public/") {
-        content {
-            onlyForConfigurations("paperclip")
-        }
+        content { onlyForConfigurations(Constants.PAPERCLIP_CONFIG) }
     }
     maven("https://maven.quiltmc.org/repository/release/") {
-        content {
-            onlyForConfigurations("remapper")
-        }
+        content { onlyForConfigurations(Constants.REMAPPER_CONFIG) }
     }
 }
 
@@ -32,9 +30,12 @@ subprojects {
         }
     }
 
-    tasks.withType<JavaCompile>().configureEach {
-        options.encoding = "UTF-8"
+    tasks.withType<JavaCompile> {
+        options.encoding = Charsets.UTF_8.name()
         options.release.set(16)
+    }
+    tasks.withType<Javadoc> {
+        options.encoding = Charsets.UTF_8.name()
     }
 
     repositories {
@@ -51,7 +52,7 @@ subprojects {
 paperweight {
     serverProject.set(project(":Tuinity-Server"))
 
-    usePaperUpstream(providers.gradleProperty("paperRef")) {
+    usePaperUpstream(provider { file("current-paper").readText() }) {
         withPaperPatcher {
             apiPatchDir.set(layout.projectDirectory.dir("patches/api"))
             apiOutputDir.set(layout.projectDirectory.dir("Tuinity-API"))
@@ -60,4 +61,9 @@ paperweight {
             serverOutputDir.set(layout.projectDirectory.dir("Tuinity-Server"))
         }
     }
+}
+
+tasks.paperclipJar {
+    destinationDirectory.set(rootProject.layout.projectDirectory)
+    archiveFileName.set("tuinity-paperclip.jar")
 }
