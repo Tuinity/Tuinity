@@ -70,10 +70,10 @@ index 5f4179ba2581ab80e8810811fc96df7d553d5653..01320aea07b51c97ae5f0654b81d2332
  }
 diff --git a/src/main/java/com/tuinity/tuinity/util/CollisionUtil.java b/src/main/java/com/tuinity/tuinity/util/CollisionUtil.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..c2f31d091199aaa5d12d401512fd6213969c3cad
+index 0000000000000000000000000000000000000000..e883b2af853666c11a14a541aac331d97c6ad057
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/CollisionUtil.java
-@@ -0,0 +1,596 @@
+@@ -0,0 +1,600 @@
 +package com.tuinity.tuinity.util;
 +
 +import com.tuinity.tuinity.voxel.AABBVoxelShape;
@@ -490,18 +490,22 @@ index 0000000000000000000000000000000000000000..c2f31d091199aaa5d12d401512fd6213
 +        int minBlockZ = Mth.floor(aabb.minZ - COLLISION_EPSILON) - 1;
 +        int maxBlockZ = Mth.floor(aabb.maxZ + COLLISION_EPSILON) + 1;
 +
++        final int minSection = WorldUtil.getMinSection(getter);
++        final int maxSection = WorldUtil.getMaxSection(getter);
++        final int minBlock = minSection << 4;
++        final int maxBlock = (maxSection << 4) | 15;
 +
 +        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
 +        CollisionContext collisionShape = null;
 +
 +        // special cases:
-+        if (minBlockY > 255 || maxBlockY < 0) {
++        if (minBlockY > maxBlock || maxBlockY < minBlock) {
 +            // no point in checking
 +            return ret;
 +        }
 +
-+        int minYIterate = Math.max(0, minBlockY);
-+        int maxYIterate = Math.min(255, maxBlockY);
++        int minYIterate = Math.max(minBlock, minBlockY);
++        int maxYIterate = Math.min(maxBlock, maxBlockY);
 +
 +        int minChunkX = minBlockX >> 4;
 +        int maxChunkX = maxBlockX >> 4;
@@ -554,7 +558,7 @@ index 0000000000000000000000000000000000000000..c2f31d091199aaa5d12d401512fd6213
 +                // bound y
 +
 +                for (int currY = minYIterate; currY <= maxYIterate; ++currY) {
-+                    LevelChunkSection section = sections[currY >>> 4];
++                    LevelChunkSection section = sections[(currY >> 4) - minSection];
 +                    if (section == null || section.isEmpty()) {
 +                        // empty
 +                        // skip to next section
