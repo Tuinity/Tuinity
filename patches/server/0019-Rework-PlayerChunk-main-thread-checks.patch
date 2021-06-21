@@ -74,10 +74,22 @@ index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..3af57d4a02177b0bc863b3a23ef44b5e
                  if (chunk != null) {
                      chunkStorage.callbackExecutor.execute(() -> {
 diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
-index 836cc9b6e4f4fe29d6e2fcb3572bc3d4c2d4ee7a..05c527f16b35178d594e2eaae262a638e11dd0da 100644
+index 836cc9b6e4f4fe29d6e2fcb3572bc3d4c2d4ee7a..78815e8132dd168ce692dca9ec473d82f8be2dea 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkMap.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
-@@ -1360,7 +1360,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -1225,7 +1225,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+                 }, (ChunkAccess) optional.get());
+ 
+                 this.progressListener.onStatusChange(chunkcoordintpair, requiredStatus);
+-                return completablefuture;
++                return completablefuture.thenComposeAsync((either) -> { // Tuinity start - force competion on the main thread
++                    return CompletableFuture.completedFuture(either);
++                }, this.mainThreadExecutor); // use the main executor, we want to ensure only one chunk callback can be completed per runnable execute
++                // Tuinity end - force competion on the main thread
+             } else {
+                 return this.scheduleChunkGeneration(holder, requiredStatus);
+             }
+@@ -1360,7 +1363,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
                  this.releaseLightTicket(chunkcoordintpair);
                  return CompletableFuture.completedFuture(Either.right(playerchunk_failure));
              });
