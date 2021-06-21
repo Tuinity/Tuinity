@@ -9,7 +9,7 @@ This patch will be used to optimise out flush calls in later
 patches.
 
 diff --git a/src/main/java/net/minecraft/network/Connection.java b/src/main/java/net/minecraft/network/Connection.java
-index c203a78a28e6457bd25b34b5c5ecaa35e3f9211e..fc8351f5bd603048f57ed9d1d35c2ff49c53f72e 100644
+index c203a78a28e6457bd25b34b5c5ecaa35e3f9211e..f03557c9c755667c58197ccb9696a38e5fb495e1 100644
 --- a/src/main/java/net/minecraft/network/Connection.java
 +++ b/src/main/java/net/minecraft/network/Connection.java
 @@ -94,6 +94,39 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
@@ -52,6 +52,15 @@ index c203a78a28e6457bd25b34b5c5ecaa35e3f9211e..fc8351f5bd603048f57ed9d1d35c2ff4
      public Connection(PacketFlow side) {
          this.receiving = side;
      }
+@@ -255,7 +288,7 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
+             net.minecraft.server.MCUtil.isMainThread() && packet.isReady() && this.queue.isEmpty() &&
+             (packet.getExtraPackets() == null || packet.getExtraPackets().isEmpty())
+         ))) {
+-            this.sendPacket(packet, callback);
++            this.writePacket(packet, callback, null); // Tuinity
+             return;
+         }
+         // write the packets to the queue, then flush - antixray hooks there already
 @@ -279,6 +312,14 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
      }
  
