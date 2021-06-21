@@ -12,7 +12,7 @@ completion (completion of the world gen future,
 PlayerChunkMap#b(PlayerChunk, ChunkStatus)) was detected and fixed.
 
 diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
-index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..3af57d4a02177b0bc863b3a23ef44b5eb41a2816 100644
+index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..c621a1dc45b883663608e6b884e7bd83e76dd0e7 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
 @@ -613,6 +613,7 @@ public class ChunkHolder {
@@ -33,6 +33,15 @@ index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..3af57d4a02177b0bc863b3a23ef44b5e
                  LevelChunk chunk = (LevelChunk)either.left().orElse(null);
                  if (chunk != null) {
                      chunkStorage.callbackExecutor.execute(() -> {
+@@ -662,7 +664,7 @@ public class ChunkHolder {
+                 completablefuture = (CompletableFuture) this.futures.get(i);
+                 if (completablefuture == null) {
+                     this.futures.set(i, CompletableFuture.completedFuture(either));
+-                }
++                } else { completablefuture.complete(either); } // Tuinity - revert 1.17 chunk system changes
+             }
+         }
+ 
 @@ -687,7 +689,8 @@ public class ChunkHolder {
              this.fullChunkFuture = chunkStorage.prepareAccessibleChunk(this);
              this.scheduleFullChunkPromotion(chunkStorage, this.fullChunkFuture, executor, ChunkHolder.FullChunkStatus.BORDER);
@@ -74,22 +83,41 @@ index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..3af57d4a02177b0bc863b3a23ef44b5e
                  if (chunk != null) {
                      chunkStorage.callbackExecutor.execute(() -> {
 diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
-index 836cc9b6e4f4fe29d6e2fcb3572bc3d4c2d4ee7a..78815e8132dd168ce692dca9ec473d82f8be2dea 100644
+index 836cc9b6e4f4fe29d6e2fcb3572bc3d4c2d4ee7a..b45ff7dfa18c3f3e6dd8556321d07a2b87e687be 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkMap.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
-@@ -1225,7 +1225,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
-                 }, (ChunkAccess) optional.get());
+@@ -1213,11 +1213,20 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+         if (requiredStatus == ChunkStatus.EMPTY) {
+             return this.scheduleChunkLoad(chunkcoordintpair);
+         } else {
++            // Tuinity start - revert 1.17 chunk system changes
++            CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> future = holder.getOrScheduleFuture(requiredStatus.getParent(), this);
++        return future.thenComposeAsync((either) -> {
++            Optional<ChunkAccess> optional = either.left();
++            if (!optional.isPresent()) {
++                return CompletableFuture.completedFuture(either);
++            }
++            // Tuinity end - revert 1.17 chunk system changes
++
++            // Tuinity start - revert 1.17 chunk system changes
+             if (requiredStatus == ChunkStatus.LIGHT) {
+                 this.distanceManager.addTicket(TicketType.LIGHT, chunkcoordintpair, 33 + ChunkStatus.getDistance(ChunkStatus.FEATURES), chunkcoordintpair);
+             }
+-
+-            Optional<ChunkAccess> optional = ((Either) holder.getOrScheduleFuture(requiredStatus.getParent(), this).getNow(ChunkHolder.UNLOADED_CHUNK)).left();
++            // Tuinity end - revert 1.17 chunk system changes
  
-                 this.progressListener.onStatusChange(chunkcoordintpair, requiredStatus);
--                return completablefuture;
-+                return completablefuture.thenComposeAsync((either) -> { // Tuinity start - force competion on the main thread
-+                    return CompletableFuture.completedFuture(either);
-+                }, this.mainThreadExecutor); // use the main executor, we want to ensure only one chunk callback can be completed per runnable execute
-+                // Tuinity end - force competion on the main thread
+             if (optional.isPresent() && ((ChunkAccess) optional.get()).getStatus().isOrAfter(requiredStatus)) {
+                 CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> completablefuture = requiredStatus.load(this.level, this.structureManager, this.lightEngine, (ichunkaccess) -> {
+@@ -1229,6 +1238,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
              } else {
                  return this.scheduleChunkGeneration(holder, requiredStatus);
              }
-@@ -1360,7 +1363,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
++        }, this.mainThreadExecutor); // Tuinity - revert 1.17 chunk system changes
+         }
+     }
+ 
+@@ -1360,7 +1370,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
                  this.releaseLightTicket(chunkcoordintpair);
                  return CompletableFuture.completedFuture(Either.right(playerchunk_failure));
              });
