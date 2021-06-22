@@ -18,7 +18,7 @@ repositories {
 
 dependencies {
     remapper("org.quiltmc:tiny-remapper:0.4.1")
-    paperclip("io.papermc:paperclip:2.0.0-SNAPSHOT@jar")
+    paperclip("io.papermc:paperclip:2.0.0-SNAPSHOT")
 }
 
 subprojects {
@@ -52,7 +52,7 @@ subprojects {
 paperweight {
     serverProject.set(project(":Tuinity-Server"))
 
-    usePaperUpstream(provider { file("current-paper").readText() }) {
+    usePaperUpstream(provider { file("current-paper").readText().trim() }) {
         withPaperPatcher {
             apiPatchDir.set(layout.projectDirectory.dir("patches/api"))
             apiOutputDir.set(layout.projectDirectory.dir("Tuinity-API"))
