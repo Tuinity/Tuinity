@@ -12,10 +12,19 @@ completion (completion of the world gen future,
 PlayerChunkMap#b(PlayerChunk, ChunkStatus)) was detected and fixed.
 
 diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
-index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..bbfd99e12c6345b7dc3d5b89c73ec333b815aeba 100644
+index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..ac86f76fc2a08ed2f6fcdac447971d75a8b7eef0 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
-@@ -613,6 +613,7 @@ public class ChunkHolder {
+@@ -607,12 +607,16 @@ public class ChunkHolder {
+         });
+     }
+ 
++    private boolean loadCallbackScheduled = false;
++    private boolean unloadCallbackScheduled = false;
++
+     private void demoteFullChunk(ChunkMap playerchunkmap, ChunkHolder.FullChunkStatus playerchunk_state) {
+         this.pendingFullStateConfirmation.cancel(false);
+         playerchunkmap.onFullChunkStatusChange(this.pos, playerchunk_state);
      }
  
      protected void updateFutures(ChunkMap chunkStorage, Executor executor) {
@@ -23,7 +32,7 @@ index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..bbfd99e12c6345b7dc3d5b89c73ec333
          ChunkStatus chunkstatus = ChunkHolder.getStatus(this.oldTicketLevel);
          ChunkStatus chunkstatus1 = ChunkHolder.getStatus(this.ticketLevel);
          boolean flag = this.oldTicketLevel <= ChunkMap.MAX_CHUNK_DISTANCE;
-@@ -622,9 +623,10 @@ public class ChunkHolder {
+@@ -622,10 +626,23 @@ public class ChunkHolder {
          // CraftBukkit start
          // ChunkUnloadEvent: Called before the chunk is unloaded: isChunkLoaded is still true and chunk can still be modified by plugins.
          if (playerchunk_state.isOrAfter(ChunkHolder.FullChunkStatus.BORDER) && !playerchunk_state1.isOrAfter(ChunkHolder.FullChunkStatus.BORDER)) {
@@ -32,11 +41,24 @@ index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..bbfd99e12c6345b7dc3d5b89c73ec333
 +                com.tuinity.tuinity.util.TickThread.ensureTickThread("Async full status chunk future completion"); // Tuinity
                  LevelChunk chunk = (LevelChunk)either.left().orElse(null);
 -                if (chunk != null) {
-+                if (chunk != null && chunk.wasLoadCallbackInvoked()) { // Tuinity - only invoke unload if load was called
++                if (chunk != null && chunk.wasLoadCallbackInvoked() && ChunkHolder.this.ticketLevel > 33) { // Tuinity - only invoke unload if load was called
++                    // Tuinity  start - only schedule once, now the future is no longer completed as RIGHT if unloaded...
++                    if (ChunkHolder.this.unloadCallbackScheduled) {
++                        return;
++                    }
++                    ChunkHolder.this.unloadCallbackScheduled = true;
++                    // Tuinity  end - only schedule once, now the future is no longer completed as RIGHT if unloaded...
                      chunkStorage.callbackExecutor.execute(() -> {
++                        // Tuinity  start - only schedule once, now the future is no longer completed as RIGHT if unloaded...
++                        ChunkHolder.this.unloadCallbackScheduled = false;
++                        if (ChunkHolder.this.ticketLevel <= 33) {
++                            return;
++                        }
++                        // Tuinity  end - only schedule once, now the future is no longer completed as RIGHT if unloaded...
                          // Minecraft will apply the chunks tick lists to the world once the chunk got loaded, and then store the tick
                          // lists again inside the chunk once the chunk becomes inaccessible and set the chunk's needsSaving flag.
-@@ -687,7 +689,8 @@ public class ChunkHolder {
+                         // These actions may however happen deferred, so we manually set the needsSaving flag already here.
+@@ -687,7 +704,8 @@ public class ChunkHolder {
              this.fullChunkFuture = chunkStorage.prepareAccessibleChunk(this);
              this.scheduleFullChunkPromotion(chunkStorage, this.fullChunkFuture, executor, ChunkHolder.FullChunkStatus.BORDER);
              // Paper start - cache ticking ready status
@@ -46,7 +68,7 @@ index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..bbfd99e12c6345b7dc3d5b89c73ec333
                  final Optional<LevelChunk> left = either.left();
                  if (left.isPresent() && ChunkHolder.this.fullChunkCreateCount == expectCreateCount) {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
-@@ -718,7 +721,8 @@ public class ChunkHolder {
+@@ -718,7 +736,8 @@ public class ChunkHolder {
              this.tickingChunkFuture = chunkStorage.prepareTickingChunk(this);
              this.scheduleFullChunkPromotion(chunkStorage, this.tickingChunkFuture, executor, ChunkHolder.FullChunkStatus.TICKING);
              // Paper start - cache ticking ready status
@@ -56,7 +78,7 @@ index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..bbfd99e12c6345b7dc3d5b89c73ec333
                  either.ifLeft(chunk -> {
                      // note: Here is a very good place to add callbacks to logic waiting on this.
                      ChunkHolder.this.isTickingReady = true;
-@@ -757,7 +761,8 @@ public class ChunkHolder {
+@@ -757,7 +776,8 @@ public class ChunkHolder {
              this.entityTickingChunkFuture = chunkStorage.prepareEntityTickingChunk(this.pos);
              this.scheduleFullChunkPromotion(chunkStorage, this.entityTickingChunkFuture, executor, ChunkHolder.FullChunkStatus.ENTITY_TICKING);
              // Paper start - cache ticking ready status
@@ -66,7 +88,7 @@ index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..bbfd99e12c6345b7dc3d5b89c73ec333
                  either.ifLeft(chunk -> {
                      ChunkHolder.this.isEntityTickingReady = true;
                      // Tuinity start - entity ticking chunk set
-@@ -807,9 +812,10 @@ public class ChunkHolder {
+@@ -807,11 +827,19 @@ public class ChunkHolder {
          // CraftBukkit start
          // ChunkLoadEvent: Called after the chunk is loaded: isChunkLoaded returns true and chunk is ready to be modified by plugins.
          if (!playerchunk_state.isOrAfter(ChunkHolder.FullChunkStatus.BORDER) && playerchunk_state1.isOrAfter(ChunkHolder.FullChunkStatus.BORDER)) {
@@ -75,10 +97,20 @@ index a47769a11dfa96e8a7f854dbd0f5e8ac4dd2f9f7..bbfd99e12c6345b7dc3d5b89c73ec333
 +                com.tuinity.tuinity.util.TickThread.ensureTickThread("Async full status chunk future completion"); // Tuinity
                  LevelChunk chunk = (LevelChunk)either.left().orElse(null);
 -                if (chunk != null) {
-+                if (chunk != null && ChunkHolder.this.oldTicketLevel <= 33) { // Tuinity - ensure ticket level is set to loaded before calling, as now this can complete with ticket level > 33
++                if (chunk != null && ChunkHolder.this.oldTicketLevel <= 33 && !chunk.wasLoadCallbackInvoked()) { // Tuinity - ensure ticket level is set to loaded before calling, as now this can complete with ticket level > 33
++                    // Tuinity  start - only schedule once, now the future is no longer completed as RIGHT if unloaded...
++                    if (ChunkHolder.this.loadCallbackScheduled) {
++                        return;
++                    }
++                    ChunkHolder.this.loadCallbackScheduled = true;
++                    // Tuinity  end - only schedule once, now the future is no longer completed as RIGHT if unloaded...
                      chunkStorage.callbackExecutor.execute(() -> {
-                         chunk.loadCallback();
+-                        chunk.loadCallback();
++                        ChunkHolder.this.loadCallbackScheduled = false; // Tuinity  - only schedule once, now the future is no longer completed as RIGHT if unloaded...
++                        if (ChunkHolder.this.oldTicketLevel <= 33) chunk.loadCallback(); // Tuinity "
                      });
+                 }
+             }).exceptionally((throwable) -> {
 diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
 index 836cc9b6e4f4fe29d6e2fcb3572bc3d4c2d4ee7a..2706f1d8a8040bcbf0e9c67582db487cccd90e7b 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkMap.java
@@ -136,7 +168,7 @@ index 836cc9b6e4f4fe29d6e2fcb3572bc3d4c2d4ee7a..2706f1d8a8040bcbf0e9c67582db487c
  
      protected void releaseLightTicket(ChunkPos pos) {
 diff --git a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
-index 2844f419b3553538a74694dbf8879eaff999bcf3..07975d282eb8264e04eb352bae7deba66473cf35 100644
+index 69696c6b404283ef16e6b158c47fbbf548b4e84f..1c533a28221b066b1b8ac233b57a8f4da20ccb84 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
 +++ b/src/main/java/net/minecraft/world/level/chunk/LevelChunk.java
 @@ -243,7 +243,7 @@ public class LevelChunk implements ChunkAccess {
@@ -148,3 +180,19 @@ index 2844f419b3553538a74694dbf8879eaff999bcf3..07975d282eb8264e04eb352bae7deba6
      private long neighbourChunksLoadedBitset;
      private final LevelChunk[] loadedNeighbourChunks = new LevelChunk[(NEIGHBOUR_CACHE_RADIUS * 2 + 1) * (NEIGHBOUR_CACHE_RADIUS * 2 + 1)];
  
+@@ -845,6 +845,7 @@ public class LevelChunk implements ChunkAccess {
+ 
+     // CraftBukkit start
+     public void loadCallback() {
++        if (this.loadedTicketLevel) { LOGGER.error("Double calling chunk load!", new Throwable()); } // Tuinity
+         // Paper start - neighbour cache
+         int chunkX = this.chunkPos.x;
+         int chunkZ = this.chunkPos.z;
+@@ -899,6 +900,7 @@ public class LevelChunk implements ChunkAccess {
+     }
+ 
+     public void unloadCallback() {
++        if (!this.loadedTicketLevel) { LOGGER.error("Double calling chunk unload!", new Throwable()); } // Tuinity
+         org.bukkit.Server server = this.level.getCraftServer();
+         org.bukkit.event.world.ChunkUnloadEvent unloadEvent = new org.bukkit.event.world.ChunkUnloadEvent(this.bukkitChunk, this.isUnsaved());
+         server.getPluginManager().callEvent(unloadEvent);
