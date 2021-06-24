@@ -12,10 +12,10 @@ This patch brings back entity slices for lookup only.
 
 diff --git a/src/main/java/com/tuinity/tuinity/world/ChunkEntitySlices.java b/src/main/java/com/tuinity/tuinity/world/ChunkEntitySlices.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..0305bfd28c36e3b1d75fd0d2aa69634d8d7e00d7
+index 0000000000000000000000000000000000000000..e060b54e871a68668b6b0e071725843c5b2b992e
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/world/ChunkEntitySlices.java
-@@ -0,0 +1,428 @@
+@@ -0,0 +1,481 @@
 +package com.tuinity.tuinity.world;
 +
 +import com.destroystokyo.paper.util.maplist.EntityList;
@@ -169,12 +169,12 @@ index 0000000000000000000000000000000000000000..0305bfd28c36e3b1d75fd0d2aa69634d
 +                                               final Predicate<? super T> predicate) {
 +        EntityCollectionBySection collection = this.entitiesByClass.get(clazz);
 +        if (collection != null) {
-+            collection.getEntitiesWithEnderDragonParts(except, box, (List)into, (Predicate)predicate);
++            collection.getEntitiesWithEnderDragonParts(except, clazz, box, (List)into, (Predicate)predicate);
 +        } else {
 +            synchronized (this) {
 +                this.entitiesByClass.putIfAbsent(clazz, collection = this.initClass(clazz));
 +            }
-+            collection.getEntitiesWithEnderDragonParts(except, box, (List)into, (Predicate)predicate);
++            collection.getEntitiesWithEnderDragonParts(except, clazz, box, (List)into, (Predicate)predicate);
 +        }
 +    }
 +
@@ -388,6 +388,59 @@ index 0000000000000000000000000000000000000000..0305bfd28c36e3b1d75fd0d2aa69634d
 +                    if (entity instanceof EnderDragon) {
 +                        for (final EnderDragonPart part : ((EnderDragon)entity).subEntities) {
 +                            if (part == except || !part.getBoundingBox().intersects(box)) {
++                                continue;
++                            }
++
++                            if (predicate != null && !predicate.test(part)) {
++                                continue;
++                            }
++
++                            into.add(part);
++                        }
++                    }
++                }
++            }
++        }
++
++        public void getEntitiesWithEnderDragonParts(final Entity except, final Class<?> clazz, final AABB box, final List<Entity> into,
++                                                    final Predicate<? super Entity> predicate) {
++            if (this.count == 0) {
++                return;
++            }
++
++            final int minSection = this.manager.minSection;
++            final int maxSection = this.manager.maxSection;
++
++            final int min = Mth.clamp(Mth.floor(box.minY - 2.0) >> 4, minSection, maxSection);
++            final int max = Mth.clamp(Mth.floor(box.maxY + 2.0) >> 4, minSection, maxSection);
++
++            // TODO use the bitset
++
++            final BasicEntityList<Entity>[] entitiesBySection = this.entitiesBySection;
++
++            for (int section = min; section <= max; ++section) {
++                final BasicEntityList<Entity> list = entitiesBySection[section - minSection];
++
++                if (list == null) {
++                    continue;
++                }
++
++                final Entity[] storage = list.storage;
++
++                for (int i = 0, len = Math.min(storage.length, list.size()); i < len; ++i) {
++                    final Entity entity = storage[i];
++
++                    if (entity == null || entity == except || !entity.getBoundingBox().intersects(box)) {
++                        continue;
++                    }
++
++                    if (predicate == null || predicate.test(entity)) {
++                        into.add(entity);
++                    } // else: continue to test the ender dragon parts
++
++                    if (entity instanceof EnderDragon) {
++                        for (final EnderDragonPart part : ((EnderDragon)entity).subEntities) {
++                            if (part == except || !part.getBoundingBox().intersects(box) || !clazz.isInstance(part)) {
 +                                continue;
 +                            }
 +
