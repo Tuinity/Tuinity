@@ -55,7 +55,9 @@ Requirements:
 - You need `jdk` 16+ installed to compile (and `jre` 16+ to run).
 - Anything else that `paper` requires to build.
 
-TODO
+Clone this repo, run `./gradlew applyPatches`, then `./gradlew reobfJar` from your terminal. You can find the compiled jar in the `Tuinity-Server/build/libs` directory.
+
+To get a full list of tasks, run `./gradlew tasks`.
 
 #### Creating a patch
 Patches are effectively just commits in either `Tuinity-API` or `Tuinity-Server`.
