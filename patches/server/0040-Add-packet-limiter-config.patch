@@ -24,18 +24,21 @@ and an action can be defined: DROP or KICK
 If interval or rate are less-than 0, the limit is ignored
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index cb33129ac32e767ab5e5ffaec77ddd90cc9536ae..0e331eb38b91d6323bd64bddc2a3274f7d720f2c 100644
+index cb33129ac32e767ab5e5ffaec77ddd90cc9536ae..e6607888f4e2ffade5f592e2e366cbf318cd0e5f 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-@@ -1,6 +1,7 @@
+@@ -1,6 +1,10 @@
  package com.tuinity.tuinity.config;
  
  import com.destroystokyo.paper.util.SneakyThrow;
++import io.papermc.paper.util.StacktraceDeobfuscator;
++import java.util.HashMap;
++import java.util.Map;
 +import net.minecraft.server.MinecraftServer;
  import org.bukkit.Bukkit;
  import org.bukkit.configuration.ConfigurationSection;
  import org.bukkit.configuration.file.YamlConfiguration;
-@@ -129,6 +130,98 @@ public final class TuinityConfig {
+@@ -129,6 +133,104 @@ public final class TuinityConfig {
          playerFrustumPrioritisation = TuinityConfig.getBoolean("player-chunks.enable-frustum-priority", false);
      }
  
@@ -76,35 +79,41 @@ index cb33129ac32e767ab5e5ffaec77ddd90cc9536ae..0e331eb38b91d6323bd64bddc2a3274f
 +
 +        // auto recipe limiting
 +        TuinityConfig.getDouble("packet-limiter.limits." +
-+                "PacketPlayInAutoRecipe" + ".interval", 4.0);
++            "ServerboundPlaceRecipePacket" + ".interval", 4.0);
 +        TuinityConfig.getDouble("packet-limiter.limits." +
-+            "PacketPlayInAutoRecipe" + ".max-packet-rate", 5.0);
++            "ServerboundPlaceRecipePacket" + ".max-packet-rate", 5.0);
 +        TuinityConfig.getString("packet-limiter.limits." +
-+            "PacketPlayInAutoRecipe" + ".action", PacketLimit.ViolateAction.DROP.name());
++            "ServerboundPlaceRecipePacket" + ".action", PacketLimit.ViolateAction.DROP.name());
 +
-+        final String canonicalName = MinecraftServer.class.getCanonicalName();
-+        final String nmsPackage = canonicalName.substring(0, canonicalName.lastIndexOf("."));
++        final Map<String, String> mojangToSpigot = new HashMap<>();
++        final Map<String, StacktraceDeobfuscator.ClassMapping> maps = StacktraceDeobfuscator.INSTANCE.mappings();
++        if (maps != null) {
++            maps.forEach((spigotName, classMapping) ->
++                mojangToSpigot.put(classMapping.mojangName(), classMapping.obfName()));
++        }
++
 +        for (final String packetClassName : section.getKeys(false)) {
 +            if (packetClassName.equals("all")) {
 +                continue;
 +            }
 +            Class<?> packetClazz = null;
 +
-+            try {
-+                packetClazz = Class.forName(nmsPackage + "." + packetClassName);
-+            } catch (final ClassNotFoundException ex) {
-+                for (final String subpackage : java.util.Arrays.asList("game", "handshake", "login", "status")) {
++            for (final String subpackage : List.of("game", "handshake", "login", "status")) {
++                final String fullName = "net.minecraft.network.protocol." + subpackage + "." + packetClassName;
++                try {
++                    packetClazz = Class.forName(fullName);
++                    break;
++                } catch (final ClassNotFoundException ex) {
 +                    try {
-+                        packetClazz = Class.forName("net.minecraft.network.protocol." + subpackage + "." + packetClassName);
++                        final String spigot = mojangToSpigot.get(fullName);
++                        if (spigot != null) {
++                            packetClazz = Class.forName(spigot);
++                        }
 +                    } catch (final ClassNotFoundException ignore) {}
-+                }
-+                if (packetClazz == null) {
-+                    MinecraftServer.LOGGER.warn("Packet '" + packetClassName + "' does not exist, cannot limit it! Please update tuinity.yml");
-+                    continue;
 +                }
 +            }
 +
-+            if (!net.minecraft.network.protocol.Packet.class.isAssignableFrom(packetClazz)) {
++            if (packetClazz == null || !net.minecraft.network.protocol.Packet.class.isAssignableFrom(packetClazz)) {
 +                MinecraftServer.LOGGER.warn("Packet '" + packetClassName + "' does not exist, cannot limit it! Please update tuinity.yml");
 +                continue;
 +            }
@@ -134,8 +143,30 @@ index cb33129ac32e767ab5e5ffaec77ddd90cc9536ae..0e331eb38b91d6323bd64bddc2a3274f
      public static final class WorldConfig {
  
          public final String worldName;
+diff --git a/src/main/java/io/papermc/paper/util/StacktraceDeobfuscator.java b/src/main/java/io/papermc/paper/util/StacktraceDeobfuscator.java
+index 281fd2dbc7f1281ba882020be2a3481fe8909685..8f663eeb773adfae71288880bdb2b7da32be0bf3 100644
+--- a/src/main/java/io/papermc/paper/util/StacktraceDeobfuscator.java
++++ b/src/main/java/io/papermc/paper/util/StacktraceDeobfuscator.java
+@@ -32,7 +32,7 @@ public enum StacktraceDeobfuscator {
+     private static final String MOJANG_PLUS_YARN_NAMESPACE = "mojang+yarn";
+     private static final String SPIGOT_NAMESPACE = "spigot";
+ 
+-    private final @Nullable Map<String, ClassMapping> mappings;
++    private final @Nullable Map<String, ClassMapping> mappings; public @Nullable Map<String, ClassMapping> mappings() { return this.mappings; }; // Tuinity - public getter
+     private final Map<Class<?>, Map<Pair<String, String>, IntList>> lineMapCache = Collections.synchronizedMap(new LinkedHashMap<>(64, 0.75f, true) {
+         @Override
+         protected boolean removeEldestEntry(final Map.Entry<Class<?>, Map<Pair<String, String>, IntList>> eldest) {
+@@ -207,7 +207,7 @@ public enum StacktraceDeobfuscator {
+         return rootClassName + ".java";
+     }
+ 
+-    private record ClassMapping(
++    public record ClassMapping( // Tuinity - private -> public
+         String obfName,
+         String mojangName,
+         Map<Pair<String, String>, MethodMapping> methodMappings
 diff --git a/src/main/java/net/minecraft/network/Connection.java b/src/main/java/net/minecraft/network/Connection.java
-index f41a2a378e44aabd173122ea966e924fedfb7fee..4584ba25222b283a9264d2d110461983fef3b31f 100644
+index 2ca9a8a45ab721a4b9d062d8ed01a33a6f137c21..dd10a08211b2e40702f90f049fbc637221c4e436 100644
 --- a/src/main/java/net/minecraft/network/Connection.java
 +++ b/src/main/java/net/minecraft/network/Connection.java
 @@ -148,6 +148,22 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
