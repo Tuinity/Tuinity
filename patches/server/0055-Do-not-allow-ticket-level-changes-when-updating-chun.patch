@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Sun, 20 Jun 2021 00:08:13 -0700
+Subject: [PATCH] Do not allow ticket level changes when updating chunk ticking
+ state
+
+This WILL cause state corruption if it happens. So, don't
+allow it.
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+index 4a56af1a9a3cafa937d102e4341b39f41e19c3b6..25ca0112f2a1820b25980a40d5cf1e02a7bcc714 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
++++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
+@@ -601,7 +601,13 @@ public class ChunkHolder {
+         CompletableFuture<Void> completablefuture1 = new CompletableFuture();
+ 
+         completablefuture1.thenRunAsync(() -> {
++            // Tuinity start - do not allow ticket level changes
++            boolean unloadingBefore = this.chunkMap.unloadingPlayerChunk;
++            this.chunkMap.unloadingPlayerChunk = true;
++            try {
++            // Tuinity end  - do not allow ticket level changes
+             playerchunkmap.onFullChunkStatusChange(this.pos, playerchunk_state);
++            } finally { this.chunkMap.unloadingPlayerChunk = unloadingBefore; } // Tuinity - do not allow ticket level changes
+         }, executor);
+         this.pendingFullStateConfirmation = completablefuture1;
+         completablefuture.thenAccept((either) -> {
+@@ -616,7 +622,12 @@ public class ChunkHolder {
+ 
+     private void demoteFullChunk(ChunkMap playerchunkmap, ChunkHolder.FullChunkStatus playerchunk_state) {
+         this.pendingFullStateConfirmation.cancel(false);
++        // Tuinity start - do not allow ticket level changes
++        boolean unloadingBefore = this.chunkMap.unloadingPlayerChunk;
++        this.chunkMap.unloadingPlayerChunk = true;
++        try { // Tuinity end  - do not allow ticket level changes
+         playerchunkmap.onFullChunkStatusChange(this.pos, playerchunk_state);
++        } finally { this.chunkMap.unloadingPlayerChunk = unloadingBefore; } // Tuinity - do not allow ticket level changes
+     }
+ 
+     protected long updateCount; // Tuinity - correctly handle recursion

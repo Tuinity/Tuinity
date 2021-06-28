@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <Spottedleaf@users.noreply.github.com>
+Date: Fri, 19 Feb 2021 22:51:52 -0800
+Subject: [PATCH] Oprimise map impl for tracked players
+
+Reference2BooleanOpenHashMap is going to have
+better lookups than HashMap.
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
+index 8e6dae68c67177c7d5b6cf26da1591df26a7d2c8..6a6dab2dc847d116bacad5f0d84bc757477cb46a 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
+@@ -103,6 +103,7 @@ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ 
+ import org.bukkit.entity.Player; // CraftBukkit
++import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet; // Tuinity
+ 
+ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider {
+ 
+@@ -2203,7 +2204,7 @@ Sections go from 0..16. Now whenever a section is not empty, it can potentially
+         final Entity entity;
+         private final int range;
+         SectionPos lastSectionPos;
+-        public final Set<ServerPlayerConnection> seenBy = Sets.newIdentityHashSet();
++        public final Set<ServerPlayerConnection> seenBy = new ReferenceOpenHashSet<>(); // Tuinity - optimise map impl
+ 
+         public TrackedEntity(Entity entity, int i, int j, boolean flag) {
+             this.serverEntity = new ServerEntity(ChunkMap.this.level, entity, j, flag, this::broadcast, this.seenBy); // CraftBukkit

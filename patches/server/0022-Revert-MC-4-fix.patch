@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Tue, 22 Dec 2020 12:06:15 -0800
+Subject: [PATCH] Revert MC-4 fix
+
+When messing around with collisions, I ran into problems where
+entity position was off by ULP and that caused clipping problems.
+Now, the collision epsilon is 1.0e-7 to account for those errors.
+
+But this patch is going to cause problems on the order of 1.0e-4.
+
+I do not want to deal with clipping problems. The very fact it works
+shows it's causing the clipping to occur serverside.
+
+diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
+index 475f22f1d0fc658e0131c23e3cca29126fdd9c10..e042fa4fd0b439a1ec02155fb20eaf1cb72c0a9f 100644
+--- a/src/main/java/net/minecraft/world/entity/Entity.java
++++ b/src/main/java/net/minecraft/world/entity/Entity.java
+@@ -3917,7 +3917,7 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, n
+     public final void setPosRaw(double x, double y, double z) {
+         // Paper start - fix MC-4
+         if (this instanceof ItemEntity) {
+-            if (com.destroystokyo.paper.PaperConfig.fixEntityPositionDesync) {
++            if (false && com.destroystokyo.paper.PaperConfig.fixEntityPositionDesync) { // Tuinity - revert
+                 // encode/decode from PacketPlayOutEntity
+                 x = Mth.lfloor(x * 4096.0D) * (1 / 4096.0D);
+                 y = Mth.lfloor(y * 4096.0D) * (1 / 4096.0D);

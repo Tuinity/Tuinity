@@ -4,136 +4,81 @@ Date: Mon, 6 Jul 2020 22:48:48 -0700
 Subject: [PATCH] Manually inline methods in BlockPosition
 
 
-diff --git a/src/main/java/net/minecraft/core/BaseBlockPosition.java b/src/main/java/net/minecraft/core/BaseBlockPosition.java
-index a44bcdb053877a6281e566ffe03ef72ffd50ca08..e72c852517f9fdc7b7a3a5bc5d3aa067815ff944 100644
---- a/src/main/java/net/minecraft/core/BaseBlockPosition.java
-+++ b/src/main/java/net/minecraft/core/BaseBlockPosition.java
-@@ -18,9 +18,9 @@ public class BaseBlockPosition implements Comparable<BaseBlockPosition> {
-         return IntStream.of(new int[]{baseblockposition.getX(), baseblockposition.getY(), baseblockposition.getZ()});
-     });
-     public static final BaseBlockPosition ZERO = new BaseBlockPosition(0, 0, 0);
--    private int a;public final void setX(final int x) { this.a = x; } // Paper - OBFHELPER
--    private int b;public final void setY(final int y) { this.b = y; } // Paper - OBFHELPER
--    private int e;public final void setZ(final int z) { this.e = z; } // Paper - OBFHELPER
-+    protected int a; // Paper - OBFHELPER // Tuinity - private->protected - diff on change, this is the x coordinate - Also revert the decision to expose set on an immutable type
-+    protected int b; // Paper - OBFHELPER // Tuinity - private->protected - diff on change, this is the y coordinate - Also revert the decision to expose set on an immutable type
-+    protected int e; // Paper - OBFHELPER // Tuinity - private->protected - diff on change, this is the z coordinate - Also revert the decision to expose set on an immutable type
- 
-     // Paper start
-     public boolean isValidLocation() {
-@@ -73,15 +73,15 @@ public class BaseBlockPosition implements Comparable<BaseBlockPosition> {
-         return this.e;
-     }
- 
--    public void o(int i) { // Paper - protected -> public
-+    protected void o_unused(int i) { // Paper - protected -> public // Tuinity - not needed here - Also revert the decision to expose set on an immutable type
-         this.a = i;
-     }
- 
--    public void p(int i) { // Paper - protected -> public
-+    protected void p_unused(int i) { // Paper - protected -> public // Tuinity - not needed here - Also revert the decision to expose set on an immutable type
-         this.b = i;
-     }
- 
--    public void q(int i) { // Paper - protected -> public
-+    protected void q_unused(int i) { // Paper - protected -> public // Tuinity - not needed here - Also revert the decision to expose set on an immutable type
-         this.e = i;
-     }
- 
-diff --git a/src/main/java/net/minecraft/core/BlockPosition.java b/src/main/java/net/minecraft/core/BlockPosition.java
-index 4abc87b7e737bc652e84f76a508ab85501d1556f..6a6381e85fef2ae2b9b5e6dff0b7917b92fa01e5 100644
---- a/src/main/java/net/minecraft/core/BlockPosition.java
-+++ b/src/main/java/net/minecraft/core/BlockPosition.java
-@@ -455,10 +455,10 @@ public class BlockPosition extends BaseBlockPosition {
+diff --git a/src/main/java/net/minecraft/core/BlockPos.java b/src/main/java/net/minecraft/core/BlockPos.java
+index b70aa66732fb5e957aed0901f4c76358b2c56f8e..b01d7da333bac7820e42b6f645634a15ef88ae4f 100644
+--- a/src/main/java/net/minecraft/core/BlockPos.java
++++ b/src/main/java/net/minecraft/core/BlockPos.java
+@@ -478,9 +478,9 @@ public class BlockPos extends Vec3i {
          }
  
-         public final BlockPosition.MutableBlockPosition setValues(int i, int j, int k) { return d(i, j, k);} // Paper - OBFHELPER
--        public BlockPosition.MutableBlockPosition d(int i, int j, int k) {
--            this.o(i);
--            this.p(j);
--            this.q(k);
-+        public final BlockPosition.MutableBlockPosition d(int i, int j, int k) { // Tuinity
-+            ((BaseBlockPosition)this).a = i; // Tuinity - force inline
-+            ((BaseBlockPosition)this).b = j; // Tuinity - force inline
-+            ((BaseBlockPosition)this).e = k; // Tuinity - force inline
+         public BlockPos.MutableBlockPos set(int x, int y, int z) {
+-            this.setX(x);
+-            this.setY(y);
+-            this.setZ(z);
++            this.x = x; // Tuinity - force inline
++            this.y = y; // Tuinity - force inline
++            this.z = z; // Tuinity - force inline
              return this;
          }
  
-@@ -468,12 +468,18 @@ public class BlockPosition extends BaseBlockPosition {
+@@ -544,19 +544,19 @@ public class BlockPos extends Vec3i {
+         // Paper start - comment out useless overrides @Override - TODO figure out why this is suddenly important to keep
+         @Override
+         public BlockPos.MutableBlockPos setX(int i) {
+-            super.setX(i);
++            this.x = i; // Tuinity
+             return this;
          }
- 
-         public final BlockPosition.MutableBlockPosition setValues(final BaseBlockPosition baseblockposition) { return this.g(baseblockposition); } // Paper - OBFHELPER
--        public BlockPosition.MutableBlockPosition g(BaseBlockPosition baseblockposition) {
--            return this.d(baseblockposition.getX(), baseblockposition.getY(), baseblockposition.getZ());
-+        public final BlockPosition.MutableBlockPosition g(BaseBlockPosition baseblockposition) { // Tuinity
-+            ((BaseBlockPosition)this).a = baseblockposition.a; // Tuinity - force inline
-+            ((BaseBlockPosition)this).b = baseblockposition.b; // Tuinity - force inline
-+            ((BaseBlockPosition)this).e = baseblockposition.e; // Tuinity - force inline
-+            return this;
-         }
- 
--        public BlockPosition.MutableBlockPosition g(long i) {
--            return this.d(b(i), c(i), d(i));
-+        public final BlockPosition.MutableBlockPosition g(long i) { // Tuinity
-+            ((BaseBlockPosition)this).a = (int)(i >> 38); // Tuinity - force inline
-+            ((BaseBlockPosition)this).b = (int)((i << 52) >> 52); // Tuinity - force inline
-+            ((BaseBlockPosition)this).e = (int)((i << 26) >> 38); // Tuinity - force inline
-+            return this;
-         }
- 
-         public BlockPosition.MutableBlockPosition a(EnumAxisCycle enumaxiscycle, int i, int j, int k) {
-@@ -488,8 +494,11 @@ public class BlockPosition extends BaseBlockPosition {
-             return this.d(baseblockposition.getX() + i, baseblockposition.getY() + j, baseblockposition.getZ() + k);
-         }
- 
--        public BlockPosition.MutableBlockPosition c(EnumDirection enumdirection) {
--            return this.c(enumdirection, 1);
-+        public final BlockPosition.MutableBlockPosition c(EnumDirection enumdirection) { // Tuinity
-+            ((BaseBlockPosition)this).a += enumdirection.getAdjacentX(); // Tuinity - force inline
-+            ((BaseBlockPosition)this).b += enumdirection.getAdjacentY(); // Tuinity - force inline
-+            ((BaseBlockPosition)this).e += enumdirection.getAdjacentZ(); // Tuinity - force inline
-+            return this;
-         }
- 
-         public BlockPosition.MutableBlockPosition c(EnumDirection enumdirection, int i) {
-@@ -518,21 +527,30 @@ public class BlockPosition extends BaseBlockPosition {
-             }
-         }
- 
--        /* // Paper start - comment out useless overrides @Override
--        @Override
--        public void o(int i) {
--            super.o(i);
-+        // Tuinity start
-+        // only expose set on the mutable blockpos
-+        public final void setX(int value) {
-+            ((BaseBlockPosition)this).a = value;
-+        }
-+        public final void setY(int value) {
-+            ((BaseBlockPosition)this).b = value;
-+        }
-+        public final void setZ(int value) {
-+            ((BaseBlockPosition)this).e = value;
-         }
- 
--        @Override
--        public void p(int i) {
--            super.p(i);
-+        public final void o(int i) {
-+            ((BaseBlockPosition)this).a = i; // need cast thanks to name conflict
-+        }
-+
-+        public final void p(int i) {
-+            ((BaseBlockPosition)this).b = i;
-         }
- 
--        public void q(int i) {
--            super.q(i);
-+        public final void q(int i) {
-+            ((BaseBlockPosition)this).e = i;
-         }
--        */ // Paper end
-+        // Tuinity end
  
          @Override
-         public BlockPosition immutableCopy() {
+         public BlockPos.MutableBlockPos setY(int i) {
+-            super.setY(i);
++            this.y = i; // Tuinity
+             return this;
+         }
+ 
+         @Override
+         public BlockPos.MutableBlockPos setZ(int i) {
+-            super.setZ(i);
++            this.z = i; // Tuinity
+             return this;
+         }
+         // Paper end
+diff --git a/src/main/java/net/minecraft/core/Vec3i.java b/src/main/java/net/minecraft/core/Vec3i.java
+index 5e09890ba2fe326503a49b2dbec09845f5c8c5eb..3ad3652f8074de10222fb01c50548b4312103cc3 100644
+--- a/src/main/java/net/minecraft/core/Vec3i.java
++++ b/src/main/java/net/minecraft/core/Vec3i.java
+@@ -17,9 +17,9 @@ public class Vec3i implements Comparable<Vec3i> {
+         return IntStream.of(vec3i.getX(), vec3i.getY(), vec3i.getZ());
+     });
+     public static final Vec3i ZERO = new Vec3i(0, 0, 0);
+-    private int x;
+-    private int y;
+-    private int z;
++    protected int x; // Tuinity - protected
++    protected int y; // Tuinity - protected
++    protected int z; // Tuinity - protected
+ 
+     // Paper start
+     public boolean isValidLocation(net.minecraft.world.level.LevelHeightAccessor levelHeightAccessor) {
+@@ -84,17 +84,17 @@ public class Vec3i implements Comparable<Vec3i> {
+         return this.z;
+     }
+ 
+-    public Vec3i setX(int x) {
++    protected Vec3i setX(int x) { // Tuinity - not needed here - Also revert the decision to expose set on an _immutable_ type
+         this.x = x;
+         return this;
+     }
+ 
+-    public Vec3i setY(int y) {
++    protected Vec3i setY(int y) { // Tuinity - not needed here - Also revert the decision to expose set on an _immutable_ type
+         this.y = y;
+         return this;
+     }
+ 
+-    public Vec3i setZ(int z) {
++    protected Vec3i setZ(int z) { // Tuinity - not needed here - Also revert the decision to expose set on an _immutable_ type
+         this.z = z;
+         return this;
+     }

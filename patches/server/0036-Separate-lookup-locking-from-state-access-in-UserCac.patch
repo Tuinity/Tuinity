@@ -5,88 +5,88 @@ Subject: [PATCH] Separate lookup locking from state access in UserCache
 
 Prevent lookups from stalling simple state access/write calls
 
-diff --git a/src/main/java/net/minecraft/server/players/UserCache.java b/src/main/java/net/minecraft/server/players/UserCache.java
-index c617b7dd5a992770fc87113987807947ae68be81..7ce5bd130441a3bc32ee5fa3630edce23dadd0b8 100644
---- a/src/main/java/net/minecraft/server/players/UserCache.java
-+++ b/src/main/java/net/minecraft/server/players/UserCache.java
-@@ -52,6 +52,11 @@ public class UserCache {
-     private final File g;
-     private final AtomicLong h = new AtomicLong();
+diff --git a/src/main/java/net/minecraft/server/players/GameProfileCache.java b/src/main/java/net/minecraft/server/players/GameProfileCache.java
+index 9a428e166561b4bc028732ec563d3b2e99f81a8e..771c575ffe46db94d9c91f3fd0440d4deb460de7 100644
+--- a/src/main/java/net/minecraft/server/players/GameProfileCache.java
++++ b/src/main/java/net/minecraft/server/players/GameProfileCache.java
+@@ -60,6 +60,11 @@ public class GameProfileCache {
+     @Nullable
+     private Executor executor;
  
 +    // Tuinity start
 +    protected final java.util.concurrent.locks.ReentrantLock stateLock = new java.util.concurrent.locks.ReentrantLock();
 +    protected final java.util.concurrent.locks.ReentrantLock lookupLock = new java.util.concurrent.locks.ReentrantLock();
 +    // Tuinity end
 +
-     public UserCache(GameProfileRepository gameprofilerepository, File file) {
-         this.e = gameprofilerepository;
-         this.g = file;
-@@ -59,6 +64,7 @@ public class UserCache {
+     public GameProfileCache(GameProfileRepository profileRepository, File cacheFile) {
+         this.profileRepository = profileRepository;
+         this.file = cacheFile;
+@@ -67,6 +72,7 @@ public class GameProfileCache {
      }
  
-     private void a(UserCache.UserCacheEntry usercache_usercacheentry) {
+     private void safeAdd(GameProfileCache.GameProfileInfo entry) {
 +        try { this.stateLock.lock(); // Tuinity - allow better concurrency
-         GameProfile gameprofile = usercache_usercacheentry.a();
+         GameProfile gameprofile = entry.getProfile();
  
-         usercache_usercacheentry.a(this.d());
-@@ -73,6 +79,7 @@ public class UserCache {
+         entry.setLastAccess(this.getNextOperation());
+@@ -81,6 +87,7 @@ public class GameProfileCache {
          if (uuid != null) {
-             this.d.put(uuid, usercache_usercacheentry);
+             this.profilesByUUID.put(uuid, entry);
          }
 +        } finally { this.stateLock.unlock(); } // Tuinity - allow better concurrency
  
      }
  
-@@ -111,7 +118,7 @@ public class UserCache {
+@@ -118,7 +125,7 @@ public class GameProfileCache {
+         return com.destroystokyo.paper.PaperConfig.isProxyOnlineMode(); // Paper
      }
  
-     public void saveProfile(GameProfile gameprofile) { a(gameprofile); } // Paper - OBFHELPER
--    public synchronized void a(GameProfile gameprofile) { // Paper - synchronize
-+    public void a(GameProfile gameprofile) { // Paper - synchronize  // Tuinity - allow better concurrency
+-    public synchronized void add(GameProfile profile) { // Paper - synchronize
++    public void add(GameProfile profile) { // Paper - synchronize // Tuinity - allow better concurrency
          Calendar calendar = Calendar.getInstance();
  
          calendar.setTime(new Date());
-@@ -128,8 +135,9 @@ public class UserCache {
+@@ -135,8 +142,9 @@ public class GameProfileCache {
      }
  
      @Nullable
--    public synchronized GameProfile getProfile(String s) { // Paper - synchronize
-+    public GameProfile getProfile(String s) { // Paper - synchronize // Tuinity start - allow better concurrency
-         String s1 = s.toLowerCase(Locale.ROOT);
+-    public synchronized GameProfile get(String name) { // Paper - synchronize
++    public GameProfile get(String name) { // Paper - synchronize // Tuinity start - allow better concurrency
+         String s1 = name.toLowerCase(Locale.ROOT);
 +        boolean stateLocked = true; try { this.stateLock.lock(); // Tuinity - allow better concurrency
-         UserCache.UserCacheEntry usercache_usercacheentry = (UserCache.UserCacheEntry) this.c.get(s1);
+         GameProfileCache.GameProfileInfo usercache_usercacheentry = (GameProfileCache.GameProfileInfo) this.profilesByName.get(s1);
          boolean flag = false;
  
-@@ -143,10 +151,14 @@ public class UserCache {
+@@ -150,10 +158,14 @@ public class GameProfileCache {
          GameProfile gameprofile;
  
          if (usercache_usercacheentry != null) {
 +            stateLocked = false; this.stateLock.unlock(); // Tuinity - allow better concurrency
-             usercache_usercacheentry.a(this.d());
-             gameprofile = usercache_usercacheentry.a();
+             usercache_usercacheentry.setLastAccess(this.getNextOperation());
+             gameprofile = usercache_usercacheentry.getProfile();
          } else {
 +            stateLocked = false; this.stateLock.unlock(); // Tuinity - allow better concurrency
 +            try { this.lookupLock.lock(); // Tuinity - allow better concurrency
-             gameprofile = a(this.e, s); // Spigot - use correct case for offline players
+             gameprofile = GameProfileCache.lookupGameProfile(this.profileRepository, name); // Spigot - use correct case for offline players
 +            } finally { this.lookupLock.unlock(); } // Tuinity - allow better concurrency
              if (gameprofile != null) {
-                 this.a(gameprofile);
+                 this.add(gameprofile);
                  flag = false;
-@@ -158,6 +170,7 @@ public class UserCache {
+@@ -165,6 +177,7 @@ public class GameProfileCache {
          }
  
          return gameprofile;
 +        } finally { if (stateLocked) {  this.stateLock.unlock(); } } // Tuinity - allow better concurrency
      }
  
-     // Paper start
-@@ -292,7 +305,9 @@ public class UserCache {
+     public void getAsync(String s, Consumer<GameProfile> consumer) {
+@@ -326,7 +339,9 @@ public class GameProfileCache {
      }
  
-     private Stream<UserCache.UserCacheEntry> a(int i) {
+     private Stream<GameProfileCache.GameProfileInfo> getTopMRUProfiles(int limit) {
 +        try { this.stateLock.lock(); // Tuinity - allow better concurrency
-         return ImmutableList.copyOf(this.d.values()).stream().sorted(Comparator.comparing(UserCache.UserCacheEntry::c).reversed()).limit((long) i);
+         return ImmutableList.copyOf(this.profilesByUUID.values()).stream().sorted(Comparator.comparing(GameProfileCache.GameProfileInfo::getLastAccess).reversed()).limit((long) limit);
 +        } finally { this.stateLock.unlock(); } // Tuinity - allow better concurrency
      }
  
-     private static JsonElement a(UserCache.UserCacheEntry usercache_usercacheentry, DateFormat dateformat) {
+     private static JsonElement writeGameProfile(GameProfileCache.GameProfileInfo entry, DateFormat dateFormat) {
