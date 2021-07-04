@@ -1,0 +1,327 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Thu, 9 Jul 2020 13:34:59 -0700
+Subject: [PATCH] Optimise WorldServer#notify
+
+Iterating over all of the navigators in the world is pretty expensive.
+Instead, only iterate over navigators in the current region that are
+eligible for repathing.
+
+diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
+index c44faf838c0bc7da480afe0f5ccedcaf8d0fea91..509a4239dbda8d8d7edebfdc92bed84a13def369 100644
+--- a/src/main/java/net/minecraft/server/level/ChunkMap.java
++++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
+@@ -312,15 +312,81 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+     public final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager dataRegionManager;
+ 
+     public static final class DataRegionData implements com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionData {
++        // Tuinity start - optimise notify()
++        private com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<Mob> navigators;
++
++        public com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<Mob> getNavigators() {
++            return this.navigators;
++        }
++
++        public boolean addToNavigators(final Mob navigator) {
++            if (this.navigators == null) {
++                this.navigators = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>();
++            }
++            return this.navigators.add(navigator);
++        }
++
++        public boolean removeFromNavigators(final Mob navigator) {
++            if (this.navigators == null) {
++                return false;
++            }
++            return this.navigators.remove(navigator);
++        }
++        // Tuinity end - optimise notify()
+     }
+ 
+     public static final class DataRegionSectionData implements com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSectionData {
+ 
++        // Tuinity start - optimise notify()
++        private com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<Mob> navigators;
++
++        public com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<Mob> getNavigators() {
++            return this.navigators;
++        }
++
++        public boolean addToNavigators(final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section, final Mob navigator) {
++            if (this.navigators == null) {
++                this.navigators = new com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<>();
++            }
++            final boolean ret = this.navigators.add(navigator);
++            if (ret) {
++                final DataRegionData data = (DataRegionData)section.getRegion().regionData;
++                if (!data.addToNavigators(navigator)) {
++                    throw new IllegalStateException();
++                }
++            }
++            return ret;
++        }
++
++        public boolean removeFromNavigators(final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section, final Mob navigator) {
++            if (this.navigators == null) {
++                return false;
++            }
++            final boolean ret = this.navigators.remove(navigator);
++            if (ret) {
++                final DataRegionData data = (DataRegionData)section.getRegion().regionData;
++                if (!data.removeFromNavigators(navigator)) {
++                    throw new IllegalStateException();
++                }
++            }
++            return ret;
++        }
++        // Tuinity end - optimise notify()
++
+         @Override
+         public void removeFromRegion(final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section,
+                                      final com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.Region from) {
+             final DataRegionSectionData sectionData = (DataRegionSectionData)section.sectionData;
+             final DataRegionData fromData = (DataRegionData)from.regionData;
++            // Tuinity start - optimise notify()
++            if (sectionData.navigators != null) {
++                for (final Iterator<Mob> iterator = sectionData.navigators.unsafeIterator(com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
++                    if (!fromData.removeFromNavigators(iterator.next())) {
++                        throw new IllegalStateException();
++                    }
++                }
++            }
++            // Tuinity end - optimise notify()
+         }
+ 
+         @Override
+@@ -330,6 +396,15 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+             final DataRegionSectionData sectionData = (DataRegionSectionData)section.sectionData;
+             final DataRegionData oldRegionData = oldRegion == null ? null : (DataRegionData)oldRegion.regionData;
+             final DataRegionData newRegionData = (DataRegionData)newRegion.regionData;
++            // Tuinity start - optimise notify()
++            if (sectionData.navigators != null) {
++                for (final Iterator<Mob> iterator = sectionData.navigators.unsafeIterator(com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.ITERATOR_FLAG_SEE_ADDITIONS); iterator.hasNext();) {
++                    if (!newRegionData.addToNavigators(iterator.next())) {
++                        throw new IllegalStateException();
++                    }
++                }
++            }
++            // Tuinity end - optimise notify()
+         }
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
+index a83b4e9b6b5bd6a57d4bc2f1cdc78ffb7e7d2fdd..57163e3cb883ded5861e57c3ca03663c02ee7492 100644
+--- a/src/main/java/net/minecraft/server/level/ServerLevel.java
++++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
+@@ -1127,6 +1127,7 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+     public void tickNonPassenger(Entity entity) {
+         // Tuinity start - log detailed entity tick information
+         com.tuinity.tuinity.util.TickThread.ensureTickThread("Cannot tick an entity off-main");
++        this.entityManager.updateNavigatorsInRegion(entity); // Tuinity - optimise notify
+         try {
+             if (currentlyTickingEntity.get() == null) {
+                 currentlyTickingEntity.lazySet(entity);
+@@ -1573,9 +1574,19 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+         VoxelShape voxelshape1 = newState.getCollisionShape(this, pos);
+ 
+         if (Shapes.joinIsNotEmpty(voxelshape, voxelshape1, BooleanOp.NOT_SAME)) {
+-            Iterator iterator = this.navigatingMobs.iterator();
++            // Tuinity start - optimise notify()
++            com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.Region region = this.getChunkSource().chunkMap.dataRegionManager.getRegion(pos.getX() >> 4, pos.getZ() >> 4);
++            if (region == null) {
++                return;
++            }
++            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet<Mob> navigatorsFromRegion = ((ChunkMap.DataRegionData)region.regionData).getNavigators();
++            if (navigatorsFromRegion == null) {
++                return;
++            }
++            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.Iterator<Mob> iterator = navigatorsFromRegion.iterator();
+ 
+-            while (iterator.hasNext()) {
++
++            try { while (iterator.hasNext()) { // Tuinity end - optimise notify()
+                 // CraftBukkit start - fix SPIGOT-6362
+                 Mob entityinsentient;
+                 try {
+@@ -1594,6 +1605,11 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+                     navigationabstract.recomputePath(pos);
+                 }
+             }
++            // Tuinity start - optimise notify()
++            } finally {
++                iterator.finishedIterating();
++            }
++            // Tuinity end - optimise notify()
+ 
+         }
+         } // Paper
+@@ -2375,10 +2391,12 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+ 
+         public void onTickingStart(Entity entity) {
+             ServerLevel.this.entityTickList.add(entity);
++            ServerLevel.this.entityManager.addNavigatorsIfPathingToRegion(entity); // Tuinity - optimise notify
+         }
+ 
+         public void onTickingEnd(Entity entity) {
+             ServerLevel.this.entityTickList.remove(entity);
++            ServerLevel.this.entityManager.removeNavigatorsFromData(entity); // Tuinity - optimise notify
+         }
+ 
+         public void onTrackingStart(Entity entity) {
+diff --git a/src/main/java/net/minecraft/world/entity/ai/navigation/PathNavigation.java b/src/main/java/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+index e605daac0c90f5d0b9315d1499938feb0e478d0e..570316cf7831de70086fae35676006ee052851e0 100644
+--- a/src/main/java/net/minecraft/world/entity/ai/navigation/PathNavigation.java
++++ b/src/main/java/net/minecraft/world/entity/ai/navigation/PathNavigation.java
+@@ -27,7 +27,7 @@ import net.minecraft.world.phys.Vec3;
+ 
+ public abstract class PathNavigation {
+     private static final int MAX_TIME_RECOMPUTE = 20;
+-    protected final Mob mob;
++    protected final Mob mob; public final Mob getEntity() { return this.mob; } // Tuinity - public accessor
+     protected final Level level;
+     @Nullable
+     protected Path path;
+@@ -40,7 +40,7 @@ public abstract class PathNavigation {
+     protected long lastTimeoutCheck;
+     protected double timeoutLimit;
+     protected float maxDistanceToWaypoint = 0.5F;
+-    protected boolean hasDelayedRecomputation;
++    protected boolean hasDelayedRecomputation; protected final boolean needsPathRecalculation() { return this.hasDelayedRecomputation; } // Tuinity - public accessor
+     protected long timeLastRecompute;
+     protected NodeEvaluator nodeEvaluator;
+     private BlockPos targetPos;
+@@ -49,6 +49,13 @@ public abstract class PathNavigation {
+     public final PathFinder pathFinder;
+     private boolean isStuck;
+ 
++    // Tuinity start
++    public boolean isViableForPathRecalculationChecking() {
++        return !this.needsPathRecalculation() &&
++                (this.path != null && !this.path.isDone() && this.path.getNodeCount() != 0);
++    }
++    // Tuinity end
++
+     public PathNavigation(Mob mob, Level world) {
+         this.mob = mob;
+         this.level = world;
+@@ -404,7 +411,7 @@ public abstract class PathNavigation {
+     }
+ 
+     public void recomputePath(BlockPos pos) {
+-        if (this.path != null && !this.path.isDone() && this.path.getNodeCount() != 0) {
++        if (this.path != null && !this.path.isDone() && this.path.getNodeCount() != 0) { // Tuinity - diff on change - needed for isViableForPathRecalculationChecking()
+             Node node = this.path.getEndNode();
+             Vec3 vec3 = new Vec3(((double)node.x + this.mob.getX()) / 2.0D, ((double)node.y + this.mob.getY()) / 2.0D, ((double)node.z + this.mob.getZ()) / 2.0D);
+             if (pos.closerThan(vec3, (double)(this.path.getNodeCount() - this.path.getNextNodeIndex()))) {
+diff --git a/src/main/java/net/minecraft/world/level/entity/PersistentEntitySectionManager.java b/src/main/java/net/minecraft/world/level/entity/PersistentEntitySectionManager.java
+index a99d0a00bbdb90588b87a3f85c62bdc1468b5e5a..0465235016d00a9db3694b920206b1cd3ae0824c 100644
+--- a/src/main/java/net/minecraft/world/level/entity/PersistentEntitySectionManager.java
++++ b/src/main/java/net/minecraft/world/level/entity/PersistentEntitySectionManager.java
+@@ -54,6 +54,65 @@ public class PersistentEntitySectionManager<T extends EntityAccess> implements A
+         this.entityGetter = new LevelEntityGetterAdapter<>(this.visibleEntityStorage, this.sectionStorage);
+     }
+ 
++    // Tuinity start - optimise notify()
++    public final void removeNavigatorsFromData(Entity entity, final int chunkX, final int chunkZ) {
++        if (!(entity instanceof net.minecraft.world.entity.Mob)) {
++            return;
++        }
++        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section =
++            this.entitySliceManager.world.getChunkSource().chunkMap.dataRegionManager.getRegionSection(chunkX, chunkZ);
++        if (section != null) {
++            net.minecraft.server.level.ChunkMap.DataRegionSectionData sectionData = (net.minecraft.server.level.ChunkMap.DataRegionSectionData)section.sectionData;
++            sectionData.removeFromNavigators(section, ((net.minecraft.world.entity.Mob)entity));
++        }
++    }
++
++    public final void removeNavigatorsFromData(Entity entity) {
++        if (!(entity instanceof net.minecraft.world.entity.Mob)) {
++            return;
++        }
++        BlockPos entityPos = entity.blockPosition();
++        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section =
++            this.entitySliceManager.world.getChunkSource().chunkMap.dataRegionManager.getRegionSection(entityPos.getX() >> 4, entityPos.getZ() >> 4);
++        if (section != null) {
++            net.minecraft.server.level.ChunkMap.DataRegionSectionData sectionData = (net.minecraft.server.level.ChunkMap.DataRegionSectionData)section.sectionData;
++            sectionData.removeFromNavigators(section, ((net.minecraft.world.entity.Mob)entity));
++        }
++    }
++
++    public final void addNavigatorsIfPathingToRegion(Entity entity) {
++        if (!(entity instanceof net.minecraft.world.entity.Mob)) {
++            return;
++        }
++        BlockPos entityPos = entity.blockPosition();
++        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section =
++            this.entitySliceManager.world.getChunkSource().chunkMap.dataRegionManager.getRegionSection(entityPos.getX() >> 4, entityPos.getZ() >> 4);
++        if (section != null) {
++            net.minecraft.server.level.ChunkMap.DataRegionSectionData sectionData = (net.minecraft.server.level.ChunkMap.DataRegionSectionData)section.sectionData;
++            if (((net.minecraft.world.entity.Mob)entity).getNavigation().isViableForPathRecalculationChecking()) {
++                sectionData.addToNavigators(section, ((net.minecraft.world.entity.Mob)entity));
++            }
++        }
++    }
++
++    public final void updateNavigatorsInRegion(Entity entity) {
++        if (!(entity instanceof net.minecraft.world.entity.Mob)) {
++            return;
++        }
++        BlockPos entityPos = entity.blockPosition();
++        com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager.RegionSection section =
++            this.entitySliceManager.world.getChunkSource().chunkMap.dataRegionManager.getRegionSection(entityPos.getX() >> 4, entityPos.getZ() >> 4);
++        if (section != null) {
++            net.minecraft.server.level.ChunkMap.DataRegionSectionData sectionData = (net.minecraft.server.level.ChunkMap.DataRegionSectionData)section.sectionData;
++            if (((net.minecraft.world.entity.Mob)entity).getNavigation().isViableForPathRecalculationChecking()) {
++                sectionData.addToNavigators(section, ((net.minecraft.world.entity.Mob)entity));
++            } else {
++                sectionData.removeFromNavigators(section, ((net.minecraft.world.entity.Mob)entity));
++            }
++        }
++    }
++    // Tuinity end - optimise notify()
++
+     void removeSectionIfEmpty(long sectionPos, EntitySection<T> section) {
+         if (section.isEmpty()) {
+             this.sectionStorage.remove(sectionPos);
+@@ -385,19 +444,38 @@ public class PersistentEntitySectionManager<T extends EntityAccess> implements A
+         @Override
+         public void onMove() {
+             BlockPos blockPos = this.entity.blockPosition();
+-            long l = SectionPos.asLong(blockPos);
++            long l = SectionPos.asLong(blockPos); // Tuinity - diff on change, new position section
+             if (l != this.currentSectionKey) {
+                 PersistentEntitySectionManager.this.entitySliceManager.moveEntity((Entity)this.entity); // Tuinity
+-                Visibility visibility = this.currentSection.getStatus();
++                // Tuinity start
++                int shift = PersistentEntitySectionManager.this.entitySliceManager.world.getChunkSource().chunkMap.dataRegionManager.regionChunkShift;
++                int oldChunkX = com.tuinity.tuinity.util.CoordinateUtils.getChunkSectionX(this.currentSectionKey);
++                int oldChunkZ = com.tuinity.tuinity.util.CoordinateUtils.getChunkSectionZ(this.currentSectionKey);
++                int oldRegionX = oldChunkX >> shift;
++                int oldRegionZ = oldChunkZ >> shift;
++
++                int newRegionX = com.tuinity.tuinity.util.CoordinateUtils.getChunkSectionX(l) >> shift;
++                int newRegionZ = com.tuinity.tuinity.util.CoordinateUtils.getChunkSectionZ(l) >> shift;
++
++                if (oldRegionX != newRegionX || oldRegionZ != newRegionZ) {
++                    PersistentEntitySectionManager.this.removeNavigatorsFromData((Entity)this.entity, oldChunkX, oldChunkZ);
++                }
++                // Tuinity end
++                Visibility visibility = this.currentSection.getStatus(); // Tuinity - diff on change - this should be OLD section visibility
+                 if (!this.currentSection.remove(this.entity)) {
+                     PersistentEntitySectionManager.LOGGER.warn("Entity {} wasn't found in section {} (moving to {})", this.entity, SectionPos.of(this.currentSectionKey), l);
+                 }
+ 
+                 PersistentEntitySectionManager.this.removeSectionIfEmpty(this.currentSectionKey, this.currentSection);
+-                EntitySection<T> entitySection = PersistentEntitySectionManager.this.sectionStorage.getOrCreateSection(l);
++                EntitySection<T> entitySection = PersistentEntitySectionManager.this.sectionStorage.getOrCreateSection(l); // Tuinity - diff on change, this should be NEW section
+                 entitySection.add(this.entity);
+                 this.currentSection = entitySection;
+                 this.currentSectionKey = l;
++                // Tuinity start
++                if ((oldRegionX != newRegionX || oldRegionZ != newRegionZ) && visibility.isTicking() && entitySection.getStatus().isTicking()) {
++                    PersistentEntitySectionManager.this.addNavigatorsIfPathingToRegion((Entity)this.entity);
++                }
++                // Tuinity end
+                 this.updateStatus(visibility, entitySection.getStatus());
+             }
+ 
