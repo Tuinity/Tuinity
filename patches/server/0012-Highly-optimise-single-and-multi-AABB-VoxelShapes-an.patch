@@ -70,10 +70,10 @@ index 5f4179ba2581ab80e8810811fc96df7d553d5653..01320aea07b51c97ae5f0654b81d2332
  }
 diff --git a/src/main/java/com/tuinity/tuinity/util/CollisionUtil.java b/src/main/java/com/tuinity/tuinity/util/CollisionUtil.java
 new file mode 100644
-index 0000000000000000000000000000000000000000..089d66ce4913e97c5fc79daee0f2fd932664f28f
+index 0000000000000000000000000000000000000000..a2f52a68420a2d23d8f54f61f7aeede41567dc0f
 --- /dev/null
 +++ b/src/main/java/com/tuinity/tuinity/util/CollisionUtil.java
-@@ -0,0 +1,600 @@
+@@ -0,0 +1,645 @@
 +package com.tuinity.tuinity.util;
 +
 +import com.tuinity.tuinity.voxel.AABBVoxelShape;
@@ -83,6 +83,7 @@ index 0000000000000000000000000000000000000000..089d66ce4913e97c5fc79daee0f2fd93
 +import net.minecraft.server.level.WorldGenRegion;
 +import net.minecraft.util.Mth;
 +import net.minecraft.world.entity.Entity;
++import net.minecraft.world.item.Item;
 +import net.minecraft.world.level.CollisionGetter;
 +import net.minecraft.world.level.EntityGetter;
 +import net.minecraft.world.level.block.Blocks;
@@ -90,13 +91,17 @@ index 0000000000000000000000000000000000000000..089d66ce4913e97c5fc79daee0f2fd93
 +import net.minecraft.world.level.border.WorldBorder;
 +import net.minecraft.world.level.chunk.ChunkAccess;
 +import net.minecraft.world.level.chunk.LevelChunkSection;
++import net.minecraft.world.level.material.FlowingFluid;
++import net.minecraft.world.level.material.FluidState;
 +import net.minecraft.world.phys.AABB;
 +import net.minecraft.world.phys.Vec3;
 +import net.minecraft.world.phys.shapes.ArrayVoxelShape;
 +import net.minecraft.world.phys.shapes.CollisionContext;
++import net.minecraft.world.phys.shapes.EntityCollisionContext;
 +import net.minecraft.world.phys.shapes.Shapes;
 +import net.minecraft.world.phys.shapes.VoxelShape;
 +import java.util.List;
++import java.util.Optional;
 +import java.util.function.BiPredicate;
 +import java.util.function.Predicate;
 +
@@ -590,7 +595,7 @@ index 0000000000000000000000000000000000000000..089d66ce4913e97c5fc79daee0f2fd93
 +                            if ((edgeCount != 1 || blockData.shapeExceedsCube()) && (edgeCount != 2 || blockData.getBlock() == Blocks.MOVING_PISTON)) {
 +                                mutablePos.set(blockX, blockY, blockZ);
 +                                if (collisionShape == null) {
-+                                    collisionShape = entity == null ? CollisionContext.empty() : CollisionContext.of(entity);
++                                    collisionShape = new LazyEntityCollisionContext(entity);
 +                                }
 +                                VoxelShape voxelshape2 = blockData.getCollisionShape(getter, mutablePos, collisionShape);
 +                                if (voxelshape2 != Shapes.empty()) {
@@ -667,6 +672,46 @@ index 0000000000000000000000000000000000000000..089d66ce4913e97c5fc79daee0f2fd93
 +        } else {
 +            return getCollisionsForBlocksOrWorldBorder(view, entity, aabb, into, loadChunks, collidesWithUnloadedChunks, checkBorder, checkOnly, blockPredicate)
 +                | getEntityHardCollisions(view, entity, aabb, into, checkOnly, entityPredicate);
++        }
++    }
++
++    public static final class LazyEntityCollisionContext extends EntityCollisionContext {
++
++        private CollisionContext delegate;
++        private final Entity entity;
++
++        public LazyEntityCollisionContext(final Entity entity) {
++            super(false, 0.0, null, null, null, Optional.ofNullable(entity));
++            this.entity = entity;
++        }
++
++        public CollisionContext getDelegate() {
++            return this.delegate == null ? this.delegate = (this.entity == null ? CollisionContext.empty() : CollisionContext.of(this.entity)) : this.delegate;
++        }
++
++        @Override
++        public boolean isDescending() {
++            return this.getDelegate().isDescending();
++        }
++
++        @Override
++        public boolean isAbove(final VoxelShape shape, final BlockPos pos, final boolean defaultValue) {
++            return this.getDelegate().isAbove(shape, pos, defaultValue);
++        }
++
++        @Override
++        public boolean hasItemOnFeet(final Item item) {
++            return this.getDelegate().hasItemOnFeet(item);
++        }
++
++        @Override
++        public boolean isHoldingItem(final Item item) {
++            return this.getDelegate().isHoldingItem(item);
++        }
++
++        @Override
++        public boolean canStandOnFluid(final FluidState state, final FlowingFluid fluid) {
++            return this.getDelegate().canStandOnFluid(state, fluid);
 +        }
 +    }
 +
