@@ -12,7 +12,7 @@ completion (completion of the world gen future,
 PlayerChunkMap#b(PlayerChunk, ChunkStatus)) was detected and fixed.
 
 diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
-index e9f155386667bdbd40b3777d28c9795ab1c70c43..44c8b4cb55f453c51cfaab5ef0d5bb25690674fa 100644
+index 810fae063dea3c03ba69d1fa8005a8a36bd06a9a..5e0bcd79af6b6cdae3a984f0316c7bcd00ce5d85 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
 @@ -607,12 +607,16 @@ public class ChunkHolder {
@@ -88,7 +88,7 @@ index e9f155386667bdbd40b3777d28c9795ab1c70c43..44c8b4cb55f453c51cfaab5ef0d5bb25
                  either.ifLeft(chunk -> {
                      ChunkHolder.this.isEntityTickingReady = true;
                      // Tuinity start - entity ticking chunk set
-@@ -801,11 +821,19 @@ public class ChunkHolder {
+@@ -802,11 +822,19 @@ public class ChunkHolder {
          // CraftBukkit start
          // ChunkLoadEvent: Called after the chunk is loaded: isChunkLoaded returns true and chunk is ready to be modified by plugins.
          if (!playerchunk_state.isOrAfter(ChunkHolder.FullChunkStatus.BORDER) && playerchunk_state1.isOrAfter(ChunkHolder.FullChunkStatus.BORDER)) {
@@ -112,10 +112,10 @@ index e9f155386667bdbd40b3777d28c9795ab1c70c43..44c8b4cb55f453c51cfaab5ef0d5bb25
                  }
              }).exceptionally((throwable) -> {
 diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
-index e33a370f92b5a3d2707b42e6d08269067ca86e5b..05be9edc13cd8c8e933410f1e06fa752d76ee806 100644
+index ffb55b30f42aec741eb0a8e6bfc97c4385e281ec..8634a27af1db43da16d76532c496f568f8f44d50 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkMap.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
-@@ -1213,11 +1213,20 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -1225,11 +1225,20 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
          if (requiredStatus == ChunkStatus.EMPTY) {
              return this.scheduleChunkLoad(chunkcoordintpair);
          } else {
@@ -130,7 +130,7 @@ index e33a370f92b5a3d2707b42e6d08269067ca86e5b..05be9edc13cd8c8e933410f1e06fa752
 +
 +            // Tuinity start - revert 1.17 chunk system changes
              if (requiredStatus == ChunkStatus.LIGHT) {
-                 this.distanceManager.addTicket(TicketType.LIGHT, chunkcoordintpair, 33 + ChunkStatus.getDistance(ChunkStatus.FEATURES), chunkcoordintpair);
+                 this.distanceManager.addTicket(TicketType.LIGHT, chunkcoordintpair, 33 + ChunkStatus.getDistance(ChunkStatus.LIGHT), chunkcoordintpair);
              }
 -
 -            Optional<ChunkAccess> optional = ((Either) holder.getOrScheduleFuture(requiredStatus.getParent(), this).getNow(ChunkHolder.UNLOADED_CHUNK)).left();
@@ -138,7 +138,7 @@ index e33a370f92b5a3d2707b42e6d08269067ca86e5b..05be9edc13cd8c8e933410f1e06fa752
  
              if (optional.isPresent() && ((ChunkAccess) optional.get()).getStatus().isOrAfter(requiredStatus)) {
                  CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> completablefuture = requiredStatus.load(this.level, this.structureManager, this.lightEngine, (ichunkaccess) -> {
-@@ -1229,6 +1238,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -1241,6 +1250,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
              } else {
                  return this.scheduleChunkGeneration(holder, requiredStatus);
              }
@@ -146,7 +146,7 @@ index e33a370f92b5a3d2707b42e6d08269067ca86e5b..05be9edc13cd8c8e933410f1e06fa752
          }
      }
  
-@@ -1329,7 +1339,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -1341,7 +1351,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
          });
          Executor executor = (runnable) -> {
              // Paper start - optimize chunk status progression without jumping through thread pool
@@ -155,7 +155,7 @@ index e33a370f92b5a3d2707b42e6d08269067ca86e5b..05be9edc13cd8c8e933410f1e06fa752
                  this.mainInvokingExecutor.execute(runnable);
                  return;
              }
-@@ -1360,7 +1370,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -1372,7 +1382,10 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
                  this.releaseLightTicket(chunkcoordintpair);
                  return CompletableFuture.completedFuture(Either.right(playerchunk_failure));
              });

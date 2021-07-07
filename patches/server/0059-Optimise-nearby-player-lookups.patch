@@ -9,7 +9,7 @@ since the penalty of a map lookup could outweigh the benefits of
 searching less players (as it basically did in the outside range patch).
 
 diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
-index 8d0e3cd44c05b041c8c48ced75dad30cbaacc704..2dd5909a08a8d4bc250b36d297ef9f3f04aed8bf 100644
+index 84c9964db6bec1c982131f664270b9a6415dfab0..6c32e2922b0d0b4df3fe79b5558c134647c34a6c 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
 @@ -240,6 +240,12 @@ public class ChunkHolder {
@@ -26,10 +26,10 @@ index 8d0e3cd44c05b041c8c48ced75dad30cbaacc704..2dd5909a08a8d4bc250b36d297ef9f3f
      // Paper end - optimise isOutsideOfRange
      long lastAutoSaveTime; // Paper - incremental autosave
 diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
-index 5328fbbac97690575a699f2ee2852354e3ebd419..c44faf838c0bc7da480afe0f5ccedcaf8d0fea91 100644
+index 47572f87b8527fc0b85dbd614bedab3fbdfae39d..09a096c7a10ff74db0e1d8a7141b7f478d78768c 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkMap.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
-@@ -239,6 +239,12 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -240,6 +240,12 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
      public final com.destroystokyo.paper.util.misc.PlayerAreaMap playerMobSpawnMap; // this map is absent from updateMaps since it's controlled at the start of the chunkproviderserver tick
      public final com.destroystokyo.paper.util.misc.PlayerAreaMap playerChunkTickRangeMap;
      // Paper end - optimise PlayerChunkMap#isOutsideRange
@@ -42,7 +42,7 @@ index 5328fbbac97690575a699f2ee2852354e3ebd419..c44faf838c0bc7da480afe0f5ccedcaf
  
      void addPlayerToDistanceMaps(ServerPlayer player) {
          int chunkX = MCUtil.getChunkCoordinate(player.getX());
-@@ -259,6 +265,9 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -260,6 +266,9 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
          this.playerChunkTickRangeMap.add(player, chunkX, chunkZ, DistanceManager.MOB_SPAWN_RANGE);
          // Paper end - optimise PlayerChunkMap#isOutsideRange
          this.playerChunkManager.addPlayer(player); // Tuinity - replace chunk loader
@@ -52,7 +52,7 @@ index 5328fbbac97690575a699f2ee2852354e3ebd419..c44faf838c0bc7da480afe0f5ccedcaf
      }
  
      void removePlayerFromDistanceMaps(ServerPlayer player) {
-@@ -272,6 +281,9 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -273,6 +282,9 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
          this.playerChunkTickRangeMap.remove(player);
          // Paper end - optimise PlayerChunkMap#isOutsideRange
          this.playerChunkManager.removePlayer(player); // Tuinity - replace chunk loader
@@ -62,7 +62,7 @@ index 5328fbbac97690575a699f2ee2852354e3ebd419..c44faf838c0bc7da480afe0f5ccedcaf
      }
  
      void updateMaps(ServerPlayer player) {
-@@ -290,6 +302,9 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -291,6 +303,9 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
          this.playerChunkTickRangeMap.update(player, chunkX, chunkZ, DistanceManager.MOB_SPAWN_RANGE);
          // Paper end - optimise PlayerChunkMap#isOutsideRange
          this.playerChunkManager.updatePlayer(player); // Tuinity - replace chunk loader
@@ -72,7 +72,7 @@ index 5328fbbac97690575a699f2ee2852354e3ebd419..c44faf838c0bc7da480afe0f5ccedcaf
      }
      // Paper end
      // Tuinity start
-@@ -445,6 +460,23 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -456,6 +471,23 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
          this.dataRegionManager = new com.tuinity.tuinity.chunk.SingleThreadChunkRegionManager(this.level, 2, (1.0 / 3.0), 1, 6, "Data", DataRegionData::new, DataRegionSectionData::new);
          this.regionManagers.add(this.dataRegionManager);
          // Tuinity end
@@ -96,7 +96,7 @@ index 5328fbbac97690575a699f2ee2852354e3ebd419..c44faf838c0bc7da480afe0f5ccedcaf
      }
  
      // Paper start - Chunk Prioritization
-@@ -774,7 +806,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -785,7 +817,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
          } else {
              if (holder != null) {
                  holder.setTicketLevel(level);
@@ -105,7 +105,7 @@ index 5328fbbac97690575a699f2ee2852354e3ebd419..c44faf838c0bc7da480afe0f5ccedcaf
              }
  
              if (holder != null) {
-@@ -789,6 +821,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -800,6 +832,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
                  holder = (ChunkHolder) this.pendingUnloads.remove(pos);
                  if (holder != null) {
                      holder.setTicketLevel(level);
@@ -114,7 +114,7 @@ index 5328fbbac97690575a699f2ee2852354e3ebd419..c44faf838c0bc7da480afe0f5ccedcaf
                      holder = new ChunkHolder(new ChunkPos(pos), level, this.level, this.lightEngine, this.queueSorter, this);
                      // Tuinity start
 diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
-index 2d7b5295db3f31494b14d2f89b4c95a929238259..a83b4e9b6b5bd6a57d4bc2f1cdc78ffb7e7d2fdd 100644
+index 4e9cbc3ab69167ab5a7876174b37955dc95dd5d0..d87d397cc04102c5b47519c50708364c2b03941d 100644
 --- a/src/main/java/net/minecraft/server/level/ServerLevel.java
 +++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
 @@ -397,6 +397,83 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
@@ -217,10 +217,10 @@ index 2d7b5295db3f31494b14d2f89b4c95a929238259..a83b4e9b6b5bd6a57d4bc2f1cdc78ffb
  
          this.handlingTick = true;
 diff --git a/src/main/java/net/minecraft/world/entity/Mob.java b/src/main/java/net/minecraft/world/entity/Mob.java
-index c4c5c35e37b793f3b74349ff03c0829f4913b91c..154b3c767d079f72643c826b962892c1029b0a1b 100644
+index 0ce0e7a923da812a02d9ab83607d3cc9c87047df..f8c6d88d6bf71e7bc46b5f44e688229da5fd3da2 100644
 --- a/src/main/java/net/minecraft/world/entity/Mob.java
 +++ b/src/main/java/net/minecraft/world/entity/Mob.java
-@@ -784,7 +784,12 @@ public abstract class Mob extends LivingEntity {
+@@ -785,7 +785,12 @@ public abstract class Mob extends LivingEntity {
          if (this.level.getDifficulty() == Difficulty.PEACEFUL && this.shouldDespawnInPeaceful()) {
              this.discard();
          } else if (!this.isPersistenceRequired() && !this.requiresCustomPersistence()) {
@@ -235,10 +235,10 @@ index c4c5c35e37b793f3b74349ff03c0829f4913b91c..154b3c767d079f72643c826b962892c1
              if (entityhuman != null) {
                  double d0 = entityhuman.distanceToSqr((Entity) this); // CraftBukkit - decompile error
 diff --git a/src/main/java/net/minecraft/world/level/Level.java b/src/main/java/net/minecraft/world/level/Level.java
-index 2ee9e52116cf37d218aedb1207c15ff289f7251c..38753e10b1597a2f3bd2cde208c6e30b26a03b43 100644
+index 2143b2c3b852b13fefa3cb8f0431bde3ae79bd8d..61a4dea715689b0ce9247040db5dd2080ee2e167 100644
 --- a/src/main/java/net/minecraft/world/level/Level.java
 +++ b/src/main/java/net/minecraft/world/level/Level.java
-@@ -247,6 +247,69 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -248,6 +248,69 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
          return ret;
      }
      // Tuinity end

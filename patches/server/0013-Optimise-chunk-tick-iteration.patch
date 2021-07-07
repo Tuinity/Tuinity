@@ -6,10 +6,10 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-index 06d198bd3c77bb7b9e7be0262e47d98205ae6812..eaa6d10c04946874faf48b8e46753ebebc8cdb60 100644
+index 80530747cd9b197a84874b1cae6521cb2bf3482e..d47b93b54db83e8c45012ddd3112e0e828856554 100644
 --- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
 +++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-@@ -994,12 +994,15 @@ public class ServerChunkCache extends ChunkSource {
+@@ -993,18 +993,26 @@ public class ServerChunkCache extends ChunkSource {
              //Collections.shuffle(list); // Paper
              // Paper - moved up
              this.level.timings.chunkTicks.startTiming(); // Paper
@@ -17,6 +17,7 @@ index 06d198bd3c77bb7b9e7be0262e47d98205ae6812..eaa6d10c04946874faf48b8e46753ebe
 -                Optional<LevelChunk> optional = ((Either) playerchunk.getTickingChunkFuture().getNow(ChunkHolder.UNLOADED_LEVEL_CHUNK)).left();
 -
 -                if (optional.isPresent()) {
+-                    LevelChunk chunk = (LevelChunk) optional.get();
 +            // Tuinity start
 +            int chunksTicked = 0;
 +            com.tuinity.tuinity.util.maplist.IteratorSafeOrderedReferenceSet.Iterator<LevelChunk> iterator = this.entityTickingChunks.iterator();
@@ -24,14 +25,12 @@ index 06d198bd3c77bb7b9e7be0262e47d98205ae6812..eaa6d10c04946874faf48b8e46753ebe
 +                LevelChunk chunk = iterator.next();
 +                ChunkHolder playerchunk = chunk.playerChunk;
 +                if (playerchunk != null) {
-                     this.level.getProfiler().push("broadcast");
--                    LevelChunk chunk = (LevelChunk) optional.get();
++                    this.level.getProfiler().push("broadcast");
++                    this.level.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
++                    playerchunk.broadcastChanges(chunk);
++                    this.level.timings.broadcastChunkUpdates.stopTiming(); // Paper - timings
++                    this.level.getProfiler().pop();
 +                    // Tuinity end
- 
-                     this.level.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
-                     playerchunk.broadcastChanges(chunk);
-@@ -1007,11 +1010,11 @@ public class ServerChunkCache extends ChunkSource {
-                     this.level.getProfiler().pop();
                      ChunkPos chunkcoordintpair = chunk.getPos();
  
 -                    if (this.level.isPositionEntityTicking(chunkcoordintpair) && !this.chunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, false)) { // Paper - optimise isOutsideOfRange
@@ -44,7 +43,7 @@ index 06d198bd3c77bb7b9e7be0262e47d98205ae6812..eaa6d10c04946874faf48b8e46753ebe
                          }
  
                          // this.level.timings.doTickTiles.startTiming(); // Spigot // Paper
-@@ -1019,7 +1022,11 @@ public class ServerChunkCache extends ChunkSource {
+@@ -1012,7 +1020,11 @@ public class ServerChunkCache extends ChunkSource {
                          // this.level.timings.doTickTiles.stopTiming(); // Spigot // Paper
                      }
                  }
@@ -57,3 +56,26 @@ index 06d198bd3c77bb7b9e7be0262e47d98205ae6812..eaa6d10c04946874faf48b8e46753ebe
              this.level.timings.chunkTicks.stopTiming(); // Paper
              this.level.getProfiler().push("customSpawners");
              if (flag1) {
+@@ -1021,21 +1033,7 @@ public class ServerChunkCache extends ChunkSource {
+                 } // Paper - timings
+             }
+ 
+-            this.level.getProfiler().popPush("broadcast");
+-            this.chunkMap.forEachVisibleChunk((playerchunk) -> { // Paper - safe iterator incase chunk loads, also no wrapping
+-                Optional<LevelChunk> optional = ((Either) playerchunk.getTickingChunkFuture().getNow(ChunkHolder.UNLOADED_LEVEL_CHUNK)).left(); // CraftBukkit - decompile error
+-
+-                Objects.requireNonNull(playerchunk);
+-
+-                // Paper start - timings
+-                optional.ifPresent(chunk -> {
+-                    this.level.timings.broadcastChunkUpdates.startTiming(); // Paper - timings
+-                    playerchunk.broadcastChanges(chunk);
+-                    this.level.timings.broadcastChunkUpdates.stopTiming(); // Paper - timings
+-                });
+-                // Paper end
+-            });
+-            this.level.getProfiler().pop();
++            // Tuinity - no, iterating just ONCE is expensive enough! Don't do it TWICE! Code moved up
+             this.level.getProfiler().pop();
+         }
+ 

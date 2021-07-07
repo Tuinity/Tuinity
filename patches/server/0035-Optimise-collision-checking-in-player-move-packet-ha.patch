@@ -6,10 +6,10 @@ Subject: [PATCH] Optimise collision checking in player move packet handling
 Move collision logic to just the hasNewCollision call instead of getCubes + hasNewCollision
 
 diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index 35fa416a8ce332e823ed5077a8fd3492683d7ad0..ddc77bc3315e234a04f33f1688e6c5e3ea170551 100644
+index 6ff04fc7202a7eb1f2b5978a2e2a573945d9dde1..63043869f99a46b90b9106b44476edac5f06c724 100644
 --- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -577,12 +577,13 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -576,12 +576,13 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
                      return;
                  }
  
@@ -24,7 +24,7 @@ index 35fa416a8ce332e823ed5077a8fd3492683d7ad0..ddc77bc3315e234a04f33f1688e6c5e3
                  double d11 = d7;
  
                  d6 = d3 - entity.getX();
-@@ -596,16 +597,23 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -595,16 +596,23 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
                  boolean flag1 = false;
  
                  if (d10 > org.spigotmc.SpigotConfig.movedWronglyThreshold) { // Spigot
@@ -52,7 +52,7 @@ index 35fa416a8ce332e823ed5077a8fd3492683d7ad0..ddc77bc3315e234a04f33f1688e6c5e3
                      entity.absMoveTo(d0, d1, d2, f, f1);
                      this.player.absMoveTo(d0, d1, d2, this.player.getYRot(), this.player.getXRot()); // CraftBukkit
                      this.connection.send(new ClientboundMoveVehiclePacket(entity));
-@@ -691,7 +699,32 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -690,7 +698,32 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
      }
  
      private boolean noBlocksAround(Entity entity) {
@@ -86,7 +86,7 @@ index 35fa416a8ce332e823ed5077a8fd3492683d7ad0..ddc77bc3315e234a04f33f1688e6c5e3
      }
  
      @Override
-@@ -1247,7 +1280,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -1227,7 +1260,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
                  }
  
                  if (this.awaitingPositionFromClient != null) {
@@ -95,7 +95,7 @@ index 35fa416a8ce332e823ed5077a8fd3492683d7ad0..ddc77bc3315e234a04f33f1688e6c5e3
                          this.awaitingTeleportTime = this.tickCount;
                          this.teleport(this.awaitingPositionFromClient.x, this.awaitingPositionFromClient.y, this.awaitingPositionFromClient.z, this.player.getYRot(), this.player.getXRot());
                      }
-@@ -1335,7 +1368,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -1315,7 +1348,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
                                  }
                              }
  
@@ -104,7 +104,7 @@ index 35fa416a8ce332e823ed5077a8fd3492683d7ad0..ddc77bc3315e234a04f33f1688e6c5e3
  
                              d7 = d0 - this.lastGoodX;
                              d8 = d1 - this.lastGoodY;
-@@ -1374,6 +1407,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -1354,6 +1387,7 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
                              }
  
                              this.player.move(MoverType.PLAYER, new Vec3(d7, d8, d9));
@@ -112,7 +112,7 @@ index 35fa416a8ce332e823ed5077a8fd3492683d7ad0..ddc77bc3315e234a04f33f1688e6c5e3
                              this.player.setOnGround(packet.isOnGround()); // CraftBukkit - SPIGOT-5810, SPIGOT-5835: reset by this.player.move
                              // Paper start - prevent position desync
                              if (this.awaitingPositionFromClient != null) {
-@@ -1393,12 +1427,23 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -1373,12 +1407,23 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
                              boolean flag1 = false;
  
                              if (!this.player.isChangingDimension() && d11 > org.spigotmc.SpigotConfig.movedWronglyThreshold && !this.player.isSleeping() && !this.player.gameMode.isCreative() && this.player.gameMode.getGameModeForPlayer() != GameType.SPECTATOR) { // Spigot
@@ -138,7 +138,7 @@ index 35fa416a8ce332e823ed5077a8fd3492683d7ad0..ddc77bc3315e234a04f33f1688e6c5e3
                                  this.teleport(d3, d4, d5, f, f1);
                              } else {
                                  // CraftBukkit start - fire PlayerMoveEvent
-@@ -1485,6 +1530,27 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -1465,6 +1510,27 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
          }
      }
  

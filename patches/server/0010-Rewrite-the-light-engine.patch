@@ -3839,7 +3839,7 @@ index d8be2ad889f46491e50404916fb4ae0de5f42098..5b9ea0af272c5e7a85d2a954a9214bf8
          }
  
 diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
-index 6acdf1612064edb1429f0ba212795e4af4525e75..e9f155386667bdbd40b3777d28c9795ab1c70c43 100644
+index fd471538212c114e0a736ca4a411a7dd9a7ba7f9..810fae063dea3c03ba69d1fa8005a8a36bd06a9a 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
 @@ -55,7 +55,7 @@ public class ChunkHolder {
@@ -3852,10 +3852,10 @@ index 6acdf1612064edb1429f0ba212795e4af4525e75..e9f155386667bdbd40b3777d28c9795a
      private final DebugBuffer<ChunkHolder.ChunkSaveDebug> chunkToSaveHistory;
      public int oldTicketLevel;
 diff --git a/src/main/java/net/minecraft/server/level/ChunkMap.java b/src/main/java/net/minecraft/server/level/ChunkMap.java
-index 8b4fdcc3e319076d269c2a3604c1b1cdbd933c7d..f60509ccb26e5e465ce12bff63111098fd19c5eb 100644
+index cb88137728828b8bfd7836397118d8782859272a..29765ae1a2e44ab32bc0d655095f973db1e93216 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkMap.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkMap.java
-@@ -148,7 +148,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
+@@ -149,7 +149,7 @@ public class ChunkMap extends ChunkStorage implements ChunkHolder.PlayerProvider
      public final LongSet entitiesInLevel;
      public final ServerLevel level;
      private final ThreadedLevelLightEngine lightEngine;
@@ -3865,10 +3865,10 @@ index 8b4fdcc3e319076d269c2a3604c1b1cdbd933c7d..f60509ccb26e5e465ce12bff63111098
      public final ChunkGenerator generator;
      public final Supplier<DimensionDataStorage> overworldDataStorage;
 diff --git a/src/main/java/net/minecraft/server/level/ThreadedLevelLightEngine.java b/src/main/java/net/minecraft/server/level/ThreadedLevelLightEngine.java
-index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2923b5ad0 100644
+index f0df7b2bd618c7be18c4c86f735b303dc73d98ad..73e1efe5bcec0522384118f0ca5e4d4f3e8bce82 100644
 --- a/src/main/java/net/minecraft/server/level/ThreadedLevelLightEngine.java
 +++ b/src/main/java/net/minecraft/server/level/ThreadedLevelLightEngine.java
-@@ -23,6 +23,17 @@ import net.minecraft.world.level.lighting.LevelLightEngine;
+@@ -25,6 +25,17 @@ import net.minecraft.world.level.lighting.LevelLightEngine;
  import org.apache.logging.log4j.LogManager;
  import org.apache.logging.log4j.Logger;
  
@@ -3886,7 +3886,7 @@ index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2
  public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCloseable {
      private static final Logger LOGGER = LogManager.getLogger();
      private final ProcessorMailbox<Runnable> taskMailbox;
-@@ -32,13 +43,166 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+@@ -168,13 +179,166 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
      private volatile int taskPerBatch = 5;
      private final AtomicBoolean scheduled = new AtomicBoolean();
  
@@ -3899,7 +3899,7 @@ index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2
      public ThreadedLevelLightEngine(LightChunkGetter chunkProvider, ChunkMap chunkStorage, boolean hasBlockLight, ProcessorMailbox<Runnable> processor, ProcessorHandle<ChunkTaskPriorityQueueSorter.Message<Runnable>> executor) {
 -        super(chunkProvider, true, hasBlockLight);
 +        super(chunkProvider, false, false); // Tuinity - destroy vanilla light engine state
-         this.chunkMap = chunkStorage;
+         this.chunkMap = chunkStorage; this.playerChunkMap = chunkMap; // Paper
          this.sorterMailbox = executor;
          this.taskMailbox = processor;
 +        // Tuinity start - replace light engine impl
@@ -4034,7 +4034,7 @@ index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2
 +    @Override
 +    public boolean hasLightWork() {
 +        // route to new light engine
-+        return this.theLightEngine.hasUpdates() || !this.lightTasks.isEmpty();
++        return this.theLightEngine.hasUpdates() || !this.queue.isEmpty();
      }
  
 +    @Override
@@ -4054,7 +4054,7 @@ index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2
      @Override
      public void close() {
      }
-@@ -55,15 +219,16 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+@@ -191,15 +355,16 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
  
      @Override
      public void checkBlock(BlockPos pos) {
@@ -4077,7 +4077,7 @@ index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2
          this.addTask(pos.x, pos.z, () -> {
              return 0;
          }, ThreadedLevelLightEngine.TaskType.PRE_UPDATE, Util.name(() -> {
-@@ -86,17 +251,16 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+@@ -222,17 +387,16 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
  
      @Override
      public void updateSectionStatus(SectionPos pos, boolean notReady) {
@@ -4101,7 +4101,7 @@ index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2
          this.addTask(chunkPos.x, chunkPos.z, ThreadedLevelLightEngine.TaskType.PRE_UPDATE, Util.name(() -> {
              super.enableLightSources(chunkPos, bl);
          }, () -> {
-@@ -106,6 +270,7 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+@@ -242,6 +406,7 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
  
      @Override
      public void queueSectionData(LightLayer lightType, SectionPos pos, @Nullable DataLayer nibbles, boolean bl) {
@@ -4109,7 +4109,7 @@ index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2
          this.addTask(pos.x(), pos.z(), () -> {
              return 0;
          }, ThreadedLevelLightEngine.TaskType.PRE_UPDATE, Util.name(() -> {
-@@ -131,6 +296,7 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+@@ -263,6 +428,7 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
  
      @Override
      public void retainData(ChunkPos pos, boolean retainData) {
@@ -4117,7 +4117,7 @@ index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2
          this.addTask(pos.x, pos.z, () -> {
              return 0;
          }, ThreadedLevelLightEngine.TaskType.PRE_UPDATE, Util.name(() -> {
-@@ -141,6 +307,37 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+@@ -273,6 +439,37 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
      }
  
      public CompletableFuture<ChunkAccess> lightChunk(ChunkAccess chunk, boolean excludeBlocks) {
@@ -4153,26 +4153,32 @@ index de228b677810ce49c4e953ca0b4e590413b20e45..580165d0a728a4558031dac11f5edaf2
 +        }
 +        // Tuinity end - replace light engine impl
          ChunkPos chunkPos = chunk.getPos();
-         chunk.setLightCorrect(false);
-         this.addTask(chunkPos.x, chunkPos.z, ThreadedLevelLightEngine.TaskType.PRE_UPDATE, Util.name(() -> {
-@@ -175,7 +372,7 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+         // Paper start
+         //ichunkaccess.b(false); // Don't need to disable this
+@@ -320,7 +517,7 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
      }
  
      public void tryScheduleUpdate() {
--        if ((!this.lightTasks.isEmpty() || super.hasLightWork()) && this.scheduled.compareAndSet(false, true)) {
-+        if (this.hasLightWork() && this.scheduled.compareAndSet(false, true)) { // Tuinity - rewrite light engine
+-        if ((!this.queue.isEmpty() || super.hasLightWork()) && this.scheduled.compareAndSet(false, true)) { // Paper
++        if (this.hasLightWork() && this.scheduled.compareAndSet(false, true)) { // Paper // Tuinity - rewrite light engine
              this.taskMailbox.tell(() -> {
                  this.runUpdate();
                  this.scheduled.set(false);
-@@ -197,7 +394,7 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+@@ -337,12 +534,12 @@ public class ThreadedLevelLightEngine extends LevelLightEngine implements AutoCl
+         if (queue.poll(pre, post)) {
+             pre.forEach(Runnable::run);
+             pre.clear();
+-            super.runUpdates(Integer.MAX_VALUE, true, true);
++            this.theLightEngine.propagateChanges(); // Tuinity - rewrite light engine
+             post.forEach(Runnable::run);
+             post.clear();
+         } else {
+             // might have level updates to go still
+-            super.runUpdates(Integer.MAX_VALUE, true, true);
++            this.theLightEngine.propagateChanges(); // Tuinity - rewrite light engine
          }
- 
-         objectListIterator.back(j);
--        super.runUpdates(Integer.MAX_VALUE, true, true);
-+        this.theLightEngine.propagateChanges(); // Tuinity - rewrite light engine
- 
-         for(int var5 = 0; objectListIterator.hasNext() && var5 < i; ++var5) {
-             Pair<ThreadedLevelLightEngine.TaskType, Runnable> pair2 = objectListIterator.next();
+         // Paper end
+     }
 diff --git a/src/main/java/net/minecraft/server/level/TicketType.java b/src/main/java/net/minecraft/server/level/TicketType.java
 index 3c1698ba0d3bc412ab957777d9b5211dbc555208..8a89410fac66f0c7f1bf39ea763b5817cb3bd51b 100644
 --- a/src/main/java/net/minecraft/server/level/TicketType.java
@@ -4273,19 +4279,19 @@ index 63203172a127d812fd59cea0546b67e855ce3ad5..498988b70617f086f047d8d293e52537
      @Nullable
      BlockState setBlockState(BlockPos pos, BlockState state, boolean moved);
 diff --git a/src/main/java/net/minecraft/world/level/chunk/DataLayer.java b/src/main/java/net/minecraft/world/level/chunk/DataLayer.java
-index 25570730f376665ca6477263d3b3f94d725ecd21..21d85b2f70e5ffe46220905b27715579d7fcdc59 100644
+index c4acc7e0035d37167cf5a56f8d90ba17f85cbbe3..2beae8a39987dd9c514e9d369056e65943d7b130 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/DataLayer.java
 +++ b/src/main/java/net/minecraft/world/level/chunk/DataLayer.java
-@@ -11,7 +11,7 @@ public class DataLayer {
-     public static final int LAYER_SIZE = 128;
+@@ -12,7 +12,7 @@ public class DataLayer {
+     public static final int SIZE = 2048;
      private static final int NIBBLE_SIZE = 4;
      @Nullable
 -    protected byte[] data;
 +    protected byte[] data; public final byte[] getDataRaw() { return this.data; } // Tuinity - provide accessor
      // Paper start
-     public static byte[] EMPTY_NIBBLE = new byte[2048];
-     private static final int nibbleBucketSizeMultiplier = Integer.getInteger("Paper.nibbleBucketSize", 3072);
-@@ -54,6 +54,7 @@ public class DataLayer {
+     public static final DataLayer EMPTY_NIBBLE_ARRAY = new DataLayer() {
+         @Override
+@@ -62,6 +62,7 @@ public class DataLayer {
      boolean poolSafe = false;
      public java.lang.Runnable cleaner;
      private void registerCleaner() {
@@ -4293,7 +4299,7 @@ index 25570730f376665ca6477263d3b3f94d725ecd21..21d85b2f70e5ffe46220905b27715579
          if (!poolSafe) {
              cleaner = net.minecraft.server.MCUtil.registerCleaner(this, this.data, DataLayer::releaseBytes);
          } else {
-@@ -68,7 +69,7 @@ public class DataLayer {
+@@ -76,7 +77,7 @@ public class DataLayer {
      }
      public DataLayer(byte[] bytes, boolean isSafe) {
          this.data = bytes;
@@ -4302,7 +4308,7 @@ index 25570730f376665ca6477263d3b3f94d725ecd21..21d85b2f70e5ffe46220905b27715579
          registerCleaner();
          // Paper end
          if (bytes.length != 2048) {
-@@ -153,7 +154,7 @@ public class DataLayer {
+@@ -162,7 +163,7 @@ public class DataLayer {
      }
      // Paper end
      public DataLayer copy() {
@@ -4588,7 +4594,7 @@ index 78bd3274866fed3d627a3eda7b96b92716507d38..ccdadf5d7c07d74f5bea94fc21784114
                  }
  
 diff --git a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
-index 18432dc1e5067d65cda709b7b3bcc2dd37b77d02..5a71f1772f4169d52557bd4c438ed7fecf65d7d5 100644
+index 9ee2321150d3de7bf1a11c212951bc69872f4dd8..0ca17cb9f0e403461927ee44781aa883ce6aeb2a 100644
 --- a/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
 +++ b/src/main/java/net/minecraft/world/level/chunk/storage/ChunkSerializer.java
 @@ -65,6 +65,14 @@ import org.apache.logging.log4j.Logger;

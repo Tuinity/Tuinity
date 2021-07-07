@@ -7,10 +7,10 @@ Subject: [PATCH] Stop large move vectors in player packet handling from
 Looks like we need to check three vectors, not two. fun.
 
 diff --git a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-index ddc77bc3315e234a04f33f1688e6c5e3ea170551..f78119970da27ef66a9d9093e2e42ce129d4cf31 100644
+index 63043869f99a46b90b9106b44476edac5f06c724..53e9ba24338690b1c5f12250748273758c68f4d1 100644
 --- a/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
 +++ b/src/main/java/net/minecraft/server/network/ServerGamePacketListenerImpl.java
-@@ -537,6 +537,12 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -536,6 +536,12 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
                  double d10 = Math.max(d6 * d6 + d7 * d7 + d8 * d8, (currDeltaX * currDeltaX + currDeltaY * currDeltaY + currDeltaZ * currDeltaZ) - 1);
                  // Paper end - fix large move vectors killing the server
  
@@ -23,7 +23,7 @@ index ddc77bc3315e234a04f33f1688e6c5e3ea170551..f78119970da27ef66a9d9093e2e42ce1
  
                  // CraftBukkit start - handle custom speeds and skipped ticks
                  this.allowedPlayerTicks += (System.currentTimeMillis() / 50) - this.lastTick;
-@@ -579,9 +585,9 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -578,9 +584,9 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
  
                  AABB oldBox = entity.getBoundingBox(); // Tuinity - copy from player movement packet
  
@@ -36,7 +36,7 @@ index ddc77bc3315e234a04f33f1688e6c5e3ea170551..f78119970da27ef66a9d9093e2e42ce1
                  entity.move(MoverType.PLAYER, new Vec3(d6, d7, d8));
                  boolean didCollide = toX != entity.getX() || toY != entity.getY() || toZ != entity.getZ(); // Tuinity - needed here as the difference in Y can be reset - also note: this is only a guess at whether collisions took place, floating point errors can make this true when it shouldn't be...
                  double d11 = d7;
-@@ -1319,6 +1325,12 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -1299,6 +1305,12 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
                          double currDeltaZ = toZ - prevZ;
                          double d11 = Math.max(d7 * d7 + d8 * d8 + d9 * d9, (currDeltaX * currDeltaX + currDeltaY * currDeltaY + currDeltaZ * currDeltaZ) - 1);
                          // Paper end - fix large move vectors killing the server
@@ -49,7 +49,7 @@ index ddc77bc3315e234a04f33f1688e6c5e3ea170551..f78119970da27ef66a9d9093e2e42ce1
  
                          if (this.player.isSleeping()) {
                              if (d11 > 1.0D) {
-@@ -1370,9 +1382,9 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
+@@ -1350,9 +1362,9 @@ public class ServerGamePacketListenerImpl implements ServerPlayerConnection, Ser
  
                              AABB axisalignedbb = this.player.getBoundingBox(); // Tuinity - diff on change, should be old AABB
  

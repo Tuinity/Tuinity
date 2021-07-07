@@ -6,10 +6,10 @@ Subject: [PATCH] Separate lookup locking from state access in UserCache
 Prevent lookups from stalling simple state access/write calls
 
 diff --git a/src/main/java/net/minecraft/server/players/GameProfileCache.java b/src/main/java/net/minecraft/server/players/GameProfileCache.java
-index 9a428e166561b4bc028732ec563d3b2e99f81a8e..771c575ffe46db94d9c91f3fd0440d4deb460de7 100644
+index 61405c2b53e03a4b83e2c70c6e4d3739ca9676cb..1f307f8e3f0f484dad33e9af085dabd93a3509fd 100644
 --- a/src/main/java/net/minecraft/server/players/GameProfileCache.java
 +++ b/src/main/java/net/minecraft/server/players/GameProfileCache.java
-@@ -60,6 +60,11 @@ public class GameProfileCache {
+@@ -62,6 +62,11 @@ public class GameProfileCache {
      @Nullable
      private Executor executor;
  
@@ -21,7 +21,7 @@ index 9a428e166561b4bc028732ec563d3b2e99f81a8e..771c575ffe46db94d9c91f3fd0440d4d
      public GameProfileCache(GameProfileRepository profileRepository, File cacheFile) {
          this.profileRepository = profileRepository;
          this.file = cacheFile;
-@@ -67,6 +72,7 @@ public class GameProfileCache {
+@@ -69,6 +74,7 @@ public class GameProfileCache {
      }
  
      private void safeAdd(GameProfileCache.GameProfileInfo entry) {
@@ -29,7 +29,7 @@ index 9a428e166561b4bc028732ec563d3b2e99f81a8e..771c575ffe46db94d9c91f3fd0440d4d
          GameProfile gameprofile = entry.getProfile();
  
          entry.setLastAccess(this.getNextOperation());
-@@ -81,6 +87,7 @@ public class GameProfileCache {
+@@ -83,6 +89,7 @@ public class GameProfileCache {
          if (uuid != null) {
              this.profilesByUUID.put(uuid, entry);
          }
@@ -37,7 +37,7 @@ index 9a428e166561b4bc028732ec563d3b2e99f81a8e..771c575ffe46db94d9c91f3fd0440d4d
  
      }
  
-@@ -118,7 +125,7 @@ public class GameProfileCache {
+@@ -119,7 +126,7 @@ public class GameProfileCache {
          return com.destroystokyo.paper.PaperConfig.isProxyOnlineMode(); // Paper
      }
  
@@ -46,41 +46,41 @@ index 9a428e166561b4bc028732ec563d3b2e99f81a8e..771c575ffe46db94d9c91f3fd0440d4d
          Calendar calendar = Calendar.getInstance();
  
          calendar.setTime(new Date());
-@@ -135,8 +142,9 @@ public class GameProfileCache {
+@@ -142,8 +149,9 @@ public class GameProfileCache {
      }
+     // Paper end
  
-     @Nullable
--    public synchronized GameProfile get(String name) { // Paper - synchronize
-+    public GameProfile get(String name) { // Paper - synchronize // Tuinity start - allow better concurrency
+-    public synchronized Optional<GameProfile> get(String name) { // Paper - synchronize
++    public Optional<GameProfile> get(String name) { // Paper - synchronize // Tuinity start - allow better concurrency
          String s1 = name.toLowerCase(Locale.ROOT);
 +        boolean stateLocked = true; try { this.stateLock.lock(); // Tuinity - allow better concurrency
          GameProfileCache.GameProfileInfo usercache_usercacheentry = (GameProfileCache.GameProfileInfo) this.profilesByName.get(s1);
          boolean flag = false;
  
-@@ -150,10 +158,14 @@ public class GameProfileCache {
-         GameProfile gameprofile;
+@@ -157,10 +165,14 @@ public class GameProfileCache {
+         Optional optional;
  
          if (usercache_usercacheentry != null) {
 +            stateLocked = false; this.stateLock.unlock(); // Tuinity - allow better concurrency
              usercache_usercacheentry.setLastAccess(this.getNextOperation());
-             gameprofile = usercache_usercacheentry.getProfile();
+             optional = Optional.of(usercache_usercacheentry.getProfile());
          } else {
 +            stateLocked = false; this.stateLock.unlock(); // Tuinity - allow better concurrency
 +            try { this.lookupLock.lock(); // Tuinity - allow better concurrency
-             gameprofile = GameProfileCache.lookupGameProfile(this.profileRepository, name); // Spigot - use correct case for offline players
+             optional = GameProfileCache.lookupGameProfile(this.profileRepository, name); // Spigot - use correct case for offline players
 +            } finally { this.lookupLock.unlock(); } // Tuinity - allow better concurrency
-             if (gameprofile != null) {
-                 this.add(gameprofile);
+             if (optional.isPresent()) {
+                 this.add((GameProfile) optional.get());
                  flag = false;
-@@ -165,6 +177,7 @@ public class GameProfileCache {
+@@ -172,6 +184,7 @@ public class GameProfileCache {
          }
  
-         return gameprofile;
+         return optional;
 +        } finally { if (stateLocked) {  this.stateLock.unlock(); } } // Tuinity - allow better concurrency
      }
  
-     public void getAsync(String s, Consumer<GameProfile> consumer) {
-@@ -326,7 +339,9 @@ public class GameProfileCache {
+     public void getAsync(String username, Consumer<Optional<GameProfile>> consumer) {
+@@ -322,7 +335,9 @@ public class GameProfileCache {
      }
  
      private Stream<GameProfileCache.GameProfileInfo> getTopMRUProfiles(int limit) {
