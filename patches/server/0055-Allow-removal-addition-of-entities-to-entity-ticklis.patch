@@ -11,10 +11,10 @@ No it doesn't. So, allowing removal while iteration
 ENSURES only entities MARKED TO TICK are ticked.
 
 diff --git a/src/main/java/net/minecraft/world/level/entity/EntityTickList.java b/src/main/java/net/minecraft/world/level/entity/EntityTickList.java
-index f01182a0ac8a14bcd5b1deb778306e7bf1bf70ed..2cfc54a577d0a63a504e24bc54fd763fe51083e5 100644
+index 39252d4d0b1228097d086fca2c650293b14bb275..6ba8b50b59d3f81ec4c974defc319b1bab27c04b 100644
 --- a/src/main/java/net/minecraft/world/level/entity/EntityTickList.java
 +++ b/src/main/java/net/minecraft/world/level/entity/EntityTickList.java
-@@ -9,54 +9,40 @@ import javax.annotation.Nullable;
+@@ -9,57 +9,42 @@ import javax.annotation.Nullable;
  import net.minecraft.world.entity.Entity;
  
  public class EntityTickList {
@@ -41,12 +41,14 @@ index f01182a0ac8a14bcd5b1deb778306e7bf1bf70ed..2cfc54a577d0a63a504e24bc54fd763f
      }
  
      public void add(Entity entity) {
+         com.tuinity.tuinity.util.TickThread.ensureTickThread("Asynchronous entity ticklist addition"); // Tuinity
          this.ensureActiveIsNotIterated();
 -        this.active.put(entity.getId(), entity);
 +        this.entities.add(entity); // Tuinity - replace with better logic, do not delay removals/additions
      }
  
      public void remove(Entity entity) {
+         com.tuinity.tuinity.util.TickThread.ensureTickThread("Asynchronous entity ticklist removal"); // Tuinity
          this.ensureActiveIsNotIterated();
 -        this.active.remove(entity.getId());
 +        this.entities.remove(entity); // Tuinity - replace with better logic, do not delay removals/additions
@@ -58,6 +60,7 @@ index f01182a0ac8a14bcd5b1deb778306e7bf1bf70ed..2cfc54a577d0a63a504e24bc54fd763f
      }
  
      public void forEach(Consumer<Entity> action) {
+         com.tuinity.tuinity.util.TickThread.ensureTickThread("Asynchronous entity ticklist iteration"); // Tuinity
 -        if (this.iterated != null) {
 -            throw new UnsupportedOperationException("Only one concurrent iteration supported");
 -        } else {
@@ -81,7 +84,6 @@ index f01182a0ac8a14bcd5b1deb778306e7bf1bf70ed..2cfc54a577d0a63a504e24bc54fd763f
 +        } finally {
 +            iterator.finishedIterating();
          }
-+
 +        // Tuinity end - replace with better logic, do not delay removals/additions
      }
  }
