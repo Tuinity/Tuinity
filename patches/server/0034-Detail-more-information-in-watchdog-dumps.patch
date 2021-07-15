@@ -7,7 +7,7 @@ Subject: [PATCH] Detail more information in watchdog dumps
 - Dump player name, player uuid, position, and world for packet handling
 
 diff --git a/src/main/java/net/minecraft/network/Connection.java b/src/main/java/net/minecraft/network/Connection.java
-index 431111eebe01804d21aaf443e5df6de8c4384ea0..2ca9a8a45ab721a4b9d062d8ed01a33a6f137c21 100644
+index 41f7fd673a09df86cc325ad4ecc5545273b4363b..2a30f93f556ac96fbb258fdd7649bc3658cbd24c 100644
 --- a/src/main/java/net/minecraft/network/Connection.java
 +++ b/src/main/java/net/minecraft/network/Connection.java
 @@ -481,7 +481,14 @@ public class Connection extends SimpleChannelInboundHandler<Packet<?>> {
@@ -77,10 +77,10 @@ index bcf53ec07b8eeec7a88fb67e6fb908362e6f51b0..7265bee436d61d33645fa2d9ed424052
              });
              throw RunningOnDifferentThreadException.RUNNING_ON_DIFFERENT_THREAD;
 diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
-index 7ca0e56f9a730fdcec80e64a4748fa9f3333ccd3..72b7304269352c7f9d463f7e6343f3f8c628327c 100644
+index 46ff1049613f3ed8af848b53cbdee78d383755b4..43d5cd2f286c96a6a77a4a3e1287cadf7857a2f4 100644
 --- a/src/main/java/net/minecraft/server/level/ServerLevel.java
 +++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
-@@ -1009,7 +1009,26 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+@@ -966,7 +966,26 @@ public class ServerLevel extends Level implements WorldGenLevel {
  
      }
  
@@ -107,7 +107,7 @@ index 7ca0e56f9a730fdcec80e64a4748fa9f3333ccd3..72b7304269352c7f9d463f7e6343f3f8
          ++TimingHistory.entityTicks; // Paper - timings
          // Spigot start
          co.aikar.timings.Timing timer; // Paper
-@@ -1050,7 +1069,13 @@ public class ServerLevel extends net.minecraft.world.level.Level implements Worl
+@@ -1007,7 +1026,13 @@ public class ServerLevel extends Level implements WorldGenLevel {
          }
  
          // } finally { timer.stopTiming(); } // Paper - timings - move up
@@ -123,7 +123,7 @@ index 7ca0e56f9a730fdcec80e64a4748fa9f3333ccd3..72b7304269352c7f9d463f7e6343f3f8
  
      private void tickPassenger(Entity vehicle, Entity passenger) {
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
-index e042fa4fd0b439a1ec02155fb20eaf1cb72c0a9f..6286df5da152b8f83f53b51e73292acc71bf6f21 100644
+index e0bd0086a6d0390cff74201ad5314da91018e1ca..1271437c547dcc09be6501ea0cc8d483326baced 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
 +++ b/src/main/java/net/minecraft/world/entity/Entity.java
 @@ -863,7 +863,42 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, n
@@ -193,16 +193,6 @@ index e042fa4fd0b439a1ec02155fb20eaf1cb72c0a9f..6286df5da152b8f83f53b51e73292acc
      }
  
      public void setDeltaMovement(double x, double y, double z) {
-@@ -3932,7 +3976,9 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, n
-         }
-         // Paper end
-         if (this.position.x != x || this.position.y != y || this.position.z != z) {
-+            synchronized (this.posLock) { // Tuinity
-             this.position = new Vec3(x, y, z);
-+            } // Tuinity
-             int i = Mth.floor(x);
-             int j = Mth.floor(y);
-             int k = Mth.floor(z);
 diff --git a/src/main/java/org/spigotmc/WatchdogThread.java b/src/main/java/org/spigotmc/WatchdogThread.java
 index dcfbe77bdb25d9c58ffb7b75c48bdb580bc0de47..fcd3917e0af080ae4726e7f511abf586df4dc7de 100644
 --- a/src/main/java/org/spigotmc/WatchdogThread.java
