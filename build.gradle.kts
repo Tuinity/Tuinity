@@ -67,3 +67,7 @@ tasks.paperclipJar {
     destinationDirectory.set(rootProject.layout.projectDirectory)
     archiveFileName.set("tuinity-paperclip.jar")
 }
+
+tasks.withType<io.papermc.paperweight.patcher.tasks.SimpleRebuildGitPatches> {
+    filterPatches.set(false)
+}
