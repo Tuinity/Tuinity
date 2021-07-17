@@ -6,7 +6,7 @@ Subject: [PATCH] Execute chunk tasks mid-tick
 This will help the server load chunks if tick times are high.
 
 diff --git a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
-index da13ff17609b7bc8076d9297edf8decf01a2ed88..b4c69d39eee19339b1de295151d7ed3bf61635c1 100644
+index 5fdaefc128956581be4bb9b34199fd6410563991..8203524862c309bd52fd3a8a47b219aca570f0b1 100644
 --- a/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
 +++ b/src/main/java/com/destroystokyo/paper/server/ticklist/PaperTickList.java
 @@ -312,6 +312,7 @@ public final class PaperTickList<T> extends ServerTickList<T> { // extend to avo
@@ -196,10 +196,10 @@ index 2b017558711d5e61b875d59e4b5037a8f19354c3..f25bb4214cffd0050241ea229b6acb0c
                  // Spigot Start
                  CrashReport crashreport;
 diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-index d47b93b54db83e8c45012ddd3112e0e828856554..2739d0fdaafb4c82f1777d6798bc9028c30cb6a0 100644
+index 58dc4e3ae0394ef714d3884f447afb0aab44cfd7..64de86402aedb3d915a4bf62342d1aa552fa6a5f 100644
 --- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
 +++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-@@ -905,7 +905,7 @@ public class ServerChunkCache extends ChunkSource {
+@@ -906,7 +906,7 @@ public class ServerChunkCache extends ChunkSource {
          this.level.getProfiler().push("purge");
          this.level.timings.doChunkMap.startTiming(); // Spigot
          this.distanceManager.purgeStaleTickets();
@@ -208,7 +208,7 @@ index d47b93b54db83e8c45012ddd3112e0e828856554..2739d0fdaafb4c82f1777d6798bc9028
          this.runDistanceManagerUpdates();
          this.level.timings.doChunkMap.stopTiming(); // Spigot
          this.level.getProfiler().popPush("chunks");
-@@ -915,7 +915,7 @@ public class ServerChunkCache extends ChunkSource {
+@@ -916,7 +916,7 @@ public class ServerChunkCache extends ChunkSource {
          this.level.timings.doChunkUnload.startTiming(); // Spigot
          this.level.getProfiler().popPush("unload");
          this.chunkMap.tick(booleansupplier);
@@ -217,7 +217,7 @@ index d47b93b54db83e8c45012ddd3112e0e828856554..2739d0fdaafb4c82f1777d6798bc9028
          this.level.timings.doChunkUnload.stopTiming(); // Spigot
          this.level.getProfiler().pop();
          this.clearCache();
-@@ -1012,7 +1012,7 @@ public class ServerChunkCache extends ChunkSource {
+@@ -1013,7 +1013,7 @@ public class ServerChunkCache extends ChunkSource {
                          chunk.setInhabitedTime(chunk.getInhabitedTime() + j);
                          if (flag1 && (this.spawnEnemies || this.spawnFriendlies) && this.level.getWorldBorder().isWithinBounds(chunk.getPos()) && !this.chunkMap.isOutsideOfRange(playerchunk, chunkcoordintpair, true)) { // Spigot // Paper - optimise isOutsideOfRange
                              NaturalSpawner.spawnForChunk(this.level, chunk, spawnercreature_d, this.spawnFriendlies, this.spawnEnemies, flag2);
@@ -226,7 +226,7 @@ index d47b93b54db83e8c45012ddd3112e0e828856554..2739d0fdaafb4c82f1777d6798bc9028
                          }
  
                          // this.level.timings.doTickTiles.startTiming(); // Spigot // Paper
-@@ -1184,40 +1184,7 @@ public class ServerChunkCache extends ChunkSource {
+@@ -1185,40 +1185,7 @@ public class ServerChunkCache extends ChunkSource {
              super.doRunTask(task);
          }
  
