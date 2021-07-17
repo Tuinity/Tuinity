@@ -15,7 +15,7 @@
 ## How To (Server Admins)
 Tuinity uses the same paperclip jar system that Paper uses.
 
-You can download the latest build of Tuinity by going [here](https://ci.codemc.io/job/Spottedleaf/job/Tuinity/).
+You can download the latest build (1.17.x) of Tuinity by going [here](https://ci.codemc.io/job/Spottedleaf/job/Tuinity-1.17/)
 
 You can also [build it yourself](https://github.com/Tuinity/Tuinity#building).
 
@@ -28,7 +28,7 @@ Tuinity-API maven dependency:
 <dependency>
     <groupId>com.tuinity</groupId>
     <artifactId>tuinity-api</artifactId>
-    <version>1.17-R0.1-SNAPSHOT</version>
+    <version>1.17.1-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
  </dependency>
  ```
@@ -38,13 +38,12 @@ Tuinity-Server maven dependency:
 <dependency>
     <groupId>com.tuinity</groupId>
     <artifactId>tuinity</artifactId>
-    <version>1.17-R0.1-SNAPSHOT</version>
+    <version>1.17.1-R0.1-SNAPSHOT</version>
     <scope>provided</scope>
 </dependency>
 ```
 
-There is no repository required since the artifacts should be locally installed
-via building Tuinity.
+TODO nms
 
 ## Building
 
@@ -55,11 +54,21 @@ Requirements:
 - You need `jdk` 16+ installed to compile (and `jre` 16+ to run).
 - Anything else that `paper` requires to build.
 
-TODO
+To set up the `Tuinity-API` and `Tuinity-Server` repo to begin editing/reading source code, 
+clone the Tuinity repo and run `gradlew applypatches` from the root directory.
+
+To build Tuinity, run the following commands in the root directory after cloning the 
+Tuinity repo:
+1. `gradlew applypatches`
+2. `gradlew build`
+3. `gradlew paperclipjar`
+
+Once all 3 steps complete successfully, `tuinity-paperclip.jar` will be placed into
+the project root directory
 
 #### Creating a patch
 Patches are effectively just commits in either `Tuinity-API` or `Tuinity-Server`.
-To create one, just add a commit to either repo and run `./tuinity rb`, and a
+To create one, just add a commit to either repo and run `./gradlew rebuildpatches`, and a
 patch will be placed in the patches folder. Modifying commits will also modify its
 corresponding patch file.
 
@@ -70,6 +79,3 @@ found in `./patches` and its subdirectories except when noted otherwise.
 The fork is based off of PaperMC's fork example found [here](https://github.com/PaperMC/paperweight-examples).
 As such, it contains modifications to it in this project, please see the repository for license information
 of modified files.
-### Note
-
-
