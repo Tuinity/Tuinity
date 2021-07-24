@@ -5,10 +5,10 @@ Subject: [PATCH] Prevent unload() calls removing tickets for sync loads
 
 
 diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-index 8e6f2c9f832a6ce6654a2cc10e64110cb7320da9..4797919c68c77412c5a6385bd093d1143a102752 100644
+index d7b81dbc4bfaa06013486b8ba7c446da5b918882..c098af1f0f237bad7df4e9c74d969231e38c153c 100644
 --- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
 +++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-@@ -731,6 +731,8 @@ public class ServerChunkCache extends ChunkSource {
+@@ -736,6 +736,8 @@ public class ServerChunkCache extends ChunkSource {
          return completablefuture;
      }
  
@@ -17,7 +17,7 @@ index 8e6f2c9f832a6ce6654a2cc10e64110cb7320da9..4797919c68c77412c5a6385bd093d114
      private CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>> getChunkFutureMainThread(int i, int j, ChunkStatus chunkstatus, boolean flag) {
          // Paper start - add isUrgent - old sig left in place for dirty nms plugins
          return getChunkFutureMainThread(i, j, chunkstatus, flag, false);
-@@ -749,9 +751,12 @@ public class ServerChunkCache extends ChunkSource {
+@@ -754,9 +756,12 @@ public class ServerChunkCache extends ChunkSource {
              ChunkHolder.FullChunkStatus currentChunkState = ChunkHolder.getFullChunkStatus(playerchunk.getTicketLevel());
              currentlyUnloading = (oldChunkState.isOrAfter(ChunkHolder.FullChunkStatus.BORDER) && !currentChunkState.isOrAfter(ChunkHolder.FullChunkStatus.BORDER));
          }
@@ -30,7 +30,7 @@ index 8e6f2c9f832a6ce6654a2cc10e64110cb7320da9..4797919c68c77412c5a6385bd093d114
              if (isUrgent) this.distanceManager.markUrgent(chunkcoordintpair); // Paper - Chunk priority
              if (this.chunkAbsent(playerchunk, l)) {
                  ProfilerFiller gameprofilerfiller = this.level.getProfiler();
-@@ -762,12 +767,20 @@ public class ServerChunkCache extends ChunkSource {
+@@ -767,12 +772,20 @@ public class ServerChunkCache extends ChunkSource {
                  playerchunk = this.getVisibleChunkIfPresent(k);
                  gameprofilerfiller.pop();
                  if (this.chunkAbsent(playerchunk, l)) {

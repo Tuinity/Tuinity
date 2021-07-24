@@ -2446,12 +2446,12 @@ index ba2c44fb7dff7f53619328cf5092fd5ed4ecbef4..e04f79351d42fa3e2c98836f5b128058
                  midTickLoadChunks(); // Paper
              } catch (Throwable throwable) {
 diff --git a/src/main/java/net/minecraft/server/level/ChunkHolder.java b/src/main/java/net/minecraft/server/level/ChunkHolder.java
-index f542998d3aac3b5f3039b906b8dadd636c1fb164..fd471538212c114e0a736ca4a411a7dd9a7ba7f9 100644
+index 574434760cb91234b994f101a5ddef595337b42e..664be42ac0dadf1b4eb498072b341b9df8fbc616 100644
 --- a/src/main/java/net/minecraft/server/level/ChunkHolder.java
 +++ b/src/main/java/net/minecraft/server/level/ChunkHolder.java
-@@ -720,6 +720,9 @@ public class ChunkHolder {
-                     // Paper start - rewrite ticklistserver
-                     ChunkHolder.this.chunkMap.level.onChunkSetTicking(ChunkHolder.this.pos.x, ChunkHolder.this.pos.z);
+@@ -722,6 +722,9 @@ public class ChunkHolder {
+                         ChunkHolder.this.chunkMap.level.onChunkSetTicking(ChunkHolder.this.pos.x, ChunkHolder.this.pos.z);
+                     }
                      // Paper end - rewrite ticklistserver
 +                    // Tuinity start - ticking chunk set
 +                    ChunkHolder.this.chunkMap.level.getChunkSource().tickingChunks.add(chunk);
@@ -2459,7 +2459,7 @@ index f542998d3aac3b5f3039b906b8dadd636c1fb164..fd471538212c114e0a736ca4a411a7dd
                  });
              });
              // Paper end
-@@ -729,6 +732,12 @@ public class ChunkHolder {
+@@ -731,6 +734,12 @@ public class ChunkHolder {
          if (flag4 && !flag5) {
              this.tickingChunkFuture.complete(ChunkHolder.UNLOADED_LEVEL_CHUNK); this.isTickingReady = false; // Paper - cache chunk ticking stage
              this.tickingChunkFuture = ChunkHolder.UNLOADED_LEVEL_CHUNK_FUTURE;
@@ -2472,7 +2472,7 @@ index f542998d3aac3b5f3039b906b8dadd636c1fb164..fd471538212c114e0a736ca4a411a7dd
          }
  
          boolean flag6 = playerchunk_state.isOrAfter(ChunkHolder.FullChunkStatus.ENTITY_TICKING);
-@@ -745,6 +754,9 @@ public class ChunkHolder {
+@@ -747,6 +756,9 @@ public class ChunkHolder {
              ensureMain(this.entityTickingChunkFuture).thenAccept(either -> { // Paper ensureMain
                  either.ifLeft(chunk -> {
                      ChunkHolder.this.isEntityTickingReady = true;
@@ -2482,7 +2482,7 @@ index f542998d3aac3b5f3039b906b8dadd636c1fb164..fd471538212c114e0a736ca4a411a7dd
                  });
              });
              // Paper end
-@@ -754,6 +766,12 @@ public class ChunkHolder {
+@@ -756,6 +768,12 @@ public class ChunkHolder {
          if (flag6 && !flag7) {
              this.entityTickingChunkFuture.complete(ChunkHolder.UNLOADED_LEVEL_CHUNK); this.isEntityTickingReady = false; // Paper - cache chunk ticking stage
              this.entityTickingChunkFuture = ChunkHolder.UNLOADED_LEVEL_CHUNK_FUTURE;
@@ -2588,7 +2588,7 @@ index 42fd259f4492e539112b5bcb310aaaadab58a443..cb88137728828b8bfd7836397118d878
              }
          };
 diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-index 6daf49a951fe7fdb04e8b71f00922e1d457b4e84..a8cf5479b752942fc6c94e813b1c4dd94fbc31d6 100644
+index 1043577580bee20a46ae4b2c9e7cef27d45568ad..ac11385a3db7b6ba0fb48261f8b44d81c9d29cc8 100644
 --- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
 +++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
 @@ -47,6 +47,7 @@ import net.minecraft.world.level.storage.LevelStorageSource;
@@ -2608,7 +2608,7 @@ index 6daf49a951fe7fdb04e8b71f00922e1d457b4e84..a8cf5479b752942fc6c94e813b1c4dd9
  
      public void getEntityTickingChunkAsync(int x, int z, java.util.function.Consumer<LevelChunk> onLoad) {
          if (Thread.currentThread() != this.mainThread) {
-@@ -227,6 +228,166 @@ public class ServerChunkCache extends ChunkSource {
+@@ -232,6 +233,166 @@ public class ServerChunkCache extends ChunkSource {
      }
      // Paper end - rewrite ticklistserver
  
@@ -2776,7 +2776,7 @@ index 6daf49a951fe7fdb04e8b71f00922e1d457b4e84..a8cf5479b752942fc6c94e813b1c4dd9
          this.level = world;
          this.mainThreadProcessor = new ServerChunkCache.MainThreadExecutor(world);
 diff --git a/src/main/java/net/minecraft/server/level/ServerLevel.java b/src/main/java/net/minecraft/server/level/ServerLevel.java
-index c2e0417ee15018ec31c4aa8eec3dff7a0d16aa9e..ee5ffb2139dec5ee16a25470a4d2dcd528b8793e 100644
+index baa25df9f446c8edea9666983425df31c32a13ff..2e0dc2c7f308bd4dab577b17ba99af3c0cdddd5c 100644
 --- a/src/main/java/net/minecraft/server/level/ServerLevel.java
 +++ b/src/main/java/net/minecraft/server/level/ServerLevel.java
 @@ -114,6 +114,7 @@ import net.minecraft.world.level.block.Block;
@@ -2892,7 +2892,7 @@ index c2e0417ee15018ec31c4aa8eec3dff7a0d16aa9e..ee5ffb2139dec5ee16a25470a4d2dcd5
      // Add env and gen to constructor, WorldData -> WorldDataServer
      public ServerLevel(MinecraftServer minecraftserver, Executor executor, LevelStorageSource.LevelStorageAccess convertable_conversionsession, ServerLevelData iworlddataserver, ResourceKey<Level> resourcekey, DimensionType dimensionmanager, ChunkProgressListener worldloadlistener, ChunkGenerator chunkgenerator, boolean flag, long i, List<CustomSpawner> list, boolean flag1, org.bukkit.World.Environment env, org.bukkit.generator.ChunkGenerator gen) {
 diff --git a/src/main/java/net/minecraft/world/entity/Entity.java b/src/main/java/net/minecraft/world/entity/Entity.java
-index a11507c630248b98153275f78c15ebee59a6b0a3..fef4e334085d9dc8839461029fad0cab4e09f3c3 100644
+index 896d892237b29eb404398db07264eb6f04786754..0e00f2055835bf4c2d33327a22f45de71444bc2f 100644
 --- a/src/main/java/net/minecraft/world/entity/Entity.java
 +++ b/src/main/java/net/minecraft/world/entity/Entity.java
 @@ -392,6 +392,12 @@ public abstract class Entity implements Nameable, EntityAccess, CommandSource, n
