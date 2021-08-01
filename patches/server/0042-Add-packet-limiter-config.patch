@@ -24,18 +24,21 @@ and an action can be defined: DROP or KICK
 If interval or rate are less-than 0, the limit is ignored
 
 diff --git a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-index cb33129ac32e767ab5e5ffaec77ddd90cc9536ae..0e331eb38b91d6323bd64bddc2a3274f7d720f2c 100644
+index cb33129ac32e767ab5e5ffaec77ddd90cc9536ae..0bf24248d1a294fc9b48c8215ae0230ee3d8ddc1 100644
 --- a/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
 +++ b/src/main/java/com/tuinity/tuinity/config/TuinityConfig.java
-@@ -1,6 +1,7 @@
+@@ -1,6 +1,10 @@
  package com.tuinity.tuinity.config;
  
  import com.destroystokyo.paper.util.SneakyThrow;
++import io.papermc.paper.util.ObfHelper;
++import java.util.HashMap;
++import java.util.Map;
 +import net.minecraft.server.MinecraftServer;
  import org.bukkit.Bukkit;
  import org.bukkit.configuration.ConfigurationSection;
  import org.bukkit.configuration.file.YamlConfiguration;
-@@ -129,6 +130,98 @@ public final class TuinityConfig {
+@@ -129,6 +133,104 @@ public final class TuinityConfig {
          playerFrustumPrioritisation = TuinityConfig.getBoolean("player-chunks.enable-frustum-priority", false);
      }
  
@@ -76,35 +79,41 @@ index cb33129ac32e767ab5e5ffaec77ddd90cc9536ae..0e331eb38b91d6323bd64bddc2a3274f
 +
 +        // auto recipe limiting
 +        TuinityConfig.getDouble("packet-limiter.limits." +
-+                "PacketPlayInAutoRecipe" + ".interval", 4.0);
++            "PacketPlayInAutoRecipe" + ".interval", 4.0);
 +        TuinityConfig.getDouble("packet-limiter.limits." +
 +            "PacketPlayInAutoRecipe" + ".max-packet-rate", 5.0);
 +        TuinityConfig.getString("packet-limiter.limits." +
 +            "PacketPlayInAutoRecipe" + ".action", PacketLimit.ViolateAction.DROP.name());
 +
-+        final String canonicalName = MinecraftServer.class.getCanonicalName();
-+        final String nmsPackage = canonicalName.substring(0, canonicalName.lastIndexOf("."));
++        final Map<String, String> mojangToSpigot = new HashMap<>();
++        final Map<String, ObfHelper.ClassMapping> maps = ObfHelper.INSTANCE.mappings();
++        if (maps != null) {
++            maps.forEach((spigotName, classMapping) ->
++                mojangToSpigot.put(classMapping.mojangName(), classMapping.obfName()));
++        }
++
 +        for (final String packetClassName : section.getKeys(false)) {
 +            if (packetClassName.equals("all")) {
 +                continue;
 +            }
 +            Class<?> packetClazz = null;
 +
-+            try {
-+                packetClazz = Class.forName(nmsPackage + "." + packetClassName);
-+            } catch (final ClassNotFoundException ex) {
-+                for (final String subpackage : java.util.Arrays.asList("game", "handshake", "login", "status")) {
++            for (final String subpackage : List.of("game", "handshake", "login", "status")) {
++                final String fullName = "net.minecraft.network.protocol." + subpackage + "." + packetClassName;
++                try {
++                    packetClazz = Class.forName(fullName);
++                    break;
++                } catch (final ClassNotFoundException ex) {
 +                    try {
-+                        packetClazz = Class.forName("net.minecraft.network.protocol." + subpackage + "." + packetClassName);
++                        final String spigot = mojangToSpigot.get(fullName);
++                        if (spigot != null) {
++                            packetClazz = Class.forName(spigot);
++                        }
 +                    } catch (final ClassNotFoundException ignore) {}
-+                }
-+                if (packetClazz == null) {
-+                    MinecraftServer.LOGGER.warn("Packet '" + packetClassName + "' does not exist, cannot limit it! Please update tuinity.yml");
-+                    continue;
 +                }
 +            }
 +
-+            if (!net.minecraft.network.protocol.Packet.class.isAssignableFrom(packetClazz)) {
++            if (packetClazz == null || !net.minecraft.network.protocol.Packet.class.isAssignableFrom(packetClazz)) {
 +                MinecraftServer.LOGGER.warn("Packet '" + packetClassName + "' does not exist, cannot limit it! Please update tuinity.yml");
 +                continue;
 +            }
