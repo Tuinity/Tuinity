@@ -3,7 +3,7 @@
     <img src="./tuinity-logo.webp" width="512">
     <br /><br />
     <p>Fork of <a href="https://github.com/PaperMC/Paper">Paper</a> aimed at improving server performance at high playercounts.</p>
-    <img alt="Java CI" src="https://github.com/Spottedleaf/Tuinity/workflows/Java%20CI/badge.svg">
+    <a href="https://ci.codemc.io/job/Spottedleaf/job/Tuinity-1.17/"><img alt="Java CI" src="https://github.com/Spottedleaf/Tuinity/workflows/Java%20CI/badge.svg"></a>
     <a href="https://irc.spi.gt/iris/?channels=tuinity">
         <img alt="IRC" src="https://img.shields.io/badge/irc-%23tuinity-%23DF8826">
     </a>
