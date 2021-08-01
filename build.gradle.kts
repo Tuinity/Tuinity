@@ -1,3 +1,4 @@
+import io.papermc.paperweight.patcher.tasks.SimpleRebuildGitPatches
 import io.papermc.paperweight.util.constants.*
 
 plugins {
@@ -37,6 +38,9 @@ subprojects {
     tasks.withType<Javadoc> {
         options.encoding = Charsets.UTF_8.name()
     }
+    tasks.withType<ProcessResources> {
+        filteringCharset = Charsets.UTF_8.name()
+    }
 
     repositories {
         mavenCentral()
@@ -68,6 +72,6 @@ tasks.paperclipJar {
     archiveFileName.set("tuinity-paperclip.jar")
 }
 
-tasks.withType<io.papermc.paperweight.patcher.tasks.SimpleRebuildGitPatches> {
+tasks.withType<SimpleRebuildGitPatches> {
     filterPatches.set(false)
 }
