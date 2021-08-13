@@ -6,14 +6,21 @@ Subject: [PATCH] Optimise chunk tick iteration
 Use a dedicated list of entity ticking chunks to reduce the cost
 
 diff --git a/src/main/java/net/minecraft/server/level/ServerChunkCache.java b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-index ac11385a3db7b6ba0fb48261f8b44d81c9d29cc8..9c4527eb4cd365a1948c4f1f2f7098978a0e1fce 100644
+index e3f6f24272257822822f75afb3593a6aa6b6a80a..3acbe906e346ebb7a42b56d9b89baf0a2df8f9c2 100644
 --- a/src/main/java/net/minecraft/server/level/ServerChunkCache.java
 +++ b/src/main/java/net/minecraft/server/level/ServerChunkCache.java
-@@ -999,18 +999,26 @@ public class ServerChunkCache extends ChunkSource {
-             //Collections.shuffle(list); // Paper
-             // Paper - moved up
+@@ -995,24 +995,29 @@ public class ServerChunkCache extends ChunkSource {
+ 
+             this.lastSpawnState = spawnercreature_d;
+             this.level.getProfiler().pop();
+-            List<ChunkHolder> list = Lists.newArrayList(this.chunkMap.visibleChunkMap.values()); // Paper
+-
+-            Collections.shuffle(list);
++            // Tuinity - no, anyone who cares about mob spawning being even will enable per-player (as that ACTUALLY makes it even)
+             // Paper - moved natural spawn event up
              this.level.timings.chunkTicks.startTiming(); // Paper
--            final int[] chunksTicked = {0}; this.chunkMap.forEachVisibleChunk((playerchunk) -> { // Paper - safe iterator incase chunk loads, also no wrapping
+-            final int[] chunksTicked = {0}; // Paper
+-            list.forEach((playerchunk) -> {
 -                Optional<LevelChunk> optional = ((Either) playerchunk.getTickingChunkFuture().getNow(ChunkHolder.UNLOADED_LEVEL_CHUNK)).left();
 -
 -                if (optional.isPresent()) {
@@ -43,7 +50,7 @@ index ac11385a3db7b6ba0fb48261f8b44d81c9d29cc8..9c4527eb4cd365a1948c4f1f2f709897
                          }
  
                          // this.level.timings.doTickTiles.startTiming(); // Spigot // Paper
-@@ -1018,7 +1026,11 @@ public class ServerChunkCache extends ChunkSource {
+@@ -1020,7 +1025,11 @@ public class ServerChunkCache extends ChunkSource {
                          // this.level.timings.doTickTiles.stopTiming(); // Spigot // Paper
                      }
                  }
@@ -56,7 +63,7 @@ index ac11385a3db7b6ba0fb48261f8b44d81c9d29cc8..9c4527eb4cd365a1948c4f1f2f709897
              this.level.timings.chunkTicks.stopTiming(); // Paper
              this.level.getProfiler().push("customSpawners");
              if (flag1) {
-@@ -1027,21 +1039,7 @@ public class ServerChunkCache extends ChunkSource {
+@@ -1029,21 +1038,7 @@ public class ServerChunkCache extends ChunkSource {
                  } // Paper - timings
              }
  
